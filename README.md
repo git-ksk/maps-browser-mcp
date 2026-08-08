@@ -141,7 +141,7 @@ MAPS_MAX_READ_CHARS=1800
 MAPS_MAX_VISIBLE_READS_PER_HOUR=30
 ```
 
-The hourly visible-read budget is separate from the general per-minute action rate. It provides a server-side collection bound even when a request does not match a bulk-request keyword pattern.
+The hourly visible-read budget is separate from the general per-minute action rate. It provides a server-side collection bound even when a request does not match a bulk-request keyword pattern. Rate/read counters are process-local safety guards and reset when the process restarts; they are not intended as persistent accounting or a legal-compliance mechanism.
 
 ## Configuration
 
@@ -153,7 +153,8 @@ The server does not automatically load `.env`; use your shell, process manager, 
 | `MCP_HTTP_PORT` | `8787` | HTTP port |
 | `MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | Accepted Host header names |
 | `MCP_ALLOWED_ORIGINS` | empty | Optional exact Origin allowlist |
-| `MCP_BEARER_TOKEN` | empty | Bearer-token guard; required for non-loopback binds; minimum 24 chars |
+| `MCP_ALLOW_NONLOOPBACK` | `false` | Explicit opt-in before binding HTTP outside loopback |
+| `MCP_BEARER_TOKEN` | empty | Bearer-token guard; also mandatory for non-loopback binds; minimum 24 chars |
 | `MCP_MAX_BODY_BYTES` | `262144` | Maximum MCP request body size |
 | `MAPS_CHROME_EXECUTABLE` | auto-detect | Chrome/Chromium executable |
 | `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | Dedicated profile directory |
@@ -161,8 +162,8 @@ The server does not automatically load `.env`; use your shell, process manager, 
 | `MAPS_CDP_PORT` | unset | Advanced: attach to an existing local Chrome CDP endpoint |
 | `MAPS_HEADLESS` | `false` | Run Chrome headless |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable V3 bounded reading |
-| `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-level action guard |
-| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent V3 read budget |
+| `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
+| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Process-local independent V3 read budget |
 | `MAPS_MAX_PENDING_ACTIONS` | `8` | Maximum queued browser operations |
 | `MAPS_OPERATION_TIMEOUT_MS` | `25000` | Per-operation watchdog; resets browser session on timeout |
 
@@ -172,7 +173,9 @@ Invalid boolean/integer configuration values fail fast instead of being silently
 
 `MAPS_CDP_PORT` is an advanced escape hatch. It is rejected unless `MAPS_ALLOW_EXTERNAL_CDP=true` is also set. When enabled, the server attaches to an already-running **local** Chrome/Chromium endpoint instead of launching its own dedicated profile. Only use a CDP endpoint you control. Attaching to a personal everyday browser weakens the profile-isolation boundary and is not recommended.
 
-Chrome instances launched by this project explicitly bind their remote-debugging endpoint to `127.0.0.1`, and the dedicated profile directory is restricted to the current user on Unix-like systems.
+Chrome instances launched by this project explicitly bind their remote-debugging endpoint to `127.0.0.1`, and the dedicated profile directory is restricted to the current user on Unix-like systems. When reusing a managed profile, both the port and browser identity recorded in Chrome's `DevToolsActivePort` file must match the live endpoint; a stale file cannot be accepted merely because an unrelated Chrome later reused the same numeric port.
+
+The runtime also refuses to guess between multiple open Google Maps tabs in the dedicated profile. Keep one Maps tab open for the MCP session; if multiple Maps tabs are detected, the operation stops instead of silently taking control of the first one.
 
 ## Connecting a remote MCP client
 
@@ -182,11 +185,11 @@ Recommended setup:
 
 1. keep the Node server bound to loopback,
 2. add the public proxy hostname to `MCP_ALLOWED_HOSTS`,
-3. enforce authentication/access control at the tunnel or reverse proxy,
+3. enforce authentication/access control at the HTTPS tunnel or reverse proxy,
 4. optionally configure `MCP_BEARER_TOKEN` as an additional server-side guard,
 5. never commit tunnel credentials, browser profiles, tokens, or local environment values.
 
-If you deliberately bind `MCP_HTTP_HOST` to a non-loopback address, the process refuses to start unless `MCP_BEARER_TOKEN` is configured. Front-proxy authentication alone is not treated as sufficient protection for a directly reachable non-loopback Node port.
+If you deliberately bind `MCP_HTTP_HOST` to a non-loopback address, the process refuses to start unless **both** `MCP_ALLOW_NONLOOPBACK=true` and a sufficiently long `MCP_BEARER_TOKEN` are configured. This is an advanced escape hatch, not the recommended tunnel architecture. Do not transmit the Bearer token over an unencrypted network connection; put externally reachable traffic behind TLS/HTTPS.
 
 ## Safety and compliance boundaries
 
@@ -207,7 +210,9 @@ V3 visible-state reading is deliberately conservative, but Google does not expli
 
 ## Privacy
 
-The project does not intentionally persist Google Maps result data. Browser state lives in the dedicated local Chrome profile. Tool handlers do not log search queries or Maps result contents by default. Unexpected internal errors are logged locally, while remote MCP clients receive a generic error to avoid leaking local paths or environment details. HTTP responses use `Cache-Control: no-store`.
+The project does not intentionally persist Google Maps result datasets. Browser state lives in the dedicated local Chrome profile. Because that profile is persistent by design, Chrome itself may retain ordinary browser artifacts such as cookies, cache, preferences, and browsing history. Use a dedicated profile, avoid signing in unless needed, and delete the profile if you need to remove those local browser artifacts.
+
+Tool handlers do not log search queries or Maps result contents by default. Unexpected internal errors are logged locally, while remote MCP clients receive a generic error to avoid leaking local paths or environment details. HTTP responses use `Cache-Control: no-store`.
 
 Do not commit your Chrome profile, environment files, tunnel credentials, or tokens.
 
@@ -230,7 +235,7 @@ npm run smoke:http
 npm run smoke:browser
 ```
 
-CI verifies Node.js 20, 22, and 24, dependency audit, type checking, unit tests, build, real stdio round trips/tool registration, both the legacy 2025-era and modern `2026-07-28` HTTP paths, HTTP security/no-store behavior, package contents, and real Chrome/CDP startup without visiting Google Maps. Browser startup is additionally smoke-tested on GitHub-hosted Linux, macOS 15 arm64, and Windows runners. GitHub Actions dependencies are pinned to full commit SHAs, and Dependabot monitors both npm and Actions dependencies.
+CI verifies Node.js 20, 22, and 24, dependency audit, type checking, unit tests, build, real stdio round trips/tool registration for both protocol eras, the legacy 2025-era and modern `2026-07-28` HTTP paths including standardized `Mcp-Method`/`Mcp-Name` validation and a real modern `tools/call`, HTTP security/no-store behavior, package contents, and real Chrome/CDP startup without visiting Google Maps. Browser startup is additionally smoke-tested on GitHub-hosted Linux, macOS 15 arm64, and Windows runners. GitHub Actions dependencies are pinned to full commit SHAs, and Dependabot monitors both npm and Actions dependencies.
 
 See [SECURITY.md](SECURITY.md) for security guidance.
 
