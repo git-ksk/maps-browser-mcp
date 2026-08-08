@@ -140,7 +140,7 @@ async function startHttp(): Promise<void> {
     void (async () => {
       try {
         const request = await toWebRequest(req);
-        const response = await mcpHandler(request);
+        const response = await mcpHandler.fetch(request);
         await writeWebResponse(response, res);
       } catch (error) {
         console.error("[maps-browser-mcp] MCP HTTP error", error);
