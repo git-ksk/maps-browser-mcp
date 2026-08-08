@@ -12,6 +12,7 @@ The default configuration is intentionally local-only:
 - Visible-state reading is disabled by default.
 - Browser operations are serialized and rate/queue limited.
 - V3 visible-state reads have an independent rolling hourly budget.
+- Browser operations have a watchdog that resets the session on timeout.
 
 ## Safe deployment
 
@@ -27,6 +28,12 @@ If you expose `/mcp` through a tunnel or reverse proxy:
 A non-loopback `MCP_HTTP_HOST` always requires `MCP_BEARER_TOKEN`. Authentication performed by a front proxy is not accepted as a reason to leave a directly reachable non-loopback Node port unauthenticated.
 
 Chrome instances launched by this project bind remote debugging to `127.0.0.1`. `MAPS_CDP_PORT` is rejected unless `MAPS_ALLOW_EXTERNAL_CDP=true` is also set, and should only point to a local, dedicated Chrome/Chromium instance you control. CDP provides powerful browser access and must not be exposed to untrusted networks.
+
+## Runtime failure containment
+
+One process controls one semantic browser state, so browser operations are serialized. `MAPS_MAX_PENDING_ACTIONS` bounds the queue. `MAPS_OPERATION_TIMEOUT_MS` bounds each active operation; on timeout the runtime resets the browser/CDP session before the queue proceeds, invalidating stale semantic state.
+
+This watchdog is a recovery mechanism, not a cancellation guarantee for arbitrary third-party code. The timed-out public operation is considered failed and late task errors are discarded after the reset.
 
 ## Single-user boundary
 
@@ -51,9 +58,11 @@ Do not include any of the following in bug reports, logs, commits, or screenshot
 
 The repository intentionally ignores common environment/profile/runtime files. Review staged changes before publishing them.
 
+MCP/health/error HTTP responses are marked `Cache-Control: no-store` because responses can contain location or route information. Reverse proxies should preserve or strengthen this policy rather than caching MCP traffic.
+
 ## Dependency and CI security
 
-GitHub Actions used by this repository are pinned to full commit SHAs. Dependabot monitors npm and GitHub Actions dependencies. CI uses `npm ci --ignore-scripts`, runs `npm audit --audit-level=moderate`, and tests Chrome/CDP startup without visiting Google Maps on Linux, macOS, and Windows runners.
+GitHub Actions used by this repository are pinned to full commit SHAs. Dependabot monitors npm and GitHub Actions dependencies. CI uses `npm ci --ignore-scripts`, runs `npm audit --audit-level=moderate`, validates both supported MCP HTTP protocol eras plus stdio round trips, and tests Chrome/CDP startup without visiting Google Maps on Linux, macOS, and Windows runners.
 
 ## Reporting a vulnerability
 
