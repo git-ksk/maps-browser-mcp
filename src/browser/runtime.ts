@@ -215,13 +215,14 @@ export class MapsBrowserRuntime {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "The place result list is no longer active. Run maps_search again.");
     }
     const label = await this.clickCandidate("place", index, expectedLabel);
-    await sleep(450);
-    const finalUrl = await this.assertMapsSurface();
-    if (mapsPathKind(finalUrl) !== "place") {
+    const finalUrl = await this.waitForMapsPathKind("place", 3_000);
+    if (!finalUrl) {
+      const observedUrl = await this.assertMapsSurface();
+      const observedKind = mapsPathKind(observedUrl);
       this.invalidateSemanticState();
       throw new BrowserRuntimeError(
         "UI_STATE_CHANGED",
-        "Google Maps did not enter a place view after the selection. Run maps_search again."
+        `Google Maps did not enter a place view after the selection (observed ${observedKind}). Run maps_search again.`
       );
     }
     this.viewState = "place";
@@ -291,6 +292,17 @@ export class MapsBrowserRuntime {
       throw new BrowserRuntimeError("UI_ELEMENT_NOT_FOUND", "Matching Google Maps UI element was not found");
     }
     return value.label ?? "selected";
+  }
+
+  private async waitForMapsPathKind(expected: MapsPathKind, timeoutMs: number): Promise<string | undefined> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const url = await this.currentUrl();
+      this.assertAllowedCurrentUrl(url);
+      if (mapsPathKind(url) === expected) return url;
+      await sleep(100);
+    }
+    return undefined;
   }
 
   private async ensureConnected(): Promise<void> {

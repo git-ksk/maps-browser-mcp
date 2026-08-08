@@ -37,16 +37,26 @@ const reader = new VisibleStateReader(runtime, { maxNodes: 120, maxChars: 1800 }
 const semantic = new SemanticController(runtime, compiler);
 
 try {
-  // One public, user-directed place search. No reviews, crawling, screenshots, or persistence.
+  // One public, user-directed category search. No reviews, crawling, screenshots, or persistence.
+  const placeQuery = "coffee near Tokyo Station";
   policy.consumeAction();
-  policy.assertSearchQuery("Tokyo Station");
-  const search = compiler.search("Tokyo Station");
+  policy.assertSearchQuery(placeQuery);
+  const search = compiler.search(placeQuery);
   const searchNavigation = await runtime.navigate(search.url, search.action);
   assert(searchNavigation.url.includes("/maps/"), "Search did not remain on Google Maps");
   await sleep(2_500);
 
   const placeSummary = await reader.read("place");
   boundedSummary(placeSummary, 1800);
+  assert(placeSummary.items.length > 0, "No selectable place candidates were detected");
+
+  const firstPlace = placeSummary.items[0];
+  assert(firstPlace, "No first place candidate was returned");
+  const selectedPlace = await semantic.selectResult(firstPlace.index, firstPlace.label);
+  assert(
+    typeof selectedPlace.selected === "string" && selectedPlace.selected.length > 0,
+    "Place selection did not return a label"
+  );
 
   // One public transit route. This is intentionally fixed and low-volume.
   policy.consumeAction();
@@ -66,10 +76,13 @@ try {
   // Verify the stale-index guard using exactly the label returned by the bounded reader.
   const firstRoute = routeSummary.items[0];
   assert(firstRoute, "No first route candidate was returned");
-  const selected = await semantic.selectRoute(firstRoute.index, firstRoute.label);
-  assert(typeof selected.selected === "string" && selected.selected.length > 0, "Route selection did not return a label");
+  const selectedRoute = await semantic.selectRoute(firstRoute.index, firstRoute.label);
+  assert(
+    typeof selectedRoute.selected === "string" && selectedRoute.selected.length > 0,
+    "Route selection did not return a label"
+  );
 
-  console.log("Live Maps E2E passed: bounded place read, transit read, and guarded route selection");
+  console.log("Live Maps E2E passed: bounded place read/select, transit read, and guarded route selection");
 } finally {
   await runtime.close().catch(() => undefined);
   await fsp.rm(profileDir, {
