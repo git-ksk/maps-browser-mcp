@@ -23,6 +23,7 @@ export class SemanticController {
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {
+    await this.runtime.assertDirectionsContext();
     const last = this.runtime.getLastAction();
     if (!last || last.kind !== "directions") {
       throw new BrowserRuntimeError(
