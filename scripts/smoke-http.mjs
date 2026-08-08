@@ -74,6 +74,13 @@ function modernMeta() {
   };
 }
 
+function modernHeaders(method) {
+  return {
+    "mcp-protocol-version": "2026-07-28",
+    "mcp-method": method
+  };
+}
+
 const port = await freePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 let stderr = "";
@@ -109,14 +116,14 @@ try {
     throw new Error(`Unexpected initialize response: ${JSON.stringify(initialized)}`);
   }
 
-  // Modern 2026-07-28 path: server/discover + per-request _meta envelope.
-  const modernHeaders = { "mcp-protocol-version": "2026-07-28" };
+  // Modern 2026-07-28 path: server/discover + per-request _meta envelope and
+  // SEP-2243 standard HTTP method mirroring.
   const discovered = await postMcp(baseUrl, {
     jsonrpc: "2.0",
     id: "discover-1",
     method: "server/discover",
     params: { _meta: modernMeta() }
-  }, modernHeaders);
+  }, modernHeaders("server/discover"));
   if (!Array.isArray(discovered?.result?.supportedVersions) ||
       !discovered.result.supportedVersions.includes("2026-07-28")) {
     throw new Error(`Unexpected server/discover response: ${JSON.stringify(discovered)}`);
@@ -127,7 +134,7 @@ try {
     id: "tools-modern-1",
     method: "tools/list",
     params: { _meta: modernMeta() }
-  }, modernHeaders);
+  }, modernHeaders("tools/list"));
   const toolNames = new Set(
     Array.isArray(modernTools?.result?.tools)
       ? modernTools.result.tools.map((tool) => tool?.name).filter(Boolean)
