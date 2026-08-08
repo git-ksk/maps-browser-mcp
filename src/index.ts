@@ -2,7 +2,6 @@ import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { toNodeHandler } from "@modelcontextprotocol/node";
 import { buildServer, config, shutdownRuntime } from "./server.js";
 
 function hostnameFromHostHeader(value: string | undefined): string | undefined {
@@ -52,9 +51,65 @@ function reject(res: ServerResponse, status: number, message: string): void {
   res.end(JSON.stringify({ error: message }));
 }
 
+async function readRequestBody(req: IncomingMessage): Promise<string | undefined> {
+  if (req.method === "GET" || req.method === "HEAD") return undefined;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  if (chunks.length === 0) return undefined;
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function toWebHeaders(req: IncomingMessage): Headers {
+  const headers = new Headers();
+  for (const [name, rawValue] of Object.entries(req.headers)) {
+    if (rawValue === undefined) continue;
+    if (Array.isArray(rawValue)) {
+      for (const value of rawValue) headers.append(name, value);
+    } else {
+      headers.set(name, rawValue);
+    }
+  }
+  return headers;
+}
+
+async function toWebRequest(req: IncomingMessage): Promise<Request> {
+  const host = req.headers.host ?? "localhost";
+  const url = new URL(req.url ?? "/", `http://${host}`);
+  const body = await readRequestBody(req);
+  return new Request(url, {
+    method: req.method ?? "GET",
+    headers: toWebHeaders(req),
+    body
+  });
+}
+
+async function writeWebResponse(response: Response, res: ServerResponse): Promise<void> {
+  res.statusCode = response.status;
+  res.statusMessage = response.statusText;
+  response.headers.forEach((value, name) => res.setHeader(name, value));
+
+  if (!response.body) {
+    res.end();
+    return;
+  }
+
+  const reader = response.body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) res.write(Buffer.from(value));
+    }
+    res.end();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 async function startHttp(): Promise<void> {
   const mcpHandler = createMcpHandler(buildServer);
-  const nodeHandler = toNodeHandler(mcpHandler);
   const httpServer = createServer((req, res) => {
     const requestUrl = new URL(req.url ?? "/", "http://localhost");
 
@@ -82,10 +137,17 @@ async function startHttp(): Promise<void> {
       return;
     }
 
-    void nodeHandler(req, res).catch((error: unknown) => {
-      console.error("[maps-browser-mcp] MCP HTTP error", error);
-      if (!res.headersSent) reject(res, 500, "mcp_handler_error");
-    });
+    void (async () => {
+      try {
+        const request = await toWebRequest(req);
+        const response = await mcpHandler(request);
+        await writeWebResponse(response, res);
+      } catch (error) {
+        console.error("[maps-browser-mcp] MCP HTTP error", error);
+        if (!res.headersSent) reject(res, 500, "mcp_handler_error");
+        else if (!res.writableEnded) res.end();
+      }
+    })();
   });
 
   await new Promise<void>((resolve, rejectPromise) => {
