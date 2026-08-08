@@ -48,6 +48,14 @@ function candidateExpression(kind: CandidateKind, clickIndex?: number, expectedL
       return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
     };
     const labelOf = (el) => (el.getAttribute('aria-label') || el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240);
+    const safePlaceLink = (el) => {
+      try {
+        const url = new URL(el.href, location.href);
+        return url.protocol === 'https:' && url.origin === location.origin && url.pathname.startsWith('/maps/place/');
+      } catch {
+        return false;
+      }
+    };
     const unique = (nodes, limit) => {
       const result = [];
       const seen = new Set();
@@ -64,8 +72,8 @@ function candidateExpression(kind: CandidateKind, clickIndex?: number, expectedL
 
     let items;
     if (${JSON.stringify(kind)} === 'place') {
-      const feed = Array.from(document.querySelectorAll('[role="feed"] a[href*="/maps/place/"]'));
-      const fallback = Array.from(document.querySelectorAll('[role="main"] a[href*="/maps/place/"]'));
+      const feed = Array.from(document.querySelectorAll('[role="feed"] a[href*="/maps/place/"]')).filter(safePlaceLink);
+      const fallback = Array.from(document.querySelectorAll('[role="main"] a[href*="/maps/place/"]')).filter(safePlaceLink);
       items = unique(feed.some(visible) ? feed : fallback, 20);
     } else {
       const primary = Array.from(document.querySelectorAll('[role="main"] [data-trip-index]'));
@@ -92,6 +100,22 @@ function candidateExpression(kind: CandidateKind, clickIndex?: number, expectedL
     return { ok: true, label: target.label };
   })()`;
 }
+
+const INLINE_CHALLENGE_EXPRESSION = `(() => {
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  const selectors = [
+    'iframe[src*="recaptcha"]',
+    'iframe[src*="/sorry/"]',
+    'form[action*="/sorry/"]',
+    '#captcha',
+    'input[name="captcha"]'
+  ];
+  return selectors.some((selector) => Array.from(document.querySelectorAll(selector)).some(visible));
+})()`;
 
 export class BrowserRuntimeError extends Error {
   constructor(
@@ -143,6 +167,7 @@ export class MapsBrowserRuntime {
 
     const finalUrl = await this.currentUrl();
     this.assertAllowedCurrentUrl(finalUrl);
+    await this.assertNoInlineChallenge();
     this.lastAction = action;
     this.viewState = actionToView(action);
     return { url: finalUrl };
@@ -157,6 +182,7 @@ export class MapsBrowserRuntime {
   async assertMapsSurface(): Promise<string> {
     const url = await this.currentUrl();
     this.assertAllowedCurrentUrl(url);
+    await this.assertNoInlineChallenge();
     return url;
   }
 
@@ -299,10 +325,29 @@ export class MapsBrowserRuntime {
     while (Date.now() < deadline) {
       const url = await this.currentUrl();
       this.assertAllowedCurrentUrl(url);
-      if (mapsPathKind(url) === expected) return url;
+      if (mapsPathKind(url) === expected) {
+        await this.assertNoInlineChallenge();
+        return url;
+      }
       await sleep(100);
     }
     return undefined;
+  }
+
+  private async assertNoInlineChallenge(): Promise<void> {
+    const client = await this.getClient();
+    const result = await client.Runtime.evaluate({
+      expression: INLINE_CHALLENGE_EXPRESSION,
+      returnByValue: true,
+      awaitPromise: true
+    });
+    if (result.result.value === true) {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "HUMAN_INTERVENTION_REQUIRED",
+        "Google Maps displayed an access challenge inside the page. Automatic bypass is intentionally unsupported. Complete the manual step, then repeat the intended Maps action."
+      );
+    }
   }
 
   private async ensureConnected(): Promise<void> {
