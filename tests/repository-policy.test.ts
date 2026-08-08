@@ -21,7 +21,13 @@ test("MCP server version stays synchronized with package version", () => {
 });
 
 test("GitHub Actions dependencies are pinned to immutable commit SHAs", () => {
-  for (const workflow of [".github/workflows/ci.yml", ".github/workflows/live-maps-e2e.yml"]) {
+  const workflows = [
+    ".github/workflows/ci.yml",
+    ".github/workflows/codeql.yml",
+    ".github/workflows/live-maps-e2e.yml"
+  ];
+
+  for (const workflow of workflows) {
     const source = read(workflow);
     const uses = [...source.matchAll(/\buses:\s*([^\s#]+)@([^\s#]+)/g)];
     assert.ok(uses.length > 0, `${workflow} must contain at least one pinned action`);
