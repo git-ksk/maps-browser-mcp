@@ -27,7 +27,6 @@
     "check": "npm run typecheck && npm test"
   },
   "dependencies": {
-    "@modelcontextprotocol/node": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
     "chrome-remote-interface": "0.34.0",
     "zod": "4.4.3"
