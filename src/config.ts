@@ -63,18 +63,19 @@ export interface AppConfig {
     allowedHosts: string[];
     allowedOrigins: string[];
     bearerToken?: string;
-    trustExternalAuth: boolean;
     maxBodyBytes: number;
   };
   browser: {
     executable?: string;
     profileDir: string;
     externalCdpPort?: number;
+    allowExternalCdp: boolean;
     headless: boolean;
   };
   policy: {
     interactiveAssist: boolean;
     maxActionsPerMinute: number;
+    maxVisibleReadsPerHour: number;
     maxPendingActions: number;
     maxAxNodes: number;
     maxReadChars: number;
@@ -82,20 +83,23 @@ export interface AppConfig {
 }
 
 export function loadConfig(): AppConfig {
+  const allowExternalCdp = envBool("MAPS_ALLOW_EXTERNAL_CDP", false);
   const externalPortRaw = process.env.MAPS_CDP_PORT;
   const externalCdpPort = externalPortRaw
     ? envInt("MAPS_CDP_PORT", 9222, 1, 65535)
     : undefined;
+  if (externalCdpPort !== undefined && !allowExternalCdp) {
+    throw new Error("MAPS_CDP_PORT requires MAPS_ALLOW_EXTERNAL_CDP=true because attaching to an existing CDP endpoint weakens browser-profile isolation");
+  }
 
   const host = process.env.MCP_HTTP_HOST?.trim() || "127.0.0.1";
   const bearerToken = process.env.MCP_BEARER_TOKEN?.trim() || undefined;
-  const trustExternalAuth = envBool("MCP_TRUST_EXTERNAL_AUTH", false);
   if (bearerToken && bearerToken.length < 24) {
     throw new Error("MCP_BEARER_TOKEN must contain at least 24 characters when configured");
   }
-  if (!isLoopbackBind(host) && !bearerToken && !trustExternalAuth) {
+  if (!isLoopbackBind(host) && !bearerToken) {
     throw new Error(
-      "Non-loopback MCP_HTTP_HOST requires MCP_BEARER_TOKEN or MCP_TRUST_EXTERNAL_AUTH=true"
+      "Non-loopback MCP_HTTP_HOST requires MCP_BEARER_TOKEN. For tunnel/reverse-proxy deployments, keep the Node server on loopback whenever possible."
     );
   }
 
@@ -106,7 +110,6 @@ export function loadConfig(): AppConfig {
       allowedHosts: envHosts("MCP_ALLOWED_HOSTS", ["localhost", "127.0.0.1", "::1"]),
       allowedOrigins: envOrigins("MCP_ALLOWED_ORIGINS"),
       bearerToken,
-      trustExternalAuth,
       maxBodyBytes: envInt("MCP_MAX_BODY_BYTES", 262_144, 1_024, 4_194_304)
     },
     browser: {
@@ -115,11 +118,13 @@ export function loadConfig(): AppConfig {
         process.env.MAPS_CHROME_PROFILE_DIR ??
         path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile"),
       externalCdpPort,
+      allowExternalCdp,
       headless: envBool("MAPS_HEADLESS", false)
     },
     policy: {
       interactiveAssist: envBool("INTERACTIVE_ASSIST_MODE", false),
       maxActionsPerMinute: envInt("MAPS_MAX_ACTIONS_PER_MINUTE", 30, 1, 300),
+      maxVisibleReadsPerHour: envInt("MAPS_MAX_VISIBLE_READS_PER_HOUR", 30, 1, 240),
       maxPendingActions: envInt("MAPS_MAX_PENDING_ACTIONS", 8, 1, 50),
       maxAxNodes: envInt("MAPS_MAX_AX_NODES", 120, 20, 500),
       maxReadChars: envInt("MAPS_MAX_READ_CHARS", 1800, 300, 8000)
