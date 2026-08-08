@@ -19,7 +19,12 @@ async function waitForHealth(baseUrl, stderr) {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`${baseUrl}/healthz`);
-      if (response.ok) return;
+      if (response.ok) {
+        if (response.headers.get("cache-control") !== "no-store") {
+          throw new Error("health response must use Cache-Control: no-store");
+        }
+        return;
+      }
     } catch {
       // Server is still starting.
     }
@@ -77,6 +82,9 @@ try {
     })
   });
   if (!initialize.ok) throw new Error(`Initialize failed: ${initialize.status} ${await initialize.text()}`);
+  if (initialize.headers.get("cache-control") !== "no-store") {
+    throw new Error("MCP response must use Cache-Control: no-store");
+  }
   const payload = await parseMcpResponse(initialize);
   if (payload?.result?.serverInfo?.name !== "maps-browser-mcp") {
     throw new Error(`Unexpected initialize response: ${JSON.stringify(payload)}`);
@@ -84,6 +92,9 @@ try {
 
   const getResponse = await fetch(`${baseUrl}/mcp`);
   if (getResponse.status !== 405) throw new Error(`Expected GET /mcp = 405, got ${getResponse.status}`);
+  if (getResponse.headers.get("cache-control") !== "no-store") {
+    throw new Error("error responses must use Cache-Control: no-store");
+  }
 
   const badOrigin = await fetch(`${baseUrl}/mcp`, {
     method: "POST",
