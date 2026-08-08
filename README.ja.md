@@ -53,7 +53,7 @@ maps-browser-mcp
     |
     +-- Maps URL Compiler
     +-- Policy Engine
-    +-- Operation Queue
+    +-- Operation Queue + Watchdog
     +-- Semantic UI Controller
     +-- Bounded Visible-State Reader（optional）
     |
@@ -72,7 +72,7 @@ Google Maps Web
 1 MCP call -> 1 Google公式Maps URL -> 1 CDP Page.navigate
 ```
 
-1プロセスで1つのブラウザタブを操作するため、ブラウザ操作は内部キューで直列化します。キューにも上限を設け、同時リクエストによる画面競合や無制限な待ち行列を防ぎます。
+1プロセスで1つのブラウザタブを操作するため、ブラウザ操作は内部キューで直列化します。キューにも上限を設け、同時リクエストによる画面競合や無制限な待ち行列を防ぎます。さらに1操作が `MAPS_OPERATION_TIMEOUT_MS` を超えた場合はブラウザセッションをリセットするwatchdogを持ち、CDP操作の停止でキュー全体が永久に詰まることを防ぎます。
 
 詳細は [docs/architecture.md](docs/architecture.md) を参照してください。
 
@@ -88,9 +88,11 @@ macOS / Linux / Windowsの一般的なChromeインストール場所は自動検
 ```bash
 git clone https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
-npm install
+npm ci --ignore-scripts
 npm run build
 ```
+
+本パッケージは `maps-browser-mcp` コマンドとして配布するCLIです。プロセス起動を伴うCLI entrypointをライブラリexportとしては公開しません。
 
 ### stdio
 
@@ -110,7 +112,7 @@ npm run start:http
 http://127.0.0.1:8787/mcp
 ```
 
-HTTP transportはMCP 2026-07-28の形に合わせ、`/mcp` は `POST` のみ受け付けます。`GET /mcp` は拒否します。`/healthz` は `GET` / `HEAD` に対応します。
+HTTP entryは公式v2 server entryを使い、MCP 2025系のinitialize経路と、`2026-07-28` の `server/discover` / requestごとの `_meta` を使うmodern経路の両方に対応します。`/mcp` は `POST` のみ受け付け、`GET /mcp` は拒否します。`/healthz` は `GET` / `HEAD` に対応します。位置・経路情報を含み得るため、HTTP応答には `Cache-Control: no-store` を付与します。
 
 ## V3の画面読み取りを有効化
 
@@ -162,6 +164,7 @@ MAPS_MAX_VISIBLE_READS_PER_HOUR=30
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | 1分あたりの操作上限 |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | V3読み取りの独立した1時間上限 |
 | `MAPS_MAX_PENDING_ACTIONS` | `8` | 待機可能なブラウザ操作数 |
+| `MAPS_OPERATION_TIMEOUT_MS` | `25000` | 1操作のwatchdog。超過時はブラウザセッションをリセット |
 
 booleanや整数に不正な値が指定された場合は、曖昧に解釈せず起動時にエラーにします。
 
@@ -210,7 +213,7 @@ V3の限定読み取りはリスクを抑えた設計ですが、Googleがすべ
 
 Google Mapsの検索結果を意図的に永続保存しません。ブラウザ状態はローカルの専用Chrome profile内にあります。通常のツール処理では検索語やMapsの結果本文をログ出力しません。
 
-予期しない内部エラーの詳細はローカルログにだけ出し、Remote MCPクライアントには一般化したエラーを返すことで、ローカルパスや環境情報の漏えいを避けます。
+予期しない内部エラーの詳細はローカルログにだけ出し、Remote MCPクライアントには一般化したエラーを返すことで、ローカルパスや環境情報の漏えいを避けます。HTTP応答には `Cache-Control: no-store` を付けます。
 
 Chrome profile、`.env`、Tunnel credential、token等をGitへcommitしないでください。
 
@@ -228,11 +231,12 @@ Chrome profile、`.env`、Tunnel credential、token等をGitへcommitしない�
 npm run typecheck
 npm test
 npm run build
+npm run smoke:stdio
 npm run smoke:http
 npm run smoke:browser
 ```
 
-CIではNode.js 20 / 22 / 24、依存脆弱性、型チェック、Unit Test、Build、MCP HTTP initializeとHTTPセキュリティ、npm package内容、実Chrome/Chromiumのheadless起動とCDP接続を検証します。Google Mapsへアクセスしないbrowser smokeはLinuxに加え、GitHub-hostedのmacOS 15 arm64とWindowsでも実行します。GitHub Actionsは完全なcommit SHAへpinし、npmとActions依存はDependabotで監視します。
+CIではNode.js 20 / 22 / 24、依存脆弱性、型チェック、Unit Test、Build、実stdio round-tripと9ツール登録、MCP 2025系と `2026-07-28` modern HTTP経路、HTTPセキュリティ / `no-store`、npm package内容、実Chrome/Chromiumのheadless起動とCDP接続を検証します。Google Mapsへアクセスしないbrowser smokeはLinuxに加え、GitHub-hostedのmacOS 15 arm64とWindowsでも実行します。GitHub Actionsは完全なcommit SHAへpinし、npmとActions依存はDependabotで監視します。
 
 セキュリティ方針は [SECURITY.md](SECURITY.md) を参照してください。
 
