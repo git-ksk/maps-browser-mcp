@@ -4,26 +4,56 @@ import path from "node:path";
 function envBool(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
-  return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
+  const normalized = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  throw new Error(`${name} must be a boolean (true/false, 1/0, yes/no, on/off)`);
 }
 
 function envInt(name: string, fallback: number, min: number, max: number): number {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+  const parsed = Number(raw.trim());
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
     throw new Error(`${name} must be an integer between ${min} and ${max}`);
   }
   return parsed;
 }
 
-function envList(name: string, fallback: string[]): string[] {
+function normalizeHostname(value: string): string {
+  let normalized = value.trim().toLowerCase();
+  if (normalized.startsWith("[") && normalized.endsWith("]")) {
+    normalized = normalized.slice(1, -1);
+  }
+  normalized = normalized.replace(/\.$/, "");
+  if (!normalized || normalized.includes("/") || normalized.includes("://")) {
+    throw new Error(`Invalid hostname in MCP_ALLOWED_HOSTS: ${value}`);
+  }
+  return normalized;
+}
+
+function envHosts(name: string, fallback: string[]): string[] {
   const raw = process.env[name];
-  if (!raw) return fallback;
-  return raw
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
+  const values = raw ? raw.split(",") : fallback;
+  return [...new Set(values.map(normalizeHostname).filter(Boolean))];
+}
+
+function envOrigins(name: string): string[] {
+  const raw = process.env[name];
+  if (!raw) return [];
+  return [...new Set(raw.split(",").map((value) => {
+    const trimmed = value.trim();
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error(`${name} entries must use http or https origins`);
+    }
+    return url.origin;
+  }))];
+}
+
+export function isLoopbackBind(host: string): boolean {
+  const normalized = normalizeHostname(host);
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
 }
 
 export interface AppConfig {
@@ -33,6 +63,8 @@ export interface AppConfig {
     allowedHosts: string[];
     allowedOrigins: string[];
     bearerToken?: string;
+    trustExternalAuth: boolean;
+    maxBodyBytes: number;
   };
   browser: {
     executable?: string;
@@ -43,6 +75,7 @@ export interface AppConfig {
   policy: {
     interactiveAssist: boolean;
     maxActionsPerMinute: number;
+    maxPendingActions: number;
     maxAxNodes: number;
     maxReadChars: number;
   };
@@ -54,13 +87,27 @@ export function loadConfig(): AppConfig {
     ? envInt("MAPS_CDP_PORT", 9222, 1, 65535)
     : undefined;
 
+  const host = process.env.MCP_HTTP_HOST?.trim() || "127.0.0.1";
+  const bearerToken = process.env.MCP_BEARER_TOKEN?.trim() || undefined;
+  const trustExternalAuth = envBool("MCP_TRUST_EXTERNAL_AUTH", false);
+  if (bearerToken && bearerToken.length < 24) {
+    throw new Error("MCP_BEARER_TOKEN must contain at least 24 characters when configured");
+  }
+  if (!isLoopbackBind(host) && !bearerToken && !trustExternalAuth) {
+    throw new Error(
+      "Non-loopback MCP_HTTP_HOST requires MCP_BEARER_TOKEN or MCP_TRUST_EXTERNAL_AUTH=true"
+    );
+  }
+
   return {
     http: {
-      host: process.env.MCP_HTTP_HOST ?? "127.0.0.1",
+      host,
       port: envInt("MCP_HTTP_PORT", 8787, 1, 65535),
-      allowedHosts: envList("MCP_ALLOWED_HOSTS", ["localhost", "127.0.0.1"]),
-      allowedOrigins: envList("MCP_ALLOWED_ORIGINS", []),
-      bearerToken: process.env.MCP_BEARER_TOKEN || undefined
+      allowedHosts: envHosts("MCP_ALLOWED_HOSTS", ["localhost", "127.0.0.1", "::1"]),
+      allowedOrigins: envOrigins("MCP_ALLOWED_ORIGINS"),
+      bearerToken,
+      trustExternalAuth,
+      maxBodyBytes: envInt("MCP_MAX_BODY_BYTES", 262_144, 1_024, 4_194_304)
     },
     browser: {
       executable: process.env.MAPS_CHROME_EXECUTABLE || undefined,
@@ -73,6 +120,7 @@ export function loadConfig(): AppConfig {
     policy: {
       interactiveAssist: envBool("INTERACTIVE_ASSIST_MODE", false),
       maxActionsPerMinute: envInt("MAPS_MAX_ACTIONS_PER_MINUTE", 30, 1, 300),
+      maxPendingActions: envInt("MAPS_MAX_PENDING_ACTIONS", 8, 1, 50),
       maxAxNodes: envInt("MAPS_MAX_AX_NODES", 120, 20, 500),
       maxReadChars: envInt("MAPS_MAX_READ_CHARS", 1800, 300, 8000)
     }

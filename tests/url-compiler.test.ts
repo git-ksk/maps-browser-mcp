@@ -29,6 +29,11 @@ test("builds transit directions and allows an omitted origin", () => {
   });
 });
 
-test("rejects invalid map coordinates", () => {
+test("rejects invalid map coordinates and fractional zoom", () => {
   assert.throws(() => compiler.show({ latitude: 91, longitude: 139 }), /latitude/);
+  assert.throws(() => compiler.show({ latitude: 35.6, longitude: 139.7, zoom: 12.5 }), /whole integer/);
+});
+
+test("enforces the official Maps URL length ceiling", () => {
+  assert.throws(() => compiler.search("x".repeat(2048)), /exceeds 2048 characters/);
 });

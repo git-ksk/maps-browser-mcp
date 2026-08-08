@@ -9,6 +9,8 @@
   "exports": "./dist/index.js",
   "files": [
     "dist",
+    "docs",
+    ".env.example",
     "README.md",
     "README.ja.md",
     "LICENSE"
@@ -24,7 +26,10 @@
     "start:http": "node dist/index.js --http",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "smoke:http": "node scripts/smoke-http.mjs",
+    "smoke:browser": "node scripts/smoke-browser.mjs",
+    "prepack": "npm run check && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
@@ -45,5 +50,16 @@
     "chromium",
     "cdp"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/git-ksk/maps-browser-mcp.git"
+  },
+  "homepage": "https://github.com/git-ksk/maps-browser-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/git-ksk/maps-browser-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }

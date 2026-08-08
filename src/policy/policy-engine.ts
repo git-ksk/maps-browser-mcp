@@ -28,6 +28,10 @@ const MAPS_HOSTS = new Set([
   "maps.google.co.jp"
 ]);
 
+function isMapsPath(pathname: string): boolean {
+  return pathname === "/maps" || pathname.startsWith("/maps/");
+}
+
 export class PolicyEngine {
   private readonly actions: number[] = [];
 
@@ -54,10 +58,14 @@ export class PolicyEngine {
   }
 
   assertSearchQuery(query: string): void {
-    if (query.length > 500) {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      throw new PolicyError("POLICY_BLOCKED", "Search query must not be empty");
+    }
+    if (trimmed.length > 500) {
       throw new PolicyError("POLICY_BLOCKED", "Search queries are limited to 500 characters");
     }
-    if (BULK_PATTERNS.some((pattern) => pattern.test(query))) {
+    if (BULK_PATTERNS.some((pattern) => pattern.test(trimmed))) {
       throw new PolicyError(
         "POLICY_BLOCKED",
         "Bulk collection of Google Maps content is not supported"
@@ -72,7 +80,7 @@ export class PolicyEngine {
     } catch {
       throw new PolicyError("NAVIGATION_BLOCKED", "Invalid navigation URL");
     }
-    if (url.protocol !== "https:" || !MAPS_HOSTS.has(url.hostname) || !url.pathname.startsWith("/maps")) {
+    if (url.protocol !== "https:" || !MAPS_HOSTS.has(url.hostname) || !isMapsPath(url.pathname)) {
       throw new PolicyError(
         "NAVIGATION_BLOCKED",
         `Navigation outside the Google Maps web surface is blocked: ${url.hostname}${url.pathname}`

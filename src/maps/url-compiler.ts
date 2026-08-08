@@ -16,6 +16,12 @@ function bounded(value: number, name: string, min: number, max: number): number 
   return value;
 }
 
+function integerBounded(value: number, name: string, min: number, max: number): number {
+  const checked = bounded(value, name, min, max);
+  if (!Number.isInteger(checked)) throw new Error(`${name} must be a whole integer`);
+  return checked;
+}
+
 function finalize(url: URL): string {
   const result = url.toString();
   if (result.length > MAX_URL_LENGTH) {
@@ -57,7 +63,7 @@ export class MapsUrlCompiler {
   } {
     const latitude = bounded(input.latitude, "latitude", -90, 90);
     const longitude = bounded(input.longitude, "longitude", -180, 180);
-    const zoom = input.zoom === undefined ? undefined : bounded(input.zoom, "zoom", 0, 21);
+    const zoom = input.zoom === undefined ? undefined : integerBounded(input.zoom, "zoom", 0, 21);
     const url = new URL(`${MAPS_BASE}/@`);
     url.searchParams.set("api", "1");
     url.searchParams.set("map_action", "map");
