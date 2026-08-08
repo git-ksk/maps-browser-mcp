@@ -11,6 +11,7 @@ The default configuration is intentionally local-only:
 - Generic browser primitives are not exposed as MCP tools.
 - Visible-state reading is disabled by default.
 - Browser operations are serialized and rate/queue limited.
+- V3 visible-state reads have an independent rolling hourly budget.
 
 ## Safe deployment
 
@@ -23,9 +24,13 @@ If you expose `/mcp` through a tunnel or reverse proxy:
 5. do not reuse your everyday Chrome profile,
 6. rotate any token immediately if it is accidentally exposed.
 
-A non-loopback `MCP_HTTP_HOST` requires either a configured `MCP_BEARER_TOKEN` or explicit `MCP_TRUST_EXTERNAL_AUTH=true`.
+A non-loopback `MCP_HTTP_HOST` always requires `MCP_BEARER_TOKEN`. Authentication performed by a front proxy is not accepted as a reason to leave a directly reachable non-loopback Node port unauthenticated.
 
-`MAPS_CDP_PORT` should only point to a local, dedicated Chrome/Chromium instance you control. CDP provides powerful browser access and must not be exposed to untrusted networks.
+Chrome instances launched by this project bind remote debugging to `127.0.0.1`. `MAPS_CDP_PORT` is rejected unless `MAPS_ALLOW_EXTERNAL_CDP=true` is also set, and should only point to a local, dedicated Chrome/Chromium instance you control. CDP provides powerful browser access and must not be exposed to untrusted networks.
+
+## Single-user boundary
+
+The current runtime is intentionally single-user/single-session. One process owns one semantic browser state and one operation queue. Do not expose one instance as a shared multi-tenant browser service or reuse one Chrome profile across unrelated users.
 
 ## Untrusted content and prompt injection
 
@@ -45,6 +50,10 @@ Do not include any of the following in bug reports, logs, commits, or screenshot
 - personal email addresses or other identifying account data.
 
 The repository intentionally ignores common environment/profile/runtime files. Review staged changes before publishing them.
+
+## Dependency and CI security
+
+GitHub Actions used by this repository are pinned to full commit SHAs. Dependabot monitors npm and GitHub Actions dependencies. CI uses `npm ci --ignore-scripts`, runs `npm audit --audit-level=moderate`, and tests Chrome/CDP startup without visiting Google Maps on Linux, macOS, and Windows runners.
 
 ## Reporting a vulnerability
 
