@@ -27,6 +27,9 @@ jobs:
         run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npm run build
+      - name: stdio MCP smoke test
+        if: matrix.node == 22
+        run: npm run smoke:stdio
       - name: HTTP/MCP smoke test
         if: matrix.node == 22
         run: npm run smoke:http
