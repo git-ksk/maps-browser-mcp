@@ -125,7 +125,7 @@ Readerは全DOM、Accessibility Tree全体、生HTML、ネットワークレス�
 3. 選択処理と同じ限定ロジックで候補一覧を抽出
 4. Google Mapsの `role=main` 領域だけを対象にする
 5. Accessibility domainを読み取り中だけ有効化
-6. ノード数・行数・文字数を制限
+6. ノード数・行数・文字数・1時間あたりの読み取り回数を制限
 7. 制御文字や双方向テキスト制御文字を除去
 8. 読み取り後すぐAccessibility domainを無効化
 
@@ -136,7 +136,10 @@ Readerは全DOM、Accessibility Tree全体、生HTML、ネットワークレス�
 ```text
 MAPS_MAX_AX_NODES=120
 MAPS_MAX_READ_CHARS=1800
+MAPS_MAX_VISIBLE_READS_PER_HOUR=30
 ```
+
+1時間あたりのV3読み取り上限は、通常の1分あたり操作上限とは別に管理します。これにより、大量取得を示すキーワードを含まない要求でも、サーバー側で収集量に上限を持たせます。
 
 ## 設定
 
@@ -148,24 +151,27 @@ MAPS_MAX_READ_CHARS=1800
 | `MCP_HTTP_PORT` | `8787` | HTTP port |
 | `MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | 許可するHost名 |
 | `MCP_ALLOWED_ORIGINS` | empty | Origin完全一致allowlist（任意） |
-| `MCP_BEARER_TOKEN` | empty | Bearer tokenガード。設定時は24文字以上 |
-| `MCP_TRUST_EXTERNAL_AUTH` | `false` | 前段proxyで認証済みであることを明示的に信頼 |
+| `MCP_BEARER_TOKEN` | empty | Bearer tokenガード。非loopback bind時は必須、24文字以上 |
 | `MCP_MAX_BODY_BYTES` | `262144` | MCP request bodyの最大サイズ |
 | `MAPS_CHROME_EXECUTABLE` | 自動検出 | Chrome / Chromium executable |
 | `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | 専用Chrome profile |
+| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | 既存CDP endpoint接続の明示Opt-in |
 | `MAPS_CDP_PORT` | unset | 上級者向け: 既存のローカルCDP endpointへ接続 |
 | `MAPS_HEADLESS` | `false` | headless mode |
 | `INTERACTIVE_ASSIST_MODE` | `false` | V3読み取りを有効化 |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | 1分あたりの操作上限 |
+| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | V3読み取りの独立した1時間上限 |
 | `MAPS_MAX_PENDING_ACTIONS` | `8` | 待機可能なブラウザ操作数 |
 
 booleanや整数に不正な値が指定された場合は、曖昧に解釈せず起動時にエラーにします。
 
 ### `MAPS_CDP_PORT` の注意
 
-`MAPS_CDP_PORT` は上級者向けのescape hatchです。設定すると、MCPが自分で専用Chromeプロファイルを起動せず、既に動いているローカルChrome / ChromiumのCDP endpointへ接続します。
+`MAPS_CDP_PORT` は上級者向けのescape hatchです。`MAPS_ALLOW_EXTERNAL_CDP=true` も同時に指定しない限り起動時に拒否します。設定すると、MCPが自分で専用Chromeプロファイルを起動せず、既に動いている**ローカル**Chrome / ChromiumのCDP endpointへ接続します。
 
 **普段使いの個人ブラウザへ接続するのは推奨しません。** 専用profileによる分離境界が弱くなるため、自分で管理している専用CDP endpointだけを指定してください。
+
+本プロジェクトが起動するChromeのremote debugging endpointは明示的に `127.0.0.1` へbindし、Unix系OSでは専用profileディレクトリを現在ユーザーだけがアクセスできる権限にします。
 
 ## ChatGPTなどのRemote MCP Clientから接続する場合
 
@@ -173,13 +179,13 @@ booleanや整数に不正な値が指定された場合は、曖昧に解釈せ�
 
 推奨構成:
 
-1. Nodeサーバー自体は可能な限りloopback bindのままにする
+1. Nodeサーバー自体はloopback bindのままにする
 2. 公開proxyのホスト名を `MCP_ALLOWED_HOSTS` に追加する
 3. Tunnel / Reverse Proxy側で認証・アクセス制御する
 4. 必要なら追加防御として `MCP_BEARER_TOKEN` も利用する
 5. Tunnel credential、token、Chrome profile、ローカル環境情報をGitへcommitしない
 
-非loopbackの `MCP_HTTP_HOST` は、`MCP_BEARER_TOKEN` が設定されているか、`MCP_TRUST_EXTERNAL_AUTH=true` を明示しない限り起動を拒否します。
+意図的に `MCP_HTTP_HOST` を非loopbackへbindする場合は、`MCP_BEARER_TOKEN` が必須です。前段proxyで認証しているという前提だけでは、直接到達可能なNodeポートを無認証にはできません。
 
 ## 安全性・利用方針
 
@@ -196,7 +202,7 @@ booleanや整数に不正な値が指定された場合は、曖昧に解釈せ�
 
 Google Maps内部API、XHR/fetchの収集、stealth plugin、fingerprint偽装、proxy rotation、Mapsデータの永続データセット化は意図的に実装しません。
 
-明らかな大量収集要求はサーバー側Policy Engineで拒否し、遷移先はGoogle Maps web surfaceに限定します。Googleがアクセスチャレンジを表示した場合は自動突破せず、人間の操作が必要なエラーで停止します。
+明らかな大量収集要求はサーバー側Policy Engineで拒否し、V3読み取りには独立したrolling hourly budgetを設け、遷移先はGoogle Maps web surfaceに限定します。Googleがアクセスチャレンジを表示した場合は自動突破せず、人間の操作が必要なエラーで停止します。
 
 V3の限定読み取りはリスクを抑えた設計ですが、Googleがすべてのブラウザエージェント用途を明示的に許可しているわけではありません。利用者はGoogle Maps / Googleの適用規約および法令を確認する必要があります。詳細は [docs/compliance.md](docs/compliance.md) を参照してください。
 
@@ -214,7 +220,7 @@ Chrome profile、`.env`、Tunnel credential、token等をGitへcommitしない�
 - V3 Visible-State ReaderはExperimentalです。
 - 現在のプロセスモデルは1人・1ローカルブラウザセッション向けで、マルチテナント共有ホスティング向けではありません。
 - CAPTCHA、同意、ログイン画面を自動突破しません。必要に応じて専用ブラウザ上で手動操作してください。
-- CIからGoogle Mapsページへ自動アクセスすることは意図的に行いません。そのため、実際のMaps UIとの互換性はリリース前にユーザー指示による実E2E確認が必要です。
+- 通常のpush / PR CIからGoogle Mapsページへアクセスしません。別の `Live Maps E2E (manual)` workflowだけが、ユーザーの明示操作時に固定・低ボリュームの実UI互換性確認を行います。
 
 ## 開発・検証
 
@@ -226,7 +232,7 @@ npm run smoke:http
 npm run smoke:browser
 ```
 
-CIではNode.js 20 / 22 / 24、依存脆弱性、型チェック、Unit Test、Build、MCP HTTP initializeとHTTPセキュリティ、実Chrome/Chromiumのheadless起動とCDP接続（Google Mapsにはアクセスしない）、npm package内容を検証します。
+CIではNode.js 20 / 22 / 24、依存脆弱性、型チェック、Unit Test、Build、MCP HTTP initializeとHTTPセキュリティ、npm package内容、実Chrome/Chromiumのheadless起動とCDP接続を検証します。Google Mapsへアクセスしないbrowser smokeはLinuxに加え、GitHub-hostedのmacOS 15 arm64とWindowsでも実行します。GitHub Actionsは完全なcommit SHAへpinし、npmとActions依存はDependabotで監視します。
 
 セキュリティ方針は [SECURITY.md](SECURITY.md) を参照してください。
 
