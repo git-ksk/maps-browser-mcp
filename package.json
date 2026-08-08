@@ -44,7 +44,7 @@
   "devDependencies": {
     "@types/chrome-remote-interface": "0.34.0",
     "@types/node": "26.1.2",
-    "tsx": "4.23.1",
+    "tsx": "4.23.8",
     "typescript": "7.0.2"
   },
   "keywords": [
