@@ -9,6 +9,7 @@ const KEYS = [
   "MCP_ALLOWED_ORIGINS",
   "MAPS_CDP_PORT",
   "MAPS_ALLOW_EXTERNAL_CDP",
+  "MAPS_OPERATION_TIMEOUT_MS",
   "MAPS_HEADLESS"
 ] as const;
 
@@ -67,6 +68,15 @@ test("requires explicit opt-in before attaching to an existing CDP endpoint", as
     const config = loadConfig();
     assert.equal(config.browser.externalCdpPort, 9222);
     assert.equal(config.browser.allowExternalCdp, true);
+  });
+});
+
+test("validates operation watchdog bounds", async () => {
+  await withEnv({ MAPS_OPERATION_TIMEOUT_MS: "4999" }, () => {
+    assert.throws(() => loadConfig(), /between 5000 and 120000/);
+  });
+  await withEnv({ MAPS_OPERATION_TIMEOUT_MS: "45000" }, () => {
+    assert.equal(loadConfig().policy.operationTimeoutMs, 45_000);
   });
 });
 
