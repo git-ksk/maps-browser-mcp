@@ -7,7 +7,21 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function canReachCdp(port: number): Promise<boolean> {
+export interface ActiveDevToolsEndpoint {
+  port: number;
+  browserPath: string;
+}
+
+export function parseDevToolsActivePort(value: string): ActiveDevToolsEndpoint | undefined {
+  const [portLine, browserPathLine] = value.split(/\r?\n/);
+  const port = Number.parseInt(portLine ?? "", 10);
+  const browserPath = browserPathLine?.trim() ?? "";
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined;
+  if (!/^\/devtools\/browser\/[A-Za-z0-9._:-]+$/.test(browserPath)) return undefined;
+  return { port, browserPath };
+}
+
+async function canReachCdp(port: number, expectedBrowserPath?: string): Promise<boolean> {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
       signal: AbortSignal.timeout(800)
@@ -16,7 +30,13 @@ async function canReachCdp(port: number): Promise<boolean> {
     const payload = (await response.json()) as { Browser?: unknown; webSocketDebuggerUrl?: unknown };
     const browser = typeof payload.Browser === "string" ? payload.Browser : "";
     const websocket = typeof payload.webSocketDebuggerUrl === "string" ? payload.webSocketDebuggerUrl : "";
-    return /(Chrome|Chromium)/i.test(browser) && websocket.startsWith("ws://");
+    if (!/(Chrome|Chromium)/i.test(browser) || !websocket.startsWith("ws://")) return false;
+    if (!expectedBrowserPath) return true;
+    try {
+      return new URL(websocket).pathname === expectedBrowserPath;
+    } catch {
+      return false;
+    }
   } catch {
     return false;
   }
@@ -64,6 +84,7 @@ export function findChromeExecutable(explicit?: string): string {
 export class ChromeProcess {
   private child?: ChildProcess;
   private port?: number;
+  private browserPath?: string;
 
   constructor(
     private readonly options: {
@@ -82,8 +103,15 @@ export class ChromeProcess {
       return this.options.externalCdpPort;
     }
 
-    if (this.port !== undefined && (await canReachCdp(this.port))) return this.port;
+    if (
+      this.port !== undefined &&
+      this.browserPath !== undefined &&
+      (await canReachCdp(this.port, this.browserPath))
+    ) {
+      return this.port;
+    }
     this.port = undefined;
+    this.browserPath = undefined;
 
     await fsp.mkdir(this.options.profileDir, { recursive: true, mode: 0o700 });
     if (process.platform !== "win32") {
@@ -92,11 +120,11 @@ export class ChromeProcess {
     const activePortFile = path.join(this.options.profileDir, "DevToolsActivePort");
 
     try {
-      const existing = await fsp.readFile(activePortFile, "utf8");
-      const existingPort = Number.parseInt(existing.split(/\r?\n/, 1)[0] ?? "", 10);
-      if (Number.isInteger(existingPort) && (await canReachCdp(existingPort))) {
-        this.port = existingPort;
-        return existingPort;
+      const existing = parseDevToolsActivePort(await fsp.readFile(activePortFile, "utf8"));
+      if (existing && (await canReachCdp(existing.port, existing.browserPath))) {
+        this.port = existing.port;
+        this.browserPath = existing.browserPath;
+        return existing.port;
       }
       await fsp.rm(activePortFile, { force: true });
     } catch {
@@ -133,13 +161,13 @@ export class ChromeProcess {
         throw new Error("Chrome/Chromium exited before its DevTools endpoint became ready");
       }
 
-      const result = await fsp.readFile(activePortFile, "utf8").catch(() => "");
-      if (result) {
-        const detectedPort = Number.parseInt(result.split(/\r?\n/, 1)[0] ?? "", 10);
-        if (Number.isInteger(detectedPort) && (await canReachCdp(detectedPort))) {
-          this.port = detectedPort;
-          return detectedPort;
-        }
+      const endpoint = parseDevToolsActivePort(
+        await fsp.readFile(activePortFile, "utf8").catch(() => "")
+      );
+      if (endpoint && (await canReachCdp(endpoint.port, endpoint.browserPath))) {
+        this.port = endpoint.port;
+        this.browserPath = endpoint.browserPath;
+        return endpoint.port;
       }
       await sleep(120);
     }
@@ -152,6 +180,7 @@ export class ChromeProcess {
     const child = this.child;
     this.child = undefined;
     this.port = undefined;
+    this.browserPath = undefined;
     if (!child || child.exitCode !== null) return;
 
     const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
