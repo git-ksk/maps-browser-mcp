@@ -4,17 +4,17 @@
 
 A lightweight MCP server for interacting with Google Maps through a dedicated browser session, without relying on the Google Maps Platform API.
 
-> **Status:** Early development. V1–V3 functionality is implemented; Google Maps UI-dependent interactions remain experimental.
+> **Status:** Early development. V1–V3 are implemented; Google Maps UI-dependent interactions remain experimental.
 
 ## What it does
 
-`maps-browser-mcp` gives MCP clients a small, Maps-specific tool surface instead of a general-purpose browser controller.
+`maps-browser-mcp` exposes a small Maps-specific MCP surface instead of a general-purpose browser controller.
 
-- Opens searches, directions, map views, and Street View through official Google Maps URLs.
-- Runs a dedicated Chrome/Chromium profile over the Chrome DevTools Protocol (CDP).
-- Keeps generic browser primitives such as `click`, `type`, selectors, and arbitrary JavaScript out of the MCP tool surface.
-- Supports limited semantic selection of place and route results.
-- Optionally reads a bounded summary of the current Maps accessibility state.
+- Opens search, directions, map, and Street View pages through official Google Maps URLs.
+- Runs a dedicated Chrome/Chromium profile over Chrome DevTools Protocol (CDP).
+- Keeps generic browser primitives such as arbitrary `click`, `type`, selectors, and JavaScript execution out of the MCP tool surface.
+- Supports bounded semantic selection of place and route candidates.
+- Optionally reads a small, bounded summary from the active Maps UI.
 - Does not require a Google Maps Platform API key.
 
 ## Tools
@@ -39,6 +39,10 @@ A lightweight MCP server for interacting with Google Maps through a dedicated br
 
 Visible-state reading is **disabled by default**. Enable it explicitly with `INTERACTIVE_ASSIST_MODE=true`.
 
+The read tools return bounded `items[{ index, label }]` plus a small set of relevant UI lines. When selecting an item, pass the returned `label` as `expectedLabel` when possible. If Google Maps dynamically reorders the list, the server refuses the stale click with `UI_STATE_CHANGED` instead of selecting a different item.
+
+All text returned from Google Maps is marked as **untrusted external data**. MCP clients should treat it as data, never as instructions.
+
 ## Architecture
 
 ```text
@@ -49,6 +53,7 @@ maps-browser-mcp
     |
     +-- Maps URL Compiler
     +-- Policy Engine
+    +-- Operation Queue
     +-- Semantic UI Controller
     +-- Bounded Visible-State Reader (optional)
     |
@@ -67,6 +72,8 @@ The normal navigation path is intentionally short:
 1 MCP call -> 1 official Maps URL -> 1 CDP Page.navigate
 ```
 
+Browser operations are serialized because one process controls one browser tab. A bounded pending queue prevents concurrent MCP requests from racing the page or growing an unlimited backlog.
+
 See [docs/architecture.md](docs/architecture.md) for details.
 
 ## Requirements
@@ -82,18 +89,19 @@ The server searches common Chrome/Chromium install locations on macOS, Linux, an
 git clone https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm install
+npm run build
 ```
 
 ### stdio
 
 ```bash
-npm run dev
+npm start
 ```
 
 ### Streamable HTTP
 
 ```bash
-npm run dev:http
+npm run start:http
 ```
 
 Default endpoint:
@@ -102,17 +110,26 @@ Default endpoint:
 http://127.0.0.1:8787/mcp
 ```
 
-The HTTP server uses the current MCP TypeScript SDK v2 server packages and supports the modern MCP HTTP entry point with the SDK's legacy stateless compatibility behavior.
+The HTTP transport follows the MCP 2026-07-28 shape: `/mcp` accepts `POST`; `GET /mcp` is rejected. `/healthz` supports `GET`/`HEAD`.
 
 ## V3 interactive assist
 
 To allow the two read-summary tools:
 
 ```bash
-INTERACTIVE_ASSIST_MODE=true npm run dev:http
+INTERACTIVE_ASSIST_MODE=true npm run start:http
 ```
 
-The reader does **not** return a full DOM or a full accessibility tree. It locates the Maps main region, walks a bounded number of accessibility nodes, selects a small number of relevant text lines, enforces a character budget, and immediately disables the Accessibility domain again.
+The reader does **not** return a full DOM, full accessibility tree, raw HTML, network payloads, or review bodies. It:
+
+1. verifies that the dedicated tab is still on the Google Maps web surface,
+2. requires an active search/place or directions/route state,
+3. extracts a small candidate list using the same bounded logic used by selection,
+4. locates the Maps `role=main` region without widening the scan to the whole document,
+5. enables the Accessibility domain only for the bounded read,
+6. enforces node, line, and character limits,
+7. strips control/bidirectional formatting characters,
+8. immediately disables the Accessibility domain again.
 
 Defaults:
 
@@ -123,36 +140,44 @@ MAPS_MAX_READ_CHARS=1800
 
 ## Configuration
 
-Copy `.env.example` values into your runtime environment as needed. The server does not automatically load `.env`; use your shell, process manager, or preferred environment loader.
-
-Important options:
+The server does not automatically load `.env`; use your shell, process manager, or preferred environment loader. See `.env.example`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address |
 | `MCP_HTTP_PORT` | `8787` | HTTP port |
-| `MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Accepted Host header names |
+| `MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | Accepted Host header names |
 | `MCP_ALLOWED_ORIGINS` | empty | Optional exact Origin allowlist |
-| `MCP_BEARER_TOKEN` | empty | Optional bearer-token guard |
+| `MCP_BEARER_TOKEN` | empty | Optional bearer-token guard; minimum 24 chars when set |
+| `MCP_TRUST_EXTERNAL_AUTH` | `false` | Explicitly trust authentication enforced by a front proxy |
+| `MCP_MAX_BODY_BYTES` | `262144` | Maximum MCP request body size |
 | `MAPS_CHROME_EXECUTABLE` | auto-detect | Chrome/Chromium executable |
 | `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | Dedicated profile directory |
-| `MAPS_CDP_PORT` | unset | Reuse an already-running CDP endpoint |
+| `MAPS_CDP_PORT` | unset | Advanced: attach to an existing local Chrome CDP endpoint |
 | `MAPS_HEADLESS` | `false` | Run Chrome headless |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable V3 bounded reading |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-level action guard |
+| `MAPS_MAX_PENDING_ACTIONS` | `8` | Maximum queued browser operations |
+
+Invalid boolean/integer configuration values fail fast instead of being silently coerced.
+
+### Existing CDP endpoint warning
+
+`MAPS_CDP_PORT` is an advanced escape hatch. When it is set, the server attaches to an already-running local Chrome/Chromium endpoint instead of launching its own dedicated profile. Only use a CDP endpoint you control. Attaching to a personal everyday browser weakens the profile-isolation boundary and is not recommended.
 
 ## Connecting a remote MCP client
 
 The server binds to loopback by default. If a remote MCP client such as ChatGPT needs to reach it, place an HTTPS tunnel or reverse proxy in front of `/mcp`.
 
-When doing so:
+Recommended setup:
 
 1. keep the Node server bound to loopback where possible,
-2. add the public hostname to `MCP_ALLOWED_HOSTS`,
-3. protect the public endpoint with authentication/access control,
-4. never commit tunnel credentials, browser profiles, tokens, or local environment values.
+2. add the public proxy hostname to `MCP_ALLOWED_HOSTS`,
+3. enforce authentication/access control at the tunnel or reverse proxy,
+4. optionally configure `MCP_BEARER_TOKEN` as an additional server-side guard,
+5. never commit tunnel credentials, browser profiles, tokens, or local environment values.
 
-`MCP_BEARER_TOKEN` is available as a simple optional server-side guard, but a production/public deployment should use an appropriate authenticated reverse proxy or identity layer.
+A non-loopback `MCP_HTTP_HOST` is rejected at startup unless either a bearer token is configured or `MCP_TRUST_EXTERNAL_AUTH=true` is explicitly set.
 
 ## Safety and compliance boundaries
 
@@ -167,13 +192,13 @@ This project is designed as a constrained, user-directed browser agent. It is **
 
 It intentionally does not implement Google Maps internal API interception, XHR/fetch harvesting, stealth plugins, fingerprint spoofing, proxy rotation, or persistent Maps datasets.
 
-Obvious bulk-collection requests are rejected by the server-side policy layer, navigation is restricted to the Google Maps surface, and access challenges require human intervention.
+Obvious bulk-collection requests are rejected by the server-side policy layer, navigation is restricted to the Google Maps web surface, and access challenges require human intervention.
 
-See [docs/compliance.md](docs/compliance.md).
+V3 visible-state reading is deliberately conservative, but Google does not explicitly guarantee that every browser-agent usage is permitted. Users remain responsible for applicable Google Maps/Google terms and laws. See [docs/compliance.md](docs/compliance.md).
 
 ## Privacy
 
-The project does not intentionally persist Google Maps result data. Browser state lives in the dedicated local Chrome profile. Tool handlers do not log search queries or Maps result contents by default.
+The project does not intentionally persist Google Maps result data. Browser state lives in the dedicated local Chrome profile. Tool handlers do not log search queries or Maps result contents by default. Unexpected internal errors are logged locally, while remote MCP clients receive a generic error to avoid leaking local paths or environment details.
 
 Do not commit your Chrome profile, environment files, tunnel credentials, or tokens.
 
@@ -181,8 +206,9 @@ Do not commit your Chrome profile, environment files, tunnel credentials, or tok
 
 - Google Maps UI structure can change, so semantic result/route selection may need maintenance.
 - V3 visible-state reading is experimental and intentionally conservative.
-- The current process model is designed primarily for one local user/browser session, not shared multi-tenant hosting.
+- The current process model is designed for one local user/browser session, not shared multi-tenant hosting.
 - CAPTCHA, consent, or sign-in flows are not bypassed; manual browser interaction may be required.
+- Automated CI intentionally does not visit Google Maps pages. Real Maps UI compatibility still requires user-directed/manual E2E validation before a release should be considered production-ready.
 
 ## Development
 
@@ -190,9 +216,13 @@ Do not commit your Chrome profile, environment files, tunnel credentials, or tok
 npm run typecheck
 npm test
 npm run build
+npm run smoke:http
+npm run smoke:browser
 ```
 
-CI runs type checking, unit tests, and the TypeScript build on every push to `main` and on pull requests.
+CI verifies Node.js 20, 22, and 24, dependency audit, type checking, unit tests, build, MCP HTTP initialization/security behavior, a real headless Chrome/CDP startup (without visiting Google Maps), and package contents.
+
+See [SECURITY.md](SECURITY.md) for security guidance.
 
 ## Disclaimer
 

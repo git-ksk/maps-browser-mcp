@@ -8,21 +8,22 @@ export class SemanticController {
     private readonly compiler: MapsUrlCompiler
   ) {}
 
-  async selectResult(index: number): Promise<{ selected: string }> {
+  async selectResult(index: number, expectedLabel?: string): Promise<{ selected: string }> {
     if (!Number.isInteger(index) || index < 0 || index > 19) {
       throw new Error("index must be an integer between 0 and 19");
     }
-    return { selected: await this.runtime.clickPlaceResult(index) };
+    return { selected: await this.runtime.clickPlaceResult(index, expectedLabel) };
   }
 
-  async selectRoute(index: number): Promise<{ selected: string }> {
+  async selectRoute(index: number, expectedLabel?: string): Promise<{ selected: string }> {
     if (!Number.isInteger(index) || index < 0 || index > 11) {
       throw new Error("index must be an integer between 0 and 11");
     }
-    return { selected: await this.runtime.clickRouteResult(index) };
+    return { selected: await this.runtime.clickRouteResult(index, expectedLabel) };
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {
+    await this.runtime.assertDirectionsContext();
     const last = this.runtime.getLastAction();
     if (!last || last.kind !== "directions") {
       throw new BrowserRuntimeError(

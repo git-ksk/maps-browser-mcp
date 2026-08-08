@@ -1,5 +1,5 @@
 import CDP from "chrome-remote-interface";
-import type { MapsAction } from "../types.js";
+import type { MapsAction, MapsViewState } from "../types.js";
 import { PolicyEngine, PolicyError } from "../policy/policy-engine.js";
 import { ChromeProcess } from "./chrome-process.js";
 
@@ -8,6 +8,90 @@ function sleep(ms: number): Promise<void> {
 }
 
 type CdpClient = Awaited<ReturnType<typeof CDP>>;
+type CandidateKind = "place" | "route";
+type MapsPathKind = "search" | "place" | "directions" | "map" | "root" | "other";
+
+function actionToView(action: MapsAction): MapsViewState {
+  switch (action.kind) {
+    case "search":
+      return "search";
+    case "directions":
+      return "directions";
+    case "show":
+      return "show";
+    case "streetview":
+      return "streetview";
+  }
+}
+
+function mapsPathKind(value: string): MapsPathKind {
+  try {
+    const pathname = new URL(value).pathname;
+    if (pathname === "/maps" || pathname === "/maps/") return "root";
+    if (pathname.startsWith("/maps/search/")) return "search";
+    if (pathname.startsWith("/maps/place/")) return "place";
+    if (pathname.startsWith("/maps/dir/")) return "directions";
+    if (pathname === "/maps/@" || pathname.startsWith("/maps/@/")) return "map";
+    return "other";
+  } catch {
+    return "other";
+  }
+}
+
+function candidateExpression(kind: CandidateKind, clickIndex?: number, expectedLabel?: string): string {
+  const click = clickIndex === undefined ? "null" : String(clickIndex);
+  const expected = JSON.stringify(expectedLabel?.trim().slice(0, 240) ?? "");
+  return `(() => {
+    const visible = (el) => {
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+    };
+    const labelOf = (el) => (el.getAttribute('aria-label') || el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240);
+    const unique = (nodes, limit) => {
+      const result = [];
+      const seen = new Set();
+      for (const el of nodes) {
+        if (!visible(el)) continue;
+        const label = labelOf(el);
+        if (!label || seen.has(label)) continue;
+        seen.add(label);
+        result.push({ el, label });
+        if (result.length >= limit) break;
+      }
+      return result;
+    };
+
+    let items;
+    if (${JSON.stringify(kind)} === 'place') {
+      const feed = Array.from(document.querySelectorAll('[role="feed"] a[href*="/maps/place/"]'));
+      const fallback = Array.from(document.querySelectorAll('[role="main"] a[href*="/maps/place/"]'));
+      items = unique(feed.some(visible) ? feed : fallback, 20);
+    } else {
+      const primary = Array.from(document.querySelectorAll('[role="main"] [data-trip-index]'));
+      if (primary.some(visible)) {
+        items = unique(primary, 12);
+      } else {
+        const durationLike = /(\\d+\\s*(?:min|mins|hr|hrs|h|分|時間))/i;
+        const fallback = Array.from(document.querySelectorAll('[role="main"] [role="button"]'))
+          .filter((el) => durationLike.test(labelOf(el)));
+        items = unique(fallback, 12);
+      }
+    }
+
+    const index = ${click};
+    if (index === null) return { ok: true, labels: items.map((item) => item.label) };
+    const target = items[index];
+    if (!target) return { ok: false, reason: 'missing' };
+    const expected = ${expected};
+    const normalize = (value) => value.replace(/\\s+/g, ' ').trim().toLocaleLowerCase();
+    if (expected && normalize(target.label) !== normalize(expected)) {
+      return { ok: false, reason: 'changed', label: target.label };
+    }
+    target.el.click();
+    return { ok: true, label: target.label };
+  })()`;
+}
 
 export class BrowserRuntimeError extends Error {
   constructor(
@@ -15,7 +99,8 @@ export class BrowserRuntimeError extends Error {
       | "BROWSER_UNAVAILABLE"
       | "MAPS_NOT_OPEN"
       | "HUMAN_INTERVENTION_REQUIRED"
-      | "UI_ELEMENT_NOT_FOUND",
+      | "UI_ELEMENT_NOT_FOUND"
+      | "UI_STATE_CHANGED",
     message: string
   ) {
     super(message);
@@ -28,6 +113,7 @@ export class MapsBrowserRuntime {
   private port?: number;
   private targetId?: string;
   private lastAction?: MapsAction;
+  private viewState: MapsViewState = "blank";
 
   constructor(
     private readonly chrome: ChromeProcess,
@@ -36,6 +122,10 @@ export class MapsBrowserRuntime {
 
   getLastAction(): MapsAction | undefined {
     return this.lastAction;
+  }
+
+  getViewState(): MapsViewState {
+    return this.viewState;
   }
 
   async getClient(): Promise<CdpClient> {
@@ -52,107 +142,168 @@ export class MapsBrowserRuntime {
     await Promise.race([loaded, sleep(8_000)]);
 
     const finalUrl = await this.currentUrl();
-    if (this.isChallengeUrl(finalUrl)) {
-      throw new BrowserRuntimeError(
-        "HUMAN_INTERVENTION_REQUIRED",
-        "Google presented an access challenge. Automatic bypass is intentionally unsupported."
-      );
-    }
-    if (!this.policy.isAllowedMapsUrl(finalUrl)) {
-      throw new BrowserRuntimeError(
-        "HUMAN_INTERVENTION_REQUIRED",
-        `Browser left the Google Maps surface (${new URL(finalUrl).hostname}). Complete any consent or sign-in step manually.`
-      );
-    }
-
+    this.assertAllowedCurrentUrl(finalUrl);
     this.lastAction = action;
+    this.viewState = actionToView(action);
     return { url: finalUrl };
   }
 
   async currentUrl(): Promise<string> {
     const client = await this.getClient();
-    const result = await client.Runtime.evaluate({
-      expression: "location.href",
-      returnByValue: true
-    });
+    const result = await client.Runtime.evaluate({ expression: "location.href", returnByValue: true });
     return String(result.result.value ?? "");
   }
 
-  async clickPlaceResult(index: number): Promise<string> {
-    return this.clickWithScript(`(() => {
-      const visible = (el) => {
-        const r = el.getBoundingClientRect();
-        const s = getComputedStyle(el);
-        return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-      };
-      const seen = new Set();
-      const items = Array.from(document.querySelectorAll('a[href*="/maps/place/"]'))
-        .filter(visible)
-        .filter((el) => {
-          const href = el.href;
-          if (!href || seen.has(href)) return false;
-          seen.add(href);
-          return true;
-        })
-        .slice(0, 20);
-      const target = items[${index}];
-      if (!target) return { ok: false };
-      const label = target.getAttribute('aria-label') || target.textContent || 'place result';
-      target.click();
-      return { ok: true, label: label.trim().slice(0, 240) };
-    })()`);
+  async assertMapsSurface(): Promise<string> {
+    const url = await this.currentUrl();
+    this.assertAllowedCurrentUrl(url);
+    return url;
   }
 
-  async clickRouteResult(index: number): Promise<string> {
-    return this.clickWithScript(`(() => {
-      const visible = (el) => {
-        const r = el.getBoundingClientRect();
-        const s = getComputedStyle(el);
-        return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-      };
-      const timeLike = /(\\d+\\s*(min|mins|hr|hrs|分|時間)|depart|arrive|発|着|乗換|徒歩|train|bus|transit)/i;
-      const raw = Array.from(document.querySelectorAll('[data-trip-index], [role="main"] [role="button"]'))
-        .filter(visible)
-        .map((el) => ({ el, label: (el.getAttribute('aria-label') || el.textContent || '').trim() }))
-        .filter((x) => x.label && timeLike.test(x.label));
-      const unique = [];
-      const seen = new Set();
-      for (const item of raw) {
-        const key = item.label.slice(0, 300);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        unique.push(item);
-        if (unique.length >= 12) break;
-      }
-      const target = unique[${index}];
-      if (!target) return { ok: false };
-      target.el.click();
-      return { ok: true, label: target.label.slice(0, 240) };
-    })()`);
+  async assertReadableView(kind: CandidateKind): Promise<MapsViewState> {
+    const url = await this.assertMapsSurface();
+    const pathKind = mapsPathKind(url);
+    const pathCompatible = kind === "place"
+      ? pathKind === "search" || pathKind === "place"
+      : pathKind === "directions";
+    const stateCompatible = kind === "place"
+      ? this.viewState === "search" || this.viewState === "place"
+      : this.viewState === "directions" || this.viewState === "route";
+
+    if (!pathCompatible || !stateCompatible) {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        kind === "place"
+          ? "The browser no longer matches the active place/search state. Run maps_search again."
+          : "The browser no longer matches the active directions state. Run maps_directions again."
+      );
+    }
+    return this.viewState;
+  }
+
+  async assertDirectionsContext(): Promise<void> {
+    const url = await this.assertMapsSurface();
+    if (mapsPathKind(url) !== "directions" || this.lastAction?.kind !== "directions") {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "The browser no longer matches the active directions request. Run maps_directions again."
+      );
+    }
+  }
+
+  async listPlaceResults(): Promise<string[]> {
+    const url = await this.assertMapsSurface();
+    if (this.viewState !== "search" || mapsPathKind(url) !== "search") return [];
+    return this.evaluateCandidates("place");
+  }
+
+  async listRouteResults(): Promise<string[]> {
+    const url = await this.assertMapsSurface();
+    if (
+      (this.viewState !== "directions" && this.viewState !== "route") ||
+      mapsPathKind(url) !== "directions"
+    ) return [];
+    return this.evaluateCandidates("route");
+  }
+
+  async clickPlaceResult(index: number, expectedLabel?: string): Promise<string> {
+    const url = await this.assertMapsSurface();
+    if (this.viewState !== "search" || mapsPathKind(url) !== "search") {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "The place result list is no longer active. Run maps_search again.");
+    }
+    const label = await this.clickCandidate("place", index, expectedLabel);
+    await sleep(450);
+    const finalUrl = await this.assertMapsSurface();
+    if (mapsPathKind(finalUrl) !== "place") {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Google Maps did not enter a place view after the selection. Run maps_search again."
+      );
+    }
+    this.viewState = "place";
+    return label;
+  }
+
+  async clickRouteResult(index: number, expectedLabel?: string): Promise<string> {
+    const url = await this.assertMapsSurface();
+    if (
+      (this.viewState !== "directions" && this.viewState !== "route") ||
+      mapsPathKind(url) !== "directions"
+    ) {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "The route result list is no longer active. Run maps_directions again.");
+    }
+    const label = await this.clickCandidate("route", index, expectedLabel);
+    await sleep(350);
+    const finalUrl = await this.assertMapsSurface();
+    if (mapsPathKind(finalUrl) !== "directions") {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Google Maps left the directions view after the route selection. Run maps_directions again."
+      );
+    }
+    this.viewState = "route";
+    return label;
   }
 
   async close(): Promise<void> {
     try {
-      await this.client?.close();
+      await this.resetClient();
     } finally {
-      this.client = undefined;
-      this.targetId = undefined;
+      this.port = undefined;
+      this.invalidateSemanticState();
       await this.chrome.close();
     }
   }
 
-  private async clickWithScript(expression: string): Promise<string> {
+  private async evaluateCandidates(kind: CandidateKind): Promise<string[]> {
     const client = await this.getClient();
-    const result = await client.Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true });
-    const value = result.result.value as { ok?: boolean; label?: string } | undefined;
+    const result = await client.Runtime.evaluate({
+      expression: candidateExpression(kind),
+      returnByValue: true,
+      awaitPromise: true
+    });
+    const value = result.result.value as { ok?: boolean; labels?: unknown[] } | undefined;
+    if (!value?.ok || !Array.isArray(value.labels)) return [];
+    return value.labels.filter((label): label is string => typeof label === "string").slice(0, kind === "place" ? 20 : 12);
+  }
+
+  private async clickCandidate(kind: CandidateKind, index: number, expectedLabel?: string): Promise<string> {
+    const client = await this.getClient();
+    const result = await client.Runtime.evaluate({
+      expression: candidateExpression(kind, index, expectedLabel),
+      returnByValue: true,
+      awaitPromise: true
+    });
+    const value = result.result.value as { ok?: boolean; reason?: string; label?: string } | undefined;
     if (!value?.ok) {
+      if (value?.reason === "changed") {
+        throw new BrowserRuntimeError(
+          "UI_STATE_CHANGED",
+          "The visible Google Maps candidate list changed after it was read. Read the current summary again before selecting."
+        );
+      }
       throw new BrowserRuntimeError("UI_ELEMENT_NOT_FOUND", "Matching Google Maps UI element was not found");
     }
     return value.label ?? "selected";
   }
 
   private async ensureConnected(): Promise<void> {
-    if (this.client) return;
+    if (this.client) {
+      try {
+        await this.client.Runtime.evaluate({ expression: "1", returnByValue: true });
+        return;
+      } catch {
+        await this.resetClient();
+        this.invalidateSemanticState();
+      }
+    }
+
     try {
       this.port = await this.chrome.start();
       const targets = await CDP.List({ port: this.port });
@@ -167,11 +318,52 @@ export class MapsBrowserRuntime {
         this.client.Runtime.enable(),
         this.client.DOM.enable()
       ]);
+      if (!this.lastAction) this.viewState = "blank";
     } catch (error) {
       if (error instanceof PolicyError || error instanceof BrowserRuntimeError) throw error;
+      console.error("[maps-browser-mcp] Chrome/CDP connection failed", error);
       throw new BrowserRuntimeError(
         "BROWSER_UNAVAILABLE",
-        error instanceof Error ? error.message : "Unable to connect to Chrome"
+        "Unable to connect to the dedicated Chrome/Chromium session. Check the local browser configuration."
+      );
+    }
+  }
+
+  private async resetClient(): Promise<void> {
+    const client = this.client;
+    this.client = undefined;
+    this.targetId = undefined;
+    if (client) await client.close().catch(() => undefined);
+  }
+
+  private invalidateSemanticState(): void {
+    this.lastAction = undefined;
+    this.viewState = "blank";
+  }
+
+  private assertAllowedCurrentUrl(value: string): void {
+    if (!value || value === "about:blank") {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError("MAPS_NOT_OPEN", "Google Maps is not open in the dedicated browser tab");
+    }
+    if (this.isChallengeUrl(value)) {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "HUMAN_INTERVENTION_REQUIRED",
+        "Google presented an access challenge. Automatic bypass is intentionally unsupported. Repeat the intended Maps action after completing the manual step."
+      );
+    }
+    if (!this.policy.isAllowedMapsUrl(value)) {
+      let hostname = "non-Maps page";
+      try {
+        hostname = new URL(value).hostname;
+      } catch {
+        // Keep generic text.
+      }
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "HUMAN_INTERVENTION_REQUIRED",
+        `Browser left the Google Maps surface (${hostname}). Complete any consent or sign-in step manually, then repeat the intended Maps action.`
       );
     }
   }

@@ -12,7 +12,11 @@ async function canReachCdp(port: number): Promise<boolean> {
     const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
       signal: AbortSignal.timeout(800)
     });
-    return response.ok;
+    if (!response.ok) return false;
+    const payload = (await response.json()) as { Browser?: unknown; webSocketDebuggerUrl?: unknown };
+    const browser = typeof payload.Browser === "string" ? payload.Browser : "";
+    const websocket = typeof payload.webSocketDebuggerUrl === "string" ? payload.webSocketDebuggerUrl : "";
+    return /(Chrome|Chromium)/i.test(browser) && websocket.startsWith("ws://");
   } catch {
     return false;
   }
@@ -20,7 +24,7 @@ async function canReachCdp(port: number): Promise<boolean> {
 
 export function findChromeExecutable(explicit?: string): string {
   if (explicit) {
-    if (!fs.existsSync(explicit)) throw new Error(`Chrome executable not found: ${explicit}`);
+    if (!fs.existsSync(explicit)) throw new Error("Configured Chrome executable was not found");
     return explicit;
   }
 
@@ -79,6 +83,7 @@ export class ChromeProcess {
     }
 
     if (this.port !== undefined && (await canReachCdp(this.port))) return this.port;
+    this.port = undefined;
 
     await fsp.mkdir(this.options.profileDir, { recursive: true, mode: 0o700 });
     const activePortFile = path.join(this.options.profileDir, "DevToolsActivePort");
@@ -101,22 +106,30 @@ export class ChromeProcess {
       "--remote-debugging-port=0",
       "--no-first-run",
       "--no-default-browser-check",
+      "--disable-session-crashed-bubble",
       "--new-window",
       "about:blank"
     ];
     if (this.options.headless) args.unshift("--headless=new");
 
     this.child = spawn(executable, args, { stdio: "ignore" });
-    const startupError = new Promise<never>((_, reject) => {
-      this.child?.once("error", reject);
+    let startupError: Error | undefined;
+    this.child.once("error", (error) => {
+      startupError = error;
     });
 
     const deadline = Date.now() + 12_000;
     while (Date.now() < deadline) {
-      const result = await Promise.race([
-        fsp.readFile(activePortFile, "utf8").catch(() => ""),
-        startupError
-      ]);
+      if (startupError) {
+        await this.close();
+        throw new Error("Chrome/Chromium could not be started");
+      }
+      if (this.child.exitCode !== null) {
+        await this.close();
+        throw new Error("Chrome/Chromium exited before its DevTools endpoint became ready");
+      }
+
+      const result = await fsp.readFile(activePortFile, "utf8").catch(() => "");
       if (result) {
         const detectedPort = Number.parseInt(result.split(/\r?\n/, 1)[0] ?? "", 10);
         if (Number.isInteger(detectedPort) && (await canReachCdp(detectedPort))) {
@@ -132,8 +145,17 @@ export class ChromeProcess {
   }
 
   async close(): Promise<void> {
-    if (this.child && !this.child.killed) this.child.kill("SIGTERM");
+    const child = this.child;
     this.child = undefined;
     this.port = undefined;
+    if (!child || child.exitCode !== null) return;
+
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    child.kill("SIGTERM");
+    await Promise.race([exited, sleep(1_500)]);
+    if (child.exitCode === null) {
+      child.kill("SIGKILL");
+      await Promise.race([exited, sleep(1_000)]);
+    }
   }
 }

@@ -1,6 +1,6 @@
 # Architecture
 
-`maps-browser-mcp` is intentionally narrower than a general browser automation MCP. The public tool surface describes Google Maps actions, while browser primitives stay internal.
+`maps-browser-mcp` is intentionally narrower than a general browser automation MCP. The public tool surface describes Google Maps actions; low-level browser primitives remain internal.
 
 ## Layers
 
@@ -12,6 +12,7 @@ MCP tools
    |
    +-- MapsUrlCompiler
    +-- PolicyEngine
+   +-- OperationQueue
    +-- SemanticController
    +-- VisibleStateReader (optional)
    |
@@ -28,17 +29,27 @@ Dedicated Chrome / Chromium profile
 Google Maps Web
 ```
 
+## Process model
+
+One process owns one semantic Maps browser session. Browser-affecting MCP operations are serialized by a bounded `OperationQueue`, preventing concurrent calls from racing the single page and preventing an unlimited pending backlog.
+
+The design is for a single local user/browser session. Multi-user hosting would require an isolated policy engine, queue, browser process/profile, and semantic state per authenticated principal; that is out of scope for the initial design.
+
 ## Browser lifecycle
 
-The runtime starts or reuses one dedicated Chrome/Chromium process and one page target. The default profile is outside the repository at `~/.maps-browser-mcp/chrome-profile`.
+By default, the runtime starts or reuses a dedicated Chrome/Chromium process/profile outside the repository at `~/.maps-browser-mcp/chrome-profile`.
 
-Chrome is launched with a separate `--user-data-dir` and `--remote-debugging-port=0`. The actual local DevTools port is read from Chrome's `DevToolsActivePort` file. A caller may instead provide an already-running CDP port with `MAPS_CDP_PORT`.
+Chrome is launched with a separate `--user-data-dir` and `--remote-debugging-port=0`; the actual loopback DevTools port is read from `DevToolsActivePort`. CDP endpoint identity is checked before reuse.
+
+A caller may instead set `MAPS_CDP_PORT` to attach to an existing **local** CDP endpoint. This is an advanced escape hatch and weakens the dedicated-profile isolation guarantee. It should never point to a publicly reachable or everyday personal browser instance.
+
+If the CDP target becomes stale or reconnects, semantic state is invalidated rather than assuming that the newly attached page still represents the previous search/directions operation.
 
 No stealth plugins, fingerprint spoofing, proxy rotation, or CAPTCHA solvers are used.
 
 ## Navigation fast path
 
-Search, directions, map views and Street View use official Google Maps URLs. The normal path is therefore:
+Search, directions, map views, and Street View use official Google Maps URLs. The normal path is:
 
 ```text
 1 MCP call -> 1 URL compilation -> 1 CDP Page.navigate
@@ -48,7 +59,9 @@ No page discovery or DOM scan is needed for these operations.
 
 ## Semantic interaction
 
-The MCP never exposes generic `click`, `type`, selector, or arbitrary-JavaScript tools to the model. Internally, a small controller can select bounded place or route candidates. These selectors are implementation details and may require maintenance as Google Maps changes.
+The MCP does not expose generic `click`, `type`, arbitrary selector, or JavaScript-execution tools to the model.
+
+Place and route candidates are extracted through bounded Maps-specific heuristics. The **same candidate extraction logic** is used when V3 lists indexed candidates and when V2 selects an index. Selection optionally accepts `expectedLabel`; if the dynamic Google Maps list changed after reading, the click is refused with `UI_STATE_CHANGED`.
 
 Changing travel mode does not click the page. The server recompiles the active official directions URL with the requested travel mode and navigates directly.
 
@@ -56,17 +69,39 @@ Changing travel mode does not click the page. The server recompiles the active o
 
 Visible-state reading is optional and disabled by default. When enabled, the reader:
 
-1. locates the page's `role=main` region,
-2. enables the Chrome Accessibility domain only for the read,
-3. walks a bounded number of accessibility nodes,
-4. keeps a small set of relevant text lines,
-5. enforces a character budget,
-6. disables the Accessibility domain immediately afterwards.
+1. verifies that the active page is still on the Google Maps web surface,
+2. verifies compatible semantic state (search/place or directions/route),
+3. extracts a bounded candidate list using the selection logic,
+4. requires the Maps `role=main` region instead of falling back to the whole document,
+5. enables Chrome Accessibility only for the bounded read,
+6. walks a bounded number of accessibility nodes,
+7. keeps a small set of relevant text lines,
+8. strips control/bidirectional formatting characters,
+9. enforces a total character budget,
+10. disables Accessibility immediately afterwards.
 
-It does not return a full DOM dump, a full accessibility-tree dump, raw HTML, network responses, or Google Maps internal API payloads.
+The result explicitly marks Maps labels/text as untrusted external data. The server does not execute instructions contained in page content.
 
-## Process model
+It does not return full DOM/AX dumps, raw HTML, review bodies, network responses, or Google Maps internal API payloads.
 
-The browser runtime and policy engine are process-scoped. MCP server objects may be created per request by the modern stateless Streamable HTTP handler, while the dedicated browser session is shared by that process.
+## HTTP transport
 
-This is designed primarily for a single user's local browser session. Multi-user hosting would require isolated browser/profile runtimes per authenticated principal and is not part of the initial design.
+The HTTP server uses the MCP 2026-07-28 single `POST /mcp` entry point. It includes:
+
+- loopback bind by default,
+- Host allowlisting,
+- optional exact Origin allowlisting,
+- optional constant-time Bearer token guard,
+- startup refusal for unauthenticated non-loopback binding unless external auth is explicitly trusted,
+- bounded request body size,
+- request/header/keep-alive timeouts,
+- client-abort propagation,
+- streamed response backpressure handling.
+
+`/healthz` is separate and supports `GET`/`HEAD`.
+
+## CI boundary
+
+CI runs unit tests, dependency audit, MCP HTTP initialization/security smoke tests, a real headless Chrome/CDP startup test, package dry-run, and Node.js 20/22/24 builds.
+
+CI intentionally does **not** automate visits to Google Maps pages. UI-dependent compatibility therefore remains experimental and requires user-directed/manual E2E validation.

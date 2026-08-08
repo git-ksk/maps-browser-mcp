@@ -1,0 +1,117 @@
+import { spawn } from "node:child_process";
+import net from "node:net";
+
+async function freePort() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  await new Promise((resolve) => server.close(resolve));
+  if (!port) throw new Error("Unable to allocate a test port");
+  return port;
+}
+
+async function waitForHealth(baseUrl, stderr) {
+  const deadline = Date.now() + 8_000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${baseUrl}/healthz`);
+      if (response.ok) return;
+    } catch {
+      // Server is still starting.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  throw new Error(`HTTP server did not become ready. stderr: ${stderr()}`);
+}
+
+async function parseMcpResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+  if (contentType.includes("text/event-stream")) {
+    const dataLine = text.split(/\r?\n/).find((line) => line.startsWith("data:"));
+    if (!dataLine) throw new Error(`Missing SSE data: ${text}`);
+    return JSON.parse(dataLine.slice(5).trim());
+  }
+  return JSON.parse(text);
+}
+
+const port = await freePort();
+const baseUrl = `http://127.0.0.1:${port}`;
+let stderr = "";
+const child = spawn(process.execPath, ["dist/index.js", "--http"], {
+  env: {
+    ...process.env,
+    MCP_HTTP_HOST: "127.0.0.1",
+    MCP_HTTP_PORT: String(port),
+    MCP_ALLOWED_HOSTS: "localhost,127.0.0.1",
+    MCP_MAX_BODY_BYTES: "4096"
+  },
+  stdio: ["ignore", "ignore", "pipe"]
+});
+child.stderr.on("data", (chunk) => {
+  stderr += String(chunk);
+});
+
+try {
+  await waitForHealth(baseUrl, () => stderr);
+
+  const initialize = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2026-07-28",
+        capabilities: {},
+        clientInfo: { name: "maps-browser-mcp-ci", version: "1" }
+      }
+    })
+  });
+  if (!initialize.ok) throw new Error(`Initialize failed: ${initialize.status} ${await initialize.text()}`);
+  const payload = await parseMcpResponse(initialize);
+  if (payload?.result?.serverInfo?.name !== "maps-browser-mcp") {
+    throw new Error(`Unexpected initialize response: ${JSON.stringify(payload)}`);
+  }
+
+  const getResponse = await fetch(`${baseUrl}/mcp`);
+  if (getResponse.status !== 405) throw new Error(`Expected GET /mcp = 405, got ${getResponse.status}`);
+
+  const badOrigin = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      origin: "https://evil.example",
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream"
+    },
+    body: "{}"
+  });
+  if (badOrigin.status !== 403) throw new Error(`Expected invalid Origin = 403, got ${badOrigin.status}`);
+
+  const tooLarge = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream"
+    },
+    body: "x".repeat(5000)
+  });
+  if (tooLarge.status !== 413) throw new Error(`Expected oversized body = 413, got ${tooLarge.status}`);
+
+  console.log("HTTP/MCP smoke test passed");
+} finally {
+  child.kill("SIGTERM");
+  await Promise.race([
+    new Promise((resolve) => child.once("exit", resolve)),
+    new Promise((resolve) => setTimeout(resolve, 2_000))
+  ]);
+  if (child.exitCode === null) child.kill("SIGKILL");
+}
