@@ -43,3 +43,34 @@ test("rejects work when the pending queue is full", async () => {
   await first;
   await queue.drain();
 });
+
+test("times out a hung operation, waits for reset, then continues the queue", async () => {
+  const events: string[] = [];
+  const queue = new OperationQueue(3, {
+    timeoutMs: 25,
+    onTimeout: async () => {
+      events.push("reset:start");
+      await sleep(15);
+      events.push("reset:end");
+    }
+  });
+
+  const never = new Promise<void>(() => undefined);
+  const first = queue.run(async () => {
+    events.push("first:start");
+    await never;
+  });
+  const second = queue.run(async () => {
+    events.push("second:start");
+    return 2;
+  });
+
+  await assert.rejects(
+    first,
+    (error) => error instanceof OperationQueueError && error.code === "OPERATION_TIMEOUT"
+  );
+  assert.equal(await second, 2);
+  assert.deepEqual(events, ["first:start", "reset:start", "reset:end", "second:start"]);
+  await queue.drain();
+  assert.equal(queue.getPendingCount(), 0);
+});
