@@ -25,7 +25,10 @@ const reader = new VisibleStateReader(runtime, {
   maxNodes: config.policy.maxAxNodes,
   maxChars: config.policy.maxReadChars
 });
-const operationQueue = new OperationQueue(config.policy.maxPendingActions);
+const operationQueue = new OperationQueue(config.policy.maxPendingActions, {
+  timeoutMs: config.policy.operationTimeoutMs,
+  onTimeout: () => runtime.close()
+});
 
 const queryText = z.string().trim().min(1).max(500);
 const locationText = z.string().trim().min(1).max(300);
