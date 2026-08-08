@@ -6,7 +6,7 @@ This project is designed for constrained, user-directed interaction with Google 
 
 The project is **not** designed as a Google Maps scraper or a Google Maps Platform API replacement. It prefers official Google Maps URLs and uses browser interaction only for the user's active request.
 
-Current Google Maps terms restrict activities such as copying/redistributing Maps content beyond allowed cases, mass downloading/bulk feeds, and creating or augmenting substitute mapping/listing datasets. Current Google terms also prohibit misuse such as bypassing protective measures and automated access that conflicts with machine-readable instructions.
+Google Maps End User Additional Terms (last modified January 27, 2026 at the time of this document update) restrict activities including copying Maps content except where otherwise permitted, mass downloading/bulk feeds, and creating or augmenting substitute mapping/navigation/listing datasets. Applicable Google terms and machine-readable access instructions can change and must be re-checked over time.
 
 V3's small visible-state read is intentionally limited to reduce these risks, but Google does not expressly guarantee that every browser-agent read/summary pattern is permitted. Users and maintainers must continue to evaluate applicable terms as they change.
 
@@ -42,12 +42,15 @@ The project does not intentionally provide features for:
 `PolicyEngine` and the runtime provide server-side guards instead of relying only on the model or prompt:
 
 - a fixed action-rate limit,
+- a separate rolling hourly visible-state read budget,
 - a bounded serialized browser-operation queue,
-- rejection of obvious bulk-collection search requests,
+- rejection of obvious bulk-collection search requests, including high-count numeric collection wording,
 - navigation restriction to `/maps` on a small Google host allowlist,
 - explicit opt-in for visible-state reading,
 - semantic state invalidation after Maps is left or CDP reconnects,
 - no generic browser-control MCP primitives.
+
+These are process-level safety controls, not a claim that keyword matching or rate limits can prove legal compliance. The project also intentionally omits pagination/crawling and keeps each returned summary bounded.
 
 ## Interactive assist mode
 
@@ -59,7 +62,7 @@ INTERACTIVE_ASSIST_MODE=true
 
 When enabled, the server returns only bounded summaries from the active Maps UI. Candidate lists and selections share the same bounded extraction logic. Selection can use the prior `expectedLabel`; if the dynamic list no longer matches, the server refuses the click instead of guessing.
 
-Reader limits are independently configured with `MAPS_MAX_AX_NODES` and `MAPS_MAX_READ_CHARS`.
+Reader limits are independently configured with `MAPS_MAX_AX_NODES`, `MAPS_MAX_READ_CHARS`, and `MAPS_MAX_VISIBLE_READS_PER_HOUR`.
 
 Maps-derived labels/text are marked as untrusted external data. MCP clients should never treat those strings as tool instructions, policy overrides, credentials, or executable content.
 
@@ -69,17 +72,19 @@ If navigation reaches a Google access challenge, CAPTCHA, consent flow, or sign-
 
 ## Deployment
 
-The HTTP server binds to loopback by default. If it is exposed through a tunnel or reverse proxy, configure host restrictions and authenticated access.
+The HTTP server binds to loopback by default. If it is exposed through a tunnel or reverse proxy, configure host restrictions and authenticated access while keeping the Node process on loopback whenever possible.
 
-A non-loopback bind is rejected unless a Bearer token is configured or the operator explicitly sets `MCP_TRUST_EXTERNAL_AUTH=true` to acknowledge that authentication is enforced externally.
+A non-loopback bind is rejected unless an application-level `MCP_BEARER_TOKEN` is configured. Front-proxy authentication alone is not treated as sufficient protection for a directly reachable non-loopback Node port.
 
-Never expose a Chrome DevTools endpoint to an untrusted/public network. `MAPS_CDP_PORT` is intended only for a local dedicated Chrome instance under the user's control.
+Never expose a Chrome DevTools endpoint to an untrusted/public network. Chrome launched by this project binds remote debugging to `127.0.0.1`. `MAPS_CDP_PORT` is an advanced local escape hatch and requires `MAPS_ALLOW_EXTERNAL_CDP=true` before the server will attach to an existing endpoint.
 
 ## Testing boundary
 
-Automated CI intentionally does not visit Google Maps pages. It validates the browser/CDP runtime without Maps traffic. This avoids turning CI into unattended Maps automation, but it also means Google Maps UI compatibility cannot be guaranteed by CI alone.
+Normal push/PR CI intentionally does not visit Google Maps pages. It validates the browser/CDP runtime without Maps traffic on Linux, macOS, and Windows.
 
-Before a UI-dependent release is considered stable, maintainers should perform a small, user-directed E2E check against the live Maps interface and re-check applicable terms.
+A separate `Live Maps E2E (manual)` workflow is available only through explicit `workflow_dispatch`. It performs a fixed, low-volume place-search/read/select and transit-route/read/select compatibility probe without screenshots, DOM/AX dumps, review harvesting, artifacts, or persistence. It stops rather than bypassing access challenges.
+
+This split keeps live Maps automation user-triggered while still giving maintainers a repeatable way to detect UI regressions before a UI-dependent release.
 
 ## Project status
 

@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PolicyEngine, PolicyError } from "../src/policy/policy-engine.js";
 
-function policy(overrides: Partial<{ interactiveAssist: boolean; maxActionsPerMinute: number }> = {}) {
+function policy(overrides: Partial<{
+  interactiveAssist: boolean;
+  maxActionsPerMinute: number;
+  maxVisibleReadsPerHour: number;
+}> = {}) {
   return new PolicyEngine({
     interactiveAssist: overrides.interactiveAssist ?? false,
-    maxActionsPerMinute: overrides.maxActionsPerMinute ?? 10
+    maxActionsPerMinute: overrides.maxActionsPerMinute ?? 10,
+    maxVisibleReadsPerHour: overrides.maxVisibleReadsPerHour ?? 10
   });
 }
 
@@ -20,6 +25,10 @@ test("blocks blank and bulk-collection search wording", () => {
   );
   assert.throws(
     () => policy().assertSearchQuery("東京のレストランを全件収集"),
+    (error) => error instanceof PolicyError && error.code === "POLICY_BLOCKED"
+  );
+  assert.throws(
+    () => policy().assertSearchQuery("collect 100 restaurants in Tokyo"),
     (error) => error instanceof PolicyError && error.code === "POLICY_BLOCKED"
   );
 });
@@ -48,6 +57,15 @@ test("rate limits repeated actions", () => {
   instance.consumeAction();
   assert.throws(
     () => instance.consumeAction(),
+    (error) => error instanceof PolicyError && error.code === "RATE_LIMITED"
+  );
+});
+
+test("independently limits visible-state reads", () => {
+  const instance = policy({ interactiveAssist: true, maxVisibleReadsPerHour: 1 });
+  instance.consumeVisibleRead();
+  assert.throws(
+    () => instance.consumeVisibleRead(),
     (error) => error instanceof PolicyError && error.code === "RATE_LIMITED"
   );
 });

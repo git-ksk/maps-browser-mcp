@@ -77,7 +77,7 @@ export class ChromeProcess {
   async start(): Promise<number> {
     if (this.options.externalCdpPort !== undefined) {
       if (!(await canReachCdp(this.options.externalCdpPort))) {
-        throw new Error(`No Chrome DevTools endpoint on port ${this.options.externalCdpPort}`);
+        throw new Error(`No local Chrome DevTools endpoint on port ${this.options.externalCdpPort}`);
       }
       return this.options.externalCdpPort;
     }
@@ -86,6 +86,9 @@ export class ChromeProcess {
     this.port = undefined;
 
     await fsp.mkdir(this.options.profileDir, { recursive: true, mode: 0o700 });
+    if (process.platform !== "win32") {
+      await fsp.chmod(this.options.profileDir, 0o700).catch(() => undefined);
+    }
     const activePortFile = path.join(this.options.profileDir, "DevToolsActivePort");
 
     try {
@@ -103,6 +106,7 @@ export class ChromeProcess {
     const executable = findChromeExecutable(this.options.executable);
     const args = [
       `--user-data-dir=${this.options.profileDir}`,
+      "--remote-debugging-address=127.0.0.1",
       "--remote-debugging-port=0",
       "--no-first-run",
       "--no-default-browser-check",

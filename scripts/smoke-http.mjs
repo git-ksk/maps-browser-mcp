@@ -19,7 +19,12 @@ async function waitForHealth(baseUrl, stderr) {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`${baseUrl}/healthz`);
-      if (response.ok) return;
+      if (response.ok) {
+        if (response.headers.get("cache-control") !== "no-store") {
+          throw new Error("health response must use Cache-Control: no-store");
+        }
+        return;
+      }
     } catch {
       // Server is still starting.
     }
@@ -37,6 +42,43 @@ async function parseMcpResponse(response) {
     return JSON.parse(dataLine.slice(5).trim());
   }
   return JSON.parse(text);
+}
+
+async function postMcp(baseUrl, message, extraHeaders = {}) {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      ...extraHeaders
+    },
+    body: JSON.stringify(message)
+  });
+  if (!response.ok) {
+    throw new Error(`MCP POST failed: ${response.status} ${await response.text()}`);
+  }
+  if (response.headers.get("cache-control") !== "no-store") {
+    throw new Error("MCP response must use Cache-Control: no-store");
+  }
+  return parseMcpResponse(response);
+}
+
+function modernMeta() {
+  return {
+    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+    "io.modelcontextprotocol/clientInfo": {
+      name: "maps-browser-mcp-ci-modern",
+      version: "1"
+    },
+    "io.modelcontextprotocol/clientCapabilities": {}
+  };
+}
+
+function modernHeaders(method) {
+  return {
+    "mcp-protocol-version": "2026-07-28",
+    "mcp-method": method
+  };
 }
 
 const port = await freePort();
@@ -59,31 +101,54 @@ child.stderr.on("data", (chunk) => {
 try {
   await waitForHealth(baseUrl, () => stderr);
 
-  const initialize = await fetch(`${baseUrl}/mcp`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json, text/event-stream"
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2026-07-28",
-        capabilities: {},
-        clientInfo: { name: "maps-browser-mcp-ci", version: "1" }
-      }
-    })
+  // Legacy 2025-era path: initialize handshake.
+  const initialized = await postMcp(baseUrl, {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-11-25",
+      capabilities: {},
+      clientInfo: { name: "maps-browser-mcp-ci-legacy", version: "1" }
+    }
   });
-  if (!initialize.ok) throw new Error(`Initialize failed: ${initialize.status} ${await initialize.text()}`);
-  const payload = await parseMcpResponse(initialize);
-  if (payload?.result?.serverInfo?.name !== "maps-browser-mcp") {
-    throw new Error(`Unexpected initialize response: ${JSON.stringify(payload)}`);
+  if (initialized?.result?.serverInfo?.name !== "maps-browser-mcp") {
+    throw new Error(`Unexpected initialize response: ${JSON.stringify(initialized)}`);
+  }
+
+  // Modern 2026-07-28 path: server/discover + per-request _meta envelope and
+  // SEP-2243 standard HTTP method mirroring.
+  const discovered = await postMcp(baseUrl, {
+    jsonrpc: "2.0",
+    id: "discover-1",
+    method: "server/discover",
+    params: { _meta: modernMeta() }
+  }, modernHeaders("server/discover"));
+  if (!Array.isArray(discovered?.result?.supportedVersions) ||
+      !discovered.result.supportedVersions.includes("2026-07-28")) {
+    throw new Error(`Unexpected server/discover response: ${JSON.stringify(discovered)}`);
+  }
+
+  const modernTools = await postMcp(baseUrl, {
+    jsonrpc: "2.0",
+    id: "tools-modern-1",
+    method: "tools/list",
+    params: { _meta: modernMeta() }
+  }, modernHeaders("tools/list"));
+  const toolNames = new Set(
+    Array.isArray(modernTools?.result?.tools)
+      ? modernTools.result.tools.map((tool) => tool?.name).filter(Boolean)
+      : []
+  );
+  if (toolNames.size !== 9 || !toolNames.has("maps_search") || !toolNames.has("maps_read_route_summary")) {
+    throw new Error(`Unexpected modern tools/list response: ${JSON.stringify(modernTools)}`);
   }
 
   const getResponse = await fetch(`${baseUrl}/mcp`);
   if (getResponse.status !== 405) throw new Error(`Expected GET /mcp = 405, got ${getResponse.status}`);
+  if (getResponse.headers.get("cache-control") !== "no-store") {
+    throw new Error("error responses must use Cache-Control: no-store");
+  }
 
   const badOrigin = await fetch(`${baseUrl}/mcp`, {
     method: "POST",
@@ -106,7 +171,7 @@ try {
   });
   if (tooLarge.status !== 413) throw new Error(`Expected oversized body = 413, got ${tooLarge.status}`);
 
-  console.log("HTTP/MCP smoke test passed");
+  console.log("HTTP/MCP smoke test passed for legacy and modern protocol eras");
 } finally {
   child.kill("SIGTERM");
   await Promise.race([

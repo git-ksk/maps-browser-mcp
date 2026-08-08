@@ -15,8 +15,10 @@ export class PolicyError extends Error {
 const BULK_PATTERNS = [
   /\b(scrape|crawl|bulk|dataset|hundreds?|thousands?)\b/i,
   /\b(all|every)\s+(restaurants?|places?|shops?|stores?|reviews?|routes?)\b/i,
+  /\b(?:[2-9]\d|[1-9]\d{2,})\s+(restaurants?|places?|shops?|stores?|reviews?|routes?)\b/i,
   /(全件|大量|網羅|収集|スクレイピング|クローリング|データセット)/,
-  /(全部|すべての).*(店舗|店|口コミ|経路|場所)/
+  /(全部|すべての).*(店舗|店|口コミ|経路|場所)/,
+  /(?:[2-9]\d|[1-9]\d{2,})\s*(?:件|店舗|店).*(?:取得|収集|一覧)/
 ];
 
 const MAPS_HOSTS = new Set([
@@ -32,22 +34,25 @@ function isMapsPath(pathname: string): boolean {
   return pathname === "/maps" || pathname.startsWith("/maps/");
 }
 
+function trimWindow(values: number[], cutoff: number): void {
+  while (values[0] !== undefined && values[0] < cutoff) values.shift();
+}
+
 export class PolicyEngine {
   private readonly actions: number[] = [];
+  private readonly visibleReads: number[] = [];
 
   constructor(
     private readonly options: {
       interactiveAssist: boolean;
       maxActionsPerMinute: number;
+      maxVisibleReadsPerHour: number;
     }
   ) {}
 
   consumeAction(): void {
     const now = Date.now();
-    const cutoff = now - 60_000;
-    while (this.actions[0] !== undefined && this.actions[0] < cutoff) {
-      this.actions.shift();
-    }
+    trimWindow(this.actions, now - 60_000);
     if (this.actions.length >= this.options.maxActionsPerMinute) {
       throw new PolicyError(
         "RATE_LIMITED",
@@ -55,6 +60,18 @@ export class PolicyEngine {
       );
     }
     this.actions.push(now);
+  }
+
+  consumeVisibleRead(): void {
+    const now = Date.now();
+    trimWindow(this.visibleReads, now - 60 * 60_000);
+    if (this.visibleReads.length >= this.options.maxVisibleReadsPerHour) {
+      throw new PolicyError(
+        "RATE_LIMITED",
+        `Visible-state read limit reached (${this.options.maxVisibleReadsPerHour} per hour)`
+      );
+    }
+    this.visibleReads.push(now);
   }
 
   assertSearchQuery(query: string): void {

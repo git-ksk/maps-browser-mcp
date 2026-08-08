@@ -22,11 +22,16 @@ class HttpRequestError extends Error {
   }
 }
 
+function setPrivateResponseHeaders(res: ServerResponse): void {
+  res.setHeader("cache-control", "no-store");
+}
+
 function reject(res: ServerResponse, status: number, message: string): void {
   if (res.headersSent) {
     if (!res.writableEnded) res.end();
     return;
   }
+  setPrivateResponseHeaders(res);
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify({ error: message }));
 }
@@ -84,6 +89,7 @@ async function writeWebResponse(response: Response, res: ServerResponse): Promis
   res.statusCode = response.status;
   res.statusMessage = response.statusText;
   response.headers.forEach((value, name) => res.setHeader(name, value));
+  setPrivateResponseHeaders(res);
 
   if (!response.body) {
     res.end();
@@ -120,6 +126,7 @@ async function startHttp(): Promise<void> {
         reject(res, 405, "method_not_allowed");
         return;
       }
+      setPrivateResponseHeaders(res);
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
       res.end(req.method === "HEAD" ? undefined : JSON.stringify({ ok: true }));
       return;

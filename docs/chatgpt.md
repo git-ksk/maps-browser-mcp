@@ -23,19 +23,19 @@ maps-browser-mcp
 Dedicated local Chrome / Chromium
 ```
 
-OpenAI's current ChatGPT developer-mode guidance recommends Secure MCP Tunnel when an MCP server runs on a developer machine/private network. A custom app can also use an OAuth-capable remote deployment.
+A local/private MCP deployment should keep the Node process and Chrome DevTools endpoint off the public network. A custom hosted app can instead use an OAuth-capable remote deployment.
 
 ## Authentication boundary
 
 `maps-browser-mcp` deliberately does not implement a general OAuth Authorization Server. Authentication can be provided by:
 
-- Secure MCP Tunnel,
+- an authenticated MCP tunnel,
 - an authenticated reverse proxy/tunnel,
-- or, for controlled deployments, the optional server-side `MCP_BEARER_TOKEN` guard.
+- or, for controlled deployments, the server-side `MCP_BEARER_TOKEN` guard.
 
 The static Bearer guard is a defense-in-depth/server option; whether a particular MCP client can configure that header is client-specific. Do not assume it replaces OAuth when OAuth is required by a deployment or client.
 
-If an external proxy performs authentication and the Node server must bind to a non-loopback interface, set `MCP_TRUST_EXTERNAL_AUTH=true` deliberately. Keep network access to that bind address restricted to the trusted proxy.
+Keep the Node server on loopback behind a tunnel/reverse proxy whenever possible. If you deliberately bind `MCP_HTTP_HOST` to a non-loopback address, `MCP_BEARER_TOKEN` is mandatory even when a front proxy also performs authentication. This prevents accidental direct access to an otherwise trusted-proxy-only port.
 
 ## OAuth deployments
 

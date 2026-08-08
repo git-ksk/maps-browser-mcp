@@ -15,7 +15,8 @@ const config = loadConfig();
 const compiler = new MapsUrlCompiler();
 const policy = new PolicyEngine({
   interactiveAssist: config.policy.interactiveAssist,
-  maxActionsPerMinute: config.policy.maxActionsPerMinute
+  maxActionsPerMinute: config.policy.maxActionsPerMinute,
+  maxVisibleReadsPerHour: config.policy.maxVisibleReadsPerHour
 });
 const chrome = new ChromeProcess(config.browser);
 const runtime = new MapsBrowserRuntime(chrome, policy);
@@ -24,7 +25,10 @@ const reader = new VisibleStateReader(runtime, {
   maxNodes: config.policy.maxAxNodes,
   maxChars: config.policy.maxReadChars
 });
-const operationQueue = new OperationQueue(config.policy.maxPendingActions);
+const operationQueue = new OperationQueue(config.policy.maxPendingActions, {
+  timeoutMs: config.policy.operationTimeoutMs,
+  onTimeout: () => runtime.close()
+});
 
 const queryText = z.string().trim().min(1).max(500);
 const locationText = z.string().trim().min(1).max(300);
@@ -173,6 +177,7 @@ export function buildServer(): McpServer {
     },
     async () => runTool(async () => {
       policy.assertInteractiveAssistEnabled();
+      policy.consumeVisibleRead();
       return reader.read("place");
     })
   );
@@ -185,6 +190,7 @@ export function buildServer(): McpServer {
     },
     async () => runTool(async () => {
       policy.assertInteractiveAssistEnabled();
+      policy.consumeVisibleRead();
       return reader.read("route");
     })
   );
