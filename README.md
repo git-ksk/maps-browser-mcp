@@ -2,22 +2,93 @@
 
 [English](README.md) | [日本語](README.ja.md)
 
-A lightweight MCP server for interacting with Google Maps through a dedicated browser session, without relying on the Google Maps Platform API.
+A lightweight MCP server for interacting with Google Maps through a dedicated Chrome/Chromium session, without relying on the Google Maps Platform API.
 
-> **Status:** Early development. V1–V3 are implemented; Google Maps UI-dependent interactions remain experimental.
+> **Status:** V1–V3 are implemented. Google Maps UI-dependent interaction and bounded visible-state reading remain experimental because the live Maps UI can change.
 
-## What it does
+## Why this project exists
 
-`maps-browser-mcp` exposes a small Maps-specific MCP surface instead of a general-purpose browser controller.
+General-purpose browser MCPs are powerful, but they expose a much larger control surface than a Maps-only task needs. `maps-browser-mcp` takes the opposite approach:
 
-- Opens search, directions, map, and Street View pages through official Google Maps URLs.
-- Runs a dedicated Chrome/Chromium profile over Chrome DevTools Protocol (CDP).
-- Keeps generic browser primitives such as arbitrary `click`, `type`, selectors, and JavaScript execution out of the MCP tool surface.
-- Supports bounded semantic selection of place and route candidates.
-- Optionally reads a small, bounded summary from the active Maps UI.
-- Does not require a Google Maps Platform API key.
+- expose only Maps-specific MCP tools,
+- use official Google Maps URLs whenever possible,
+- keep Chrome DevTools Protocol (CDP) local,
+- use a dedicated browser profile,
+- fail closed when the page/state is ambiguous,
+- make visible-state reading explicit, bounded, and disabled by default,
+- do not implement scraping, CAPTCHA bypass, stealth, or internal Maps API harvesting.
 
-## Tools
+## 5-minute quick start
+
+Requirements: Node.js 20+ and Google Chrome/Chromium.
+
+```bash
+git clone https://github.com/git-ksk/maps-browser-mcp.git
+cd maps-browser-mcp
+npm ci --ignore-scripts
+npm run build
+npm start
+```
+
+That starts the MCP over **stdio** in safe mode. The first Maps action starts/reuses a dedicated Chrome profile.
+
+For Streamable HTTP instead:
+
+```bash
+npm run start:http
+```
+
+Default MCP endpoint:
+
+```text
+http://127.0.0.1:8787/mcp
+```
+
+Health check:
+
+```bash
+curl -i http://127.0.0.1:8787/healthz
+```
+
+For a complete first-run walkthrough, browser behavior, generic MCP client configuration, V3 opt-in, and cleanup, see **[Getting Started](docs/getting-started.md)**.
+
+## Example workflows
+
+Navigation does not require V3:
+
+```text
+maps_search({ query: "Tokyo Station" })
+```
+
+```text
+maps_directions({
+  origin: "Tokyo Station",
+  destination: "Yokohama Station",
+  mode: "transit"
+})
+```
+
+When V3 is enabled, the safe selection pattern is:
+
+```text
+maps_search(...)
+  -> maps_read_place_summary()
+  -> choose items[{ index, label }]
+  -> maps_select_result({ index, expectedLabel: label })
+```
+
+and for routes:
+
+```text
+maps_directions(...)
+  -> maps_read_route_summary()
+  -> choose items[{ index, label }]
+  -> maps_select_route({ index, expectedLabel: label })
+```
+
+`expectedLabel` is important: if Google Maps dynamically reorders the candidate list, the runtime refuses the stale selection with `UI_STATE_CHANGED` instead of clicking a different result.
+
+## MCP tools
 
 ### Navigation
 
@@ -37,11 +108,21 @@ A lightweight MCP server for interacting with Google Maps through a dedicated br
 - `maps_read_place_summary`
 - `maps_read_route_summary`
 
-Visible-state reading is **disabled by default**. Enable it explicitly with `INTERACTIVE_ASSIST_MODE=true`.
+V3 reading is **disabled by default**. Enable it only when required:
 
-The read tools return bounded `items[{ index, label }]` plus a small set of relevant UI lines. When selecting an item, pass the returned `label` as `expectedLabel` when possible. If Google Maps dynamically reorders the list, the server refuses the stale click with `UI_STATE_CHANGED` instead of selecting a different item.
+```bash
+INTERACTIVE_ASSIST_MODE=true npm start
+```
 
-All text returned from Google Maps is marked as **untrusted external data**. MCP clients should treat it as data, never as instructions.
+or:
+
+```bash
+INTERACTIVE_ASSIST_MODE=true npm run start:http
+```
+
+The read tools return bounded `items[{ index, label }]` plus a small set of relevant UI lines. They do not expose raw HTML, a full DOM/Accessibility Tree, network payloads, cookies, or review-body harvesting.
+
+All text returned from Google Maps is **untrusted external data**. MCP clients must treat it as data, never as instructions.
 
 ## Architecture
 
@@ -60,7 +141,7 @@ maps-browser-mcp
     v
 Dedicated Chrome / Chromium
     |
-   CDP
+   CDP (loopback)
     |
     v
 Google Maps Web
@@ -72,159 +153,129 @@ The normal navigation path is intentionally short:
 1 MCP call -> 1 official Maps URL -> 1 CDP Page.navigate
 ```
 
-Browser operations are serialized because one process controls one browser tab. A bounded pending queue prevents concurrent MCP requests from racing the page or growing an unlimited backlog. A watchdog resets the browser session if one operation exceeds `MAPS_OPERATION_TIMEOUT_MS`, so a stuck CDP operation cannot permanently wedge the queue.
+One process controls one semantic browser state. Browser operations are serialized, the pending queue is bounded, and a watchdog resets the browser/CDP session if an operation exceeds the configured timeout.
 
-See [docs/architecture.md](docs/architecture.md) for details.
+See **[Architecture](docs/architecture.md)** for the detailed runtime/state/security model.
 
-## Requirements
+## Requirements and platform support
 
 - Node.js 20+
 - Google Chrome or Chromium
+- macOS, Linux, or Windows
 
-The server searches common Chrome/Chromium install locations on macOS, Linux, and Windows. Set `MAPS_CHROME_EXECUTABLE` if necessary.
+Common Chrome/Chromium install locations are auto-detected. Set `MAPS_CHROME_EXECUTABLE` if required.
 
-## Install
+Normal CI covers Node.js 20/22/24 and real Chrome/CDP startup. Browser startup is additionally smoke-tested on GitHub-hosted macOS and Windows runners.
 
-```bash
-git clone https://github.com/git-ksk/maps-browser-mcp.git
-cd maps-browser-mcp
-npm ci --ignore-scripts
-npm run build
-```
+## Dedicated browser profile
 
-This package is distributed as a CLI (`maps-browser-mcp`); it does not expose the process-starting CLI entrypoint as a library export.
-
-### stdio
-
-```bash
-npm start
-```
-
-### Streamable HTTP
-
-```bash
-npm run start:http
-```
-
-Default endpoint:
+By default the managed browser profile lives at:
 
 ```text
-http://127.0.0.1:8787/mcp
+~/.maps-browser-mcp/chrome-profile
 ```
 
-The HTTP entry supports both the MCP 2025-era stateless handshake and the MCP `2026-07-28` modern `server/discover` / per-request `_meta` path through the official v2 server entry. `/mcp` accepts `POST`; `GET /mcp` is rejected. `/healthz` supports `GET`/`HEAD`. HTTP responses are marked `Cache-Control: no-store` because MCP responses can contain location/route information.
+Do not point this project at your everyday Chrome profile.
 
-## V3 interactive assist
+The managed CDP endpoint binds to `127.0.0.1`. The runtime validates the managed browser identity before reusing a profile and refuses to guess between multiple open Google Maps tabs.
 
-To allow the two read-summary tools:
+If Google displays consent, sign-in, CAPTCHA, or another access challenge, the MCP stops with `HUMAN_INTERVENTION_REQUIRED`. Resolve legitimate manual steps in the dedicated browser and then repeat the original Maps action.
 
-```bash
-INTERACTIVE_ASSIST_MODE=true npm run start:http
-```
+## HTTP and remote MCP clients
 
-The reader does **not** return a full DOM, full accessibility tree, raw HTML, network payloads, or review bodies. It:
-
-1. verifies that the dedicated tab is still on the Google Maps web surface,
-2. requires an active search/place or directions/route state,
-3. extracts a small candidate list using the same bounded logic used by selection,
-4. locates the Maps `role=main` region without widening the scan to the whole document,
-5. enables the Accessibility domain only for the bounded read,
-6. enforces node, line, character, and hourly read limits,
-7. strips control/bidirectional formatting characters,
-8. immediately disables the Accessibility domain again.
-
-Defaults:
+The HTTP server binds to loopback by default:
 
 ```text
-MAPS_MAX_AX_NODES=120
-MAPS_MAX_READ_CHARS=1800
-MAPS_MAX_VISIBLE_READS_PER_HOUR=30
+127.0.0.1:8787
 ```
 
-The hourly visible-read budget is separate from the general per-minute action rate. It provides a server-side collection bound even when a request does not match a bulk-request keyword pattern. Rate/read counters are process-local safety guards and reset when the process restarts; they are not intended as persistent accounting or a legal-compliance mechanism.
+Recommended remote architecture:
+
+```text
+Remote MCP client
+   -> authenticated HTTPS tunnel / reverse proxy
+   -> 127.0.0.1:8787/mcp
+   -> maps-browser-mcp
+   -> dedicated local Chrome
+```
+
+Only the MCP transport should cross the remote boundary. **Never expose the Chrome DevTools port publicly.**
+
+If you deliberately bind the Node server to a non-loopback address, startup requires both:
+
+```text
+MCP_ALLOW_NONLOOPBACK=true
+MCP_BEARER_TOKEN=<at least 24 characters>
+```
+
+This is an advanced escape hatch, not the recommended deployment shape.
+
+For ChatGPT-specific deployment and tool refresh notes, see **[ChatGPT connection notes](docs/chatgpt.md)**.
 
 ## Configuration
 
-The server does not automatically load `.env`; use your shell, process manager, or preferred environment loader. See `.env.example`.
+The server does not automatically load `.env`. Use your shell, process manager, or preferred environment loader. See [.env.example](.env.example).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address |
 | `MCP_HTTP_PORT` | `8787` | HTTP port |
-| `MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | Accepted Host header names |
+| `MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | Accepted Host names |
 | `MCP_ALLOWED_ORIGINS` | empty | Optional exact Origin allowlist |
-| `MCP_ALLOW_NONLOOPBACK` | `false` | Explicit opt-in before binding HTTP outside loopback |
-| `MCP_BEARER_TOKEN` | empty | Bearer-token guard; also mandatory for non-loopback binds; minimum 24 chars |
+| `MCP_ALLOW_NONLOOPBACK` | `false` | Explicit opt-in before non-loopback bind |
+| `MCP_BEARER_TOKEN` | empty | Optional guard; mandatory for non-loopback bind; minimum 24 chars |
 | `MCP_MAX_BODY_BYTES` | `262144` | Maximum MCP request body size |
 | `MAPS_CHROME_EXECUTABLE` | auto-detect | Chrome/Chromium executable |
 | `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | Dedicated profile directory |
-| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Explicit opt-in before attaching to an existing CDP endpoint |
-| `MAPS_CDP_PORT` | unset | Advanced: attach to an existing local Chrome CDP endpoint |
-| `MAPS_HEADLESS` | `false` | Run Chrome headless |
+| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Explicit opt-in before existing-CDP attachment |
+| `MAPS_CDP_PORT` | unset | Advanced: existing local CDP endpoint |
+| `MAPS_HEADLESS` | `false` | Headless Chrome |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable V3 bounded reading |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
-| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Process-local independent V3 read budget |
+| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent V3 read budget |
+| `MAPS_MAX_AX_NODES` | `120` | V3 Accessibility-node bound |
+| `MAPS_MAX_READ_CHARS` | `1800` | V3 returned-text bound |
 | `MAPS_MAX_PENDING_ACTIONS` | `8` | Maximum queued browser operations |
-| `MAPS_OPERATION_TIMEOUT_MS` | `25000` | Per-operation watchdog; resets browser session on timeout |
+| `MAPS_OPERATION_TIMEOUT_MS` | `25000` | Per-operation watchdog |
 
-Invalid boolean/integer configuration values fail fast instead of being silently coerced.
+Invalid boolean/integer configuration fails fast instead of being silently coerced.
 
-### Existing CDP endpoint warning
+### Existing CDP endpoint
 
-`MAPS_CDP_PORT` is an advanced escape hatch. It is rejected unless `MAPS_ALLOW_EXTERNAL_CDP=true` is also set. When enabled, the server attaches to an already-running **local** Chrome/Chromium endpoint instead of launching its own dedicated profile. Only use a CDP endpoint you control. Attaching to a personal everyday browser weakens the profile-isolation boundary and is not recommended.
+`MAPS_CDP_PORT` is intentionally guarded. It is rejected unless `MAPS_ALLOW_EXTERNAL_CDP=true` is also set.
 
-Chrome instances launched by this project explicitly bind their remote-debugging endpoint to `127.0.0.1`, and the dedicated profile directory is restricted to the current user on Unix-like systems. When reusing a managed profile, both the port and browser identity recorded in Chrome's `DevToolsActivePort` file must match the live endpoint; a stale file cannot be accepted merely because an unrelated Chrome later reused the same numeric port.
-
-The runtime also refuses to guess between multiple open Google Maps tabs in the dedicated profile. Keep one Maps tab open for the MCP session; if multiple Maps tabs are detected, the operation stops instead of silently taking control of the first one.
-
-## Connecting a remote MCP client
-
-The server binds to loopback by default. If a remote MCP client such as ChatGPT needs to reach it, place an HTTPS tunnel or reverse proxy in front of `/mcp`.
-
-Recommended setup:
-
-1. keep the Node server bound to loopback,
-2. add the public proxy hostname to `MCP_ALLOWED_HOSTS`,
-3. enforce authentication/access control at the HTTPS tunnel or reverse proxy,
-4. optionally configure `MCP_BEARER_TOKEN` as an additional server-side guard,
-5. never commit tunnel credentials, browser profiles, tokens, or local environment values.
-
-If you deliberately bind `MCP_HTTP_HOST` to a non-loopback address, the process refuses to start unless **both** `MCP_ALLOW_NONLOOPBACK=true` and a sufficiently long `MCP_BEARER_TOKEN` are configured. This is an advanced escape hatch, not the recommended tunnel architecture. Do not transmit the Bearer token over an unencrypted network connection; put externally reachable traffic behind TLS/HTTPS.
+Only attach to a **local, dedicated Chrome/Chromium instance you control**. Attaching to an everyday personal browser weakens profile isolation and is not recommended.
 
 ## Safety and compliance boundaries
 
-This project is designed as a constrained, user-directed browser agent. It is **not** intended to be:
+This project is a constrained, user-directed browser agent. It is **not** intended to be:
 
 - a Google Maps Platform API replacement,
 - a general-purpose browser MCP,
-- a bulk Google Maps scraper,
+- a bulk Google Maps scraper/crawler,
 - a place/review/route dataset harvester,
 - a CAPTCHA solver,
 - an anti-bot bypass tool.
 
 It intentionally does not implement Google Maps internal API interception, XHR/fetch harvesting, stealth plugins, fingerprint spoofing, proxy rotation, or persistent Maps datasets.
 
-Obvious bulk-collection requests are rejected by the server-side policy layer, V3 reads have a separate rolling hourly budget, navigation is restricted to the Google Maps web surface, and access challenges require human intervention.
+Obvious bulk-collection requests are rejected by the policy layer. V3 has a separate rolling hourly read budget. Navigation remains restricted to the Google Maps HTTPS web surface. Visible inline access challenges are detected and stop the operation.
 
-V3 visible-state reading is deliberately conservative, but Google does not explicitly guarantee that every browser-agent usage is permitted. Users remain responsible for applicable Google Maps/Google terms and laws. See [docs/compliance.md](docs/compliance.md).
+V3 is deliberately conservative, but this project does not claim that every browser-agent usage is guaranteed permitted by Google. Users are responsible for applicable service terms and laws. See **[Compliance boundaries](docs/compliance.md)**.
 
 ## Privacy
 
-The project does not intentionally persist Google Maps result datasets. Browser state lives in the dedicated local Chrome profile. Because that profile is persistent by design, Chrome itself may retain ordinary browser artifacts such as cookies, cache, preferences, and browsing history. Use a dedicated profile, avoid signing in unless needed, and delete the profile if you need to remove those local browser artifacts.
+The server does not intentionally persist Maps result datasets. The dedicated Chrome profile is persistent local browser state, so Chrome may retain ordinary browser artifacts such as cookies, cache, preferences, and history.
 
-Tool handlers do not log search queries or Maps result contents by default. Unexpected internal errors are logged locally, while remote MCP clients receive a generic error to avoid leaking local paths or environment details. HTTP responses use `Cache-Control: no-store`.
+Use a dedicated profile, avoid signing in unless necessary, and remove the dedicated profile when you need those local browser artifacts deleted.
 
-Do not commit your Chrome profile, environment files, tunnel credentials, or tokens.
+Tool handlers do not log search queries or Maps result contents by default. Remote clients receive generalized unexpected-error responses rather than local paths/environment details. HTTP responses use `Cache-Control: no-store`.
 
-## Current limitations
+Never commit browser profiles, `.env` files, tunnel credentials, tokens, screenshots/traces containing personal data, or generated Maps datasets.
 
-- Google Maps UI structure can change, so semantic result/route selection may need maintenance.
-- V3 visible-state reading is experimental and intentionally conservative.
-- The current process model is designed for one local user/browser session, not shared multi-tenant hosting.
-- CAPTCHA, consent, or sign-in flows are not bypassed; manual browser interaction may be required.
-- Normal push/PR CI intentionally does not visit Google Maps pages. The separate `Live Maps E2E (manual)` workflow performs a fixed, low-volume user-triggered compatibility check.
+## Testing and CI
 
-## Development
+Local verification:
 
 ```bash
 npm run typecheck
@@ -235,9 +286,53 @@ npm run smoke:http
 npm run smoke:browser
 ```
 
-CI verifies Node.js 20, 22, and 24, dependency audit, type checking, unit tests, build, real stdio round trips/tool registration for both protocol eras, the legacy 2025-era and modern `2026-07-28` HTTP paths including standardized `Mcp-Method`/`Mcp-Name` validation and a real modern `tools/call`, HTTP security/no-store behavior, package contents, and real Chrome/CDP startup without visiting Google Maps. Browser startup is additionally smoke-tested on GitHub-hosted Linux, macOS 15 arm64, and Windows runners. GitHub Actions dependencies are pinned to full commit SHAs, and Dependabot monitors both npm and Actions dependencies.
+Normal CI intentionally **does not visit Google Maps**. It verifies protocol, package, browser/CDP, security, and cross-platform behavior without turning GitHub Actions into unattended Maps automation.
 
-See [SECURITY.md](SECURITY.md) for security guidance.
+The repository also provides **Live Maps E2E (manual)**, a `workflow_dispatch`-only, fixed, low-volume compatibility check for the experimental live-UI paths. See **[Manual live E2E](docs/manual-e2e.md)**.
+
+GitHub Actions dependencies are pinned to full commit SHAs. Dependabot monitors npm and Actions dependencies. CodeQL runs JavaScript/TypeScript analysis and the protected `main` branch requires the configured CI/CodeQL checks before merge.
+
+## Current limitations
+
+- Google Maps UI changes can break experimental semantic selectors.
+- V3 visible-state reading remains experimental and bounded.
+- One process is designed for one local user/browser session, not multi-tenant hosting.
+- CAPTCHA, consent, and sign-in flows are not bypassed.
+- Rate/read counters are process-local safety guards, not persistent accounting or a legal-compliance mechanism.
+
+See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and error-code explanations.
+
+## Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Getting Started](docs/getting-started.md) | Installation, first run, client shape, V3 opt-in, cleanup |
+| [Troubleshooting](docs/troubleshooting.md) | Error codes and safe recovery procedures |
+| [ChatGPT](docs/chatgpt.md) | Remote ChatGPT/App connection boundary and tool refresh |
+| [Architecture](docs/architecture.md) | Runtime, CDP, state, queue/watchdog design |
+| [Compliance](docs/compliance.md) | Intended-use and non-goal boundaries |
+| [Manual live E2E](docs/manual-e2e.md) | User-triggered Google Maps compatibility verification |
+| [Release checklist](docs/release.md) | Pre-release CI, live check, security and tagging procedure |
+| [Security Policy](SECURITY.md) | Security model and private vulnerability reporting |
+| [Contributing](CONTRIBUTING.md) | Scope, PR rules, tests and security-sensitive changes |
+
+## Contributing
+
+Contributions are welcome within the project's constrained scope. Read **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening a PR.
+
+`main` is protected; changes should land through pull requests with the required CI and CodeQL checks.
+
+## Release status
+
+The repository metadata is currently versioned as `0.1.0`. Do not assume npm installation is available until a release explicitly documents a published npm package.
+
+See **[Release checklist](docs/release.md)** before tagging or publishing.
+
+## Security
+
+Use GitHub Private Vulnerability Reporting for security issues. Do not publish exploit details, credentials, browser profiles, private locations, or tokens in public issues.
+
+See **[SECURITY.md](SECURITY.md)**.
 
 ## Disclaimer
 
