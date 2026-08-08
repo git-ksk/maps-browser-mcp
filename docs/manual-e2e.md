@@ -1,10 +1,32 @@
 # User-directed live Google Maps E2E checklist
 
-Automated CI intentionally does not visit Google Maps pages. Before marking a UI-dependent release as stable, perform this small manual/user-directed E2E against the live Google Maps interface.
+Normal CI intentionally does not visit Google Maps pages. UI-dependent releases can additionally use the repository's **manual-only** GitHub Actions workflow, `Live Maps E2E (manual)`, or this checklist from a controlled local environment.
 
-Do not turn this checklist into unattended crawling. Use one ordinary request per scenario and stop if Google presents an access challenge.
+The Live workflow is triggered only through `workflow_dispatch`. It performs exactly two fixed, low-volume public checks: a `Tokyo Station` place search and a `Tokyo Station` -> `Yokohama Station` transit route. It does not save screenshots, DOM/AX dumps, reviews, cookies, browser profiles, or Maps result artifacts.
 
-## Preconditions
+Do not turn this checklist or workflow into unattended crawling. Use one ordinary request per scenario and stop if Google presents an access challenge.
+
+## Automated manual-trigger check
+
+From GitHub Actions:
+
+1. Open **Live Maps E2E (manual)**.
+2. Choose **Run workflow**.
+3. Select `run-live-check` for the confirmation input.
+4. Run the workflow.
+
+The workflow verifies:
+
+- official Maps URL navigation stays on the Google Maps web surface,
+- one bounded V3 place read returns only limited UI data and marks it untrusted,
+- one transit directions request produces bounded route data,
+- at least one selectable route candidate is detected,
+- `index + expectedLabel` selects the same current route candidate,
+- access challenges or non-Maps redirects fail rather than being bypassed.
+
+No artifact upload step exists in the workflow.
+
+## Preconditions for the full manual checklist
 
 - Use the dedicated `maps-browser-mcp` Chrome profile, not an everyday personal profile.
 - Keep the Chrome DevTools port local/private.
