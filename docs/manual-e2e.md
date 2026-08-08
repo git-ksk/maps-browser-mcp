@@ -2,7 +2,7 @@
 
 Normal CI intentionally does not visit Google Maps pages. UI-dependent releases can additionally use the repository's **manual-only** GitHub Actions workflow, `Live Maps E2E (manual)`, or this checklist from a controlled local environment.
 
-The Live workflow is triggered only through `workflow_dispatch`. It performs exactly two fixed, low-volume public checks: a `Tokyo Station` place search and a `Tokyo Station` -> `Yokohama Station` transit route. It does not save screenshots, DOM/AX dumps, reviews, cookies, browser profiles, or Maps result artifacts.
+The Live workflow is triggered only through `workflow_dispatch`. It performs exactly two fixed, low-volume public scenarios: a place/category search around `Tokyo Station` and a `Tokyo Station` -> `Yokohama Station` transit route. It does not save screenshots, DOM/AX dumps, reviews, cookies, browser profiles, or Maps result artifacts.
 
 Do not turn this checklist or workflow into unattended crawling. Use one ordinary request per scenario and stop if Google presents an access challenge.
 
@@ -19,10 +19,23 @@ The workflow verifies:
 
 - official Maps URL navigation stays on the Google Maps web surface,
 - one bounded V3 place read returns only limited UI data and marks it untrusted,
+- at least one selectable place candidate is detected,
+- `index + expectedLabel` selects the same current place candidate,
 - one transit directions request produces bounded route data,
 - at least one selectable route candidate is detected,
 - `index + expectedLabel` selects the same current route candidate,
 - access challenges or non-Maps redirects fail rather than being bypassed.
+
+The expected live path is:
+
+```text
+place search
+  -> bounded place read
+  -> guarded place selection
+  -> transit directions
+  -> bounded route read
+  -> guarded route selection
+```
 
 No artifact upload step exists in the workflow.
 
@@ -30,7 +43,7 @@ No artifact upload step exists in the workflow.
 
 - Use the dedicated `maps-browser-mcp` Chrome profile, not an everyday personal profile.
 - Keep the Chrome DevTools port local/private.
-- Confirm `npm ci`, `npm audit`, `npm run check`, `npm run build`, `npm run smoke:http`, and `npm run smoke:browser` pass first.
+- Confirm `npm ci --ignore-scripts`, `npm audit --audit-level=moderate`, `npm run check`, `npm run build`, `npm run smoke:http`, and `npm run smoke:browser` pass first.
 - Start with `INTERACTIVE_ASSIST_MODE=false`.
 
 ## 1. Search navigation
@@ -102,8 +115,12 @@ Send a clearly bulk-oriented search request such as asking to collect every stor
 
 Expected: `POLICY_BLOCKED` before browser navigation.
 
+Do not split a rejected bulk request into many smaller calls. That would violate the intended project boundary even if each individual query were accepted.
+
 ## Release result
 
 Record only pass/fail and the Google Maps UI date/locale used for the check. Do not attach screenshots or logs containing account information, private locations, cookies, browser profiles, or personal identifiers to public issues.
 
 If candidate extraction no longer matches the live Maps UI, keep the affected tool experimental/disabled until the semantic selectors are updated and this checklist passes again.
+
+For the full release procedure, see [release.md](release.md).
