@@ -29,6 +29,7 @@
     "check": "npm run typecheck && npm test",
     "smoke:http": "node scripts/smoke-http.mjs",
     "smoke:browser": "node scripts/smoke-browser.mjs",
+    "e2e:live:maps": "node scripts/live-maps-e2e.mjs",
     "prepack": "npm run check && npm run build"
   },
   "dependencies": {
