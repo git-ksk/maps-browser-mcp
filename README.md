@@ -53,7 +53,7 @@ maps-browser-mcp
     |
     +-- Maps URL Compiler
     +-- Policy Engine
-    +-- Operation Queue
+    +-- Operation Queue + Watchdog
     +-- Semantic UI Controller
     +-- Bounded Visible-State Reader (optional)
     |
@@ -72,7 +72,7 @@ The normal navigation path is intentionally short:
 1 MCP call -> 1 official Maps URL -> 1 CDP Page.navigate
 ```
 
-Browser operations are serialized because one process controls one browser tab. A bounded pending queue prevents concurrent MCP requests from racing the page or growing an unlimited backlog.
+Browser operations are serialized because one process controls one browser tab. A bounded pending queue prevents concurrent MCP requests from racing the page or growing an unlimited backlog. A watchdog resets the browser session if one operation exceeds `MAPS_OPERATION_TIMEOUT_MS`, so a stuck CDP operation cannot permanently wedge the queue.
 
 See [docs/architecture.md](docs/architecture.md) for details.
 
@@ -88,9 +88,11 @@ The server searches common Chrome/Chromium install locations on macOS, Linux, an
 ```bash
 git clone https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
-npm install
+npm ci --ignore-scripts
 npm run build
 ```
+
+This package is distributed as a CLI (`maps-browser-mcp`); it does not expose the process-starting CLI entrypoint as a library export.
 
 ### stdio
 
@@ -110,7 +112,7 @@ Default endpoint:
 http://127.0.0.1:8787/mcp
 ```
 
-The HTTP transport follows the MCP 2026-07-28 shape: `/mcp` accepts `POST`; `GET /mcp` is rejected. `/healthz` supports `GET`/`HEAD`.
+The HTTP entry supports both the MCP 2025-era stateless handshake and the MCP `2026-07-28` modern `server/discover` / per-request `_meta` path through the official v2 server entry. `/mcp` accepts `POST`; `GET /mcp` is rejected. `/healthz` supports `GET`/`HEAD`. HTTP responses are marked `Cache-Control: no-store` because MCP responses can contain location/route information.
 
 ## V3 interactive assist
 
@@ -162,6 +164,7 @@ The server does not automatically load `.env`; use your shell, process manager, 
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-level action guard |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent V3 read budget |
 | `MAPS_MAX_PENDING_ACTIONS` | `8` | Maximum queued browser operations |
+| `MAPS_OPERATION_TIMEOUT_MS` | `25000` | Per-operation watchdog; resets browser session on timeout |
 
 Invalid boolean/integer configuration values fail fast instead of being silently coerced.
 
@@ -204,7 +207,7 @@ V3 visible-state reading is deliberately conservative, but Google does not expli
 
 ## Privacy
 
-The project does not intentionally persist Google Maps result data. Browser state lives in the dedicated local Chrome profile. Tool handlers do not log search queries or Maps result contents by default. Unexpected internal errors are logged locally, while remote MCP clients receive a generic error to avoid leaking local paths or environment details.
+The project does not intentionally persist Google Maps result data. Browser state lives in the dedicated local Chrome profile. Tool handlers do not log search queries or Maps result contents by default. Unexpected internal errors are logged locally, while remote MCP clients receive a generic error to avoid leaking local paths or environment details. HTTP responses use `Cache-Control: no-store`.
 
 Do not commit your Chrome profile, environment files, tunnel credentials, or tokens.
 
@@ -222,11 +225,12 @@ Do not commit your Chrome profile, environment files, tunnel credentials, or tok
 npm run typecheck
 npm test
 npm run build
+npm run smoke:stdio
 npm run smoke:http
 npm run smoke:browser
 ```
 
-CI verifies Node.js 20, 22, and 24, dependency audit, type checking, unit tests, build, MCP HTTP initialization/security behavior, package contents, and real Chrome/CDP startup without visiting Google Maps. Browser startup is additionally smoke-tested on GitHub-hosted Linux, macOS 15 arm64, and Windows runners. GitHub Actions dependencies are pinned to full commit SHAs, and Dependabot monitors both npm and Actions dependencies.
+CI verifies Node.js 20, 22, and 24, dependency audit, type checking, unit tests, build, real stdio round trips/tool registration, both the legacy 2025-era and modern `2026-07-28` HTTP paths, HTTP security/no-store behavior, package contents, and real Chrome/CDP startup without visiting Google Maps. Browser startup is additionally smoke-tested on GitHub-hosted Linux, macOS 15 arm64, and Windows runners. GitHub Actions dependencies are pinned to full commit SHAs, and Dependabot monitors both npm and Actions dependencies.
 
 See [SECURITY.md](SECURITY.md) for security guidance.
 
