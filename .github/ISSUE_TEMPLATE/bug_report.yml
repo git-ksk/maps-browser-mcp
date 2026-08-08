@@ -1,0 +1,134 @@
+name: Bug report
+description: Report a reproducible maps-browser-mcp defect without exposing sensitive browser/location data
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug.
+
+        **Do not include** cookies, browser profiles, authorization headers, bearer/tunnel tokens, personal email addresses, private home/work locations, screenshots containing account data, or other secrets.
+
+        For security vulnerabilities, use GitHub Private Vulnerability Reporting instead of this public form.
+
+  - type: input
+    id: version
+    attributes:
+      label: maps-browser-mcp version / commit
+      description: Tag or commit SHA where the problem occurs.
+      placeholder: "v0.1.0 or 7468e71..."
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15.x, Ubuntu 24.04, Windows 11"
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version
+      placeholder: "22.x"
+    validations:
+      required: true
+
+  - type: input
+    id: chrome
+    attributes:
+      label: Chrome / Chromium version
+      placeholder: "Chrome 1xx.x"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: MCP transport
+      options:
+        - stdio
+        - Streamable HTTP
+        - Both / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: tool
+    attributes:
+      label: Tool / operation
+      description: Name the MCP tool or startup/smoke operation that failed.
+      placeholder: "maps_select_result"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use public/non-sensitive locations and omit account/browser-profile data.
+      placeholder: |
+        1. Start with ...
+        2. Call ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: input
+    id: error
+    attributes:
+      label: Error code
+      description: Provide the maps-browser-mcp error code if one was returned; omit secrets from surrounding logs.
+      placeholder: "UI_STATE_CHANGED"
+
+  - type: dropdown
+    id: smoke
+    attributes:
+      label: Local smoke tests
+      description: Did npm run check/build/smoke pass?
+      options:
+        - All relevant smoke tests pass
+        - One or more smoke tests fail
+        - Not run
+    validations:
+      required: true
+
+  - type: dropdown
+    id: live
+    attributes:
+      label: Manual Live Maps E2E
+      description: Run only when relevant to Google Maps UI compatibility; do not repeatedly trigger live checks for unrelated bugs.
+      options:
+        - Passes
+        - Fails
+        - Not relevant / not run
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy / security confirmation
+      options:
+        - label: I removed credentials, cookies, browser profiles, private locations, personal identifiers, and other secrets from this report.
+          required: true
+        - label: This is not a security vulnerability requiring private disclosure.
+          required: true
