@@ -44,6 +44,36 @@ async function parseMcpResponse(response) {
   return JSON.parse(text);
 }
 
+async function postMcp(baseUrl, message, extraHeaders = {}) {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      ...extraHeaders
+    },
+    body: JSON.stringify(message)
+  });
+  if (!response.ok) {
+    throw new Error(`MCP POST failed: ${response.status} ${await response.text()}`);
+  }
+  if (response.headers.get("cache-control") !== "no-store") {
+    throw new Error("MCP response must use Cache-Control: no-store");
+  }
+  return parseMcpResponse(response);
+}
+
+function modernMeta() {
+  return {
+    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+    "io.modelcontextprotocol/clientInfo": {
+      name: "maps-browser-mcp-ci-modern",
+      version: "1"
+    },
+    "io.modelcontextprotocol/clientCapabilities": {}
+  };
+}
+
 const port = await freePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 let stderr = "";
@@ -64,30 +94,47 @@ child.stderr.on("data", (chunk) => {
 try {
   await waitForHealth(baseUrl, () => stderr);
 
-  const initialize = await fetch(`${baseUrl}/mcp`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json, text/event-stream"
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2026-07-28",
-        capabilities: {},
-        clientInfo: { name: "maps-browser-mcp-ci", version: "1" }
-      }
-    })
+  // Legacy 2025-era path: initialize handshake.
+  const initialized = await postMcp(baseUrl, {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-11-25",
+      capabilities: {},
+      clientInfo: { name: "maps-browser-mcp-ci-legacy", version: "1" }
+    }
   });
-  if (!initialize.ok) throw new Error(`Initialize failed: ${initialize.status} ${await initialize.text()}`);
-  if (initialize.headers.get("cache-control") !== "no-store") {
-    throw new Error("MCP response must use Cache-Control: no-store");
+  if (initialized?.result?.serverInfo?.name !== "maps-browser-mcp") {
+    throw new Error(`Unexpected initialize response: ${JSON.stringify(initialized)}`);
   }
-  const payload = await parseMcpResponse(initialize);
-  if (payload?.result?.serverInfo?.name !== "maps-browser-mcp") {
-    throw new Error(`Unexpected initialize response: ${JSON.stringify(payload)}`);
+
+  // Modern 2026-07-28 path: server/discover + per-request _meta envelope.
+  const modernHeaders = { "mcp-protocol-version": "2026-07-28" };
+  const discovered = await postMcp(baseUrl, {
+    jsonrpc: "2.0",
+    id: "discover-1",
+    method: "server/discover",
+    params: { _meta: modernMeta() }
+  }, modernHeaders);
+  if (!Array.isArray(discovered?.result?.supportedVersions) ||
+      !discovered.result.supportedVersions.includes("2026-07-28")) {
+    throw new Error(`Unexpected server/discover response: ${JSON.stringify(discovered)}`);
+  }
+
+  const modernTools = await postMcp(baseUrl, {
+    jsonrpc: "2.0",
+    id: "tools-modern-1",
+    method: "tools/list",
+    params: { _meta: modernMeta() }
+  }, modernHeaders);
+  const toolNames = new Set(
+    Array.isArray(modernTools?.result?.tools)
+      ? modernTools.result.tools.map((tool) => tool?.name).filter(Boolean)
+      : []
+  );
+  if (toolNames.size !== 9 || !toolNames.has("maps_search") || !toolNames.has("maps_read_route_summary")) {
+    throw new Error(`Unexpected modern tools/list response: ${JSON.stringify(modernTools)}`);
   }
 
   const getResponse = await fetch(`${baseUrl}/mcp`);
@@ -117,7 +164,7 @@ try {
   });
   if (tooLarge.status !== 413) throw new Error(`Expected oversized body = 413, got ${tooLarge.status}`);
 
-  console.log("HTTP/MCP smoke test passed");
+  console.log("HTTP/MCP smoke test passed for legacy and modern protocol eras");
 } finally {
   child.kill("SIGTERM");
   await Promise.race([
