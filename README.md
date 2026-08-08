@@ -1,5 +1,7 @@
 # maps-browser-mcp
 
+[English](README.md) | [日本語](README.ja.md)
+
 A lightweight MCP server for interacting with Google Maps through a dedicated browser session.
 
 > **Status:** Planning / early development
