@@ -15,7 +15,7 @@ function compactText(value: string): string {
   return value.replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim();
 }
 
-function boundedLabel(value: string, limit = 200): string {
+function boundedLabel(value: string, limit = 240): string {
   return compactText(value).slice(0, limit);
 }
 
@@ -43,7 +43,7 @@ export class VisibleStateReader {
         truncated = true;
         break;
       }
-      const label = boundedLabel(rawItems[index] ?? "", 180);
+      const label = boundedLabel(rawItems[index] ?? "");
       if (!label) continue;
       if (chars + label.length > this.options.maxChars) {
         truncated = true;

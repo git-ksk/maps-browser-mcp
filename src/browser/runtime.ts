@@ -202,8 +202,7 @@ export class MapsBrowserRuntime {
       await this.resetClient();
     } finally {
       this.port = undefined;
-      this.lastAction = undefined;
-      this.viewState = "blank";
+      this.invalidateSemanticState();
       await this.chrome.close();
     }
   }
@@ -247,6 +246,7 @@ export class MapsBrowserRuntime {
         return;
       } catch {
         await this.resetClient();
+        this.invalidateSemanticState();
       }
     }
 
@@ -264,7 +264,7 @@ export class MapsBrowserRuntime {
         this.client.Runtime.enable(),
         this.client.DOM.enable()
       ]);
-      this.viewState = this.policy.isAllowedMapsUrl(target.url) ? this.viewState : "blank";
+      if (!this.lastAction) this.viewState = "blank";
     } catch (error) {
       if (error instanceof PolicyError || error instanceof BrowserRuntimeError) throw error;
       console.error("[maps-browser-mcp] Chrome/CDP connection failed", error);
@@ -280,6 +280,11 @@ export class MapsBrowserRuntime {
     this.client = undefined;
     this.targetId = undefined;
     if (client) await client.close().catch(() => undefined);
+  }
+
+  private invalidateSemanticState(): void {
+    this.lastAction = undefined;
+    this.viewState = "blank";
   }
 
   private assertAllowedCurrentUrl(value: string): void {
