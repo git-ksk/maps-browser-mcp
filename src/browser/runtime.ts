@@ -319,10 +319,17 @@ export class MapsBrowserRuntime {
     try {
       this.port = await this.chrome.start();
       const targets = await CDP.List({ port: this.port });
-      let target = targets.find(
+      const mapsTargets = targets.filter(
         (candidate) => candidate.type === "page" && this.policy.isAllowedMapsUrl(candidate.url)
       );
-      if (!target) target = await CDP.New({ port: this.port, url: "about:blank" });
+      if (mapsTargets.length > 1) {
+        this.invalidateSemanticState();
+        throw new BrowserRuntimeError(
+          "BROWSER_UNAVAILABLE",
+          "Multiple Google Maps tabs are open in the dedicated browser profile. Keep one Maps tab open, close the others, then retry."
+        );
+      }
+      const target = mapsTargets[0] ?? await CDP.New({ port: this.port, url: "about:blank" });
       this.targetId = target.id;
       this.client = await CDP({ port: this.port, target: this.targetId });
       await Promise.all([
