@@ -1,0 +1,27 @@
+name: Live place selection verification
+
+on:
+  push:
+    branches: [verify-live-place-select]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-place-select-verification
+  cancel-in-progress: true
+
+jobs:
+  live-maps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Run bounded live Maps E2E with place selection
+        run: npm run e2e:live:maps
