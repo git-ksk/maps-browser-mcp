@@ -30,7 +30,11 @@ function boundedSummary(summary, maxChars) {
 
 const profileDir = await fsp.mkdtemp(path.join(os.tmpdir(), "maps-browser-mcp-live-"));
 const chrome = new ChromeProcess({ profileDir, headless: true });
-const policy = new PolicyEngine({ interactiveAssist: true, maxActionsPerMinute: 10 });
+const policy = new PolicyEngine({
+  interactiveAssist: true,
+  maxActionsPerMinute: 10,
+  maxVisibleReadsPerHour: 4
+});
 const runtime = new MapsBrowserRuntime(chrome, policy);
 const compiler = new MapsUrlCompiler();
 const reader = new VisibleStateReader(runtime, { maxNodes: 120, maxChars: 1800 });
@@ -46,6 +50,7 @@ try {
   assert(searchNavigation.url.includes("/maps/"), "Search did not remain on Google Maps");
   await sleep(2_500);
 
+  policy.consumeVisibleRead();
   const placeSummary = await reader.read("place");
   boundedSummary(placeSummary, 1800);
   assert(placeSummary.items.length > 0, "No selectable place candidates were detected");
@@ -69,6 +74,7 @@ try {
   assert(routeNavigation.url.includes("/maps/"), "Directions did not remain on Google Maps");
   await sleep(3_000);
 
+  policy.consumeVisibleRead();
   const routeSummary = await reader.read("route");
   boundedSummary(routeSummary, 1800);
   assert(routeSummary.items.length > 0, "No selectable transit route candidates were detected");
