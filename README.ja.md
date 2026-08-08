@@ -1,6 +1,6 @@
 # maps-browser-mcp
 
-[English](README.md) | [日本語](README.ja.md)
+[English](README.md) | [日本語](README.ja.md) | [日本語ドキュメント](docs/README.ja.md)
 
 Google Maps Platform APIに依存せず、専用Chrome / Chromiumセッションを通してGoogle Mapsを操作する軽量MCPサーバーです。
 
@@ -50,7 +50,7 @@ Health check:
 curl -i http://127.0.0.1:8787/healthz
 ```
 
-初回起動、汎用MCPクライアント設定例、V3有効化、profile cleanupまで含む詳しい手順は **[Getting Started](docs/getting-started.md)** を参照してください。
+初回起動、汎用MCPクライアント設定例、V3有効化、profile cleanupまで含む詳しい手順は **[Getting Started 日本語版](docs/getting-started.ja.md)** を参照してください。
 
 ## 基本的な使い方
 
@@ -155,7 +155,7 @@ Google Maps Web
 
 1プロセスが1つのsemantic browser stateを管理します。ブラウザ操作は直列化し、待ち行列には上限を設け、1操作がtimeoutした場合はwatchdogがbrowser/CDP sessionをresetします。
 
-詳細は **[Architecture](docs/architecture.md)** を参照してください。
+詳細は **[Architecture 日本語版](docs/architecture.ja.md)** を参照してください。
 
 ## 必要環境・対応OS
 
@@ -210,7 +210,7 @@ MCP_BEARER_TOKEN=<24文字以上>
 
 これは推奨構成ではなく上級者向けescape hatchです。
 
-ChatGPT固有の接続・tool refreshについては **[ChatGPT connection notes](docs/chatgpt.md)** を参照してください。
+ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド 日本語版](docs/chatgpt.ja.md)** を参照してください。
 
 ## 設定
 
@@ -263,7 +263,7 @@ Google Maps内部API intercept、XHR/fetch収集、stealth plugin、fingerprint�
 
 明らかなbulk collection要求はPolicy Engineで拒否します。V3には独立したrolling hourly read budgetがあります。navigation先はGoogle Maps HTTPS web surfaceに限定し、visibleなinline access challengeも検出して操作を停止します。
 
-V3はリスクを抑えた設計ですが、すべてのbrowser-agent用途についてGoogleから許可を保証されたものではありません。利用者は適用される規約・法令を確認してください。詳細は **[Compliance](docs/compliance.md)** を参照してください。
+V3はリスクを抑えた設計ですが、すべてのbrowser-agent用途についてGoogleから許可を保証されたものではありません。利用者は適用される規約・法令を確認してください。詳細は **[Compliance / Safety 日本語版](docs/compliance.ja.md)** を参照してください。
 
 ## プライバシー
 
@@ -290,7 +290,7 @@ npm run smoke:browser
 
 通常CIは意図的に**Google Maps本番へアクセスしません**。MCP protocol、package、security、Chrome/CDP、cross-platform動作をMaps自動アクセスなしで検証します。
 
-実Google Maps UI互換性は、`workflow_dispatch` 専用の **Live Maps E2E (manual)** で固定・低ボリュームのuser-triggered checkとして確認します。詳細は **[Manual live E2E](docs/manual-e2e.md)** を参照してください。
+実Google Maps UI互換性は、`workflow_dispatch` 専用の **Live Maps E2E (manual)** で固定・低ボリュームのuser-triggered checkとして確認します。詳細は **[Manual Live E2E 日本語版](docs/manual-e2e.ja.md)** を参照してください。
 
 GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm/Actionsを監視、CodeQLでJavaScript/TypeScriptを解析します。`main` はprotected branchで、設定済みCI/CodeQL checksを通してからmergeします。
 
@@ -302,39 +302,40 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm/Actionsを�
 - CAPTCHA、同意、ログインflowを自動突破しません。
 - rate/read counterはprocess-local safety guardで、永続的な利用量計測や法的compliance mechanismではありません。
 
-エラー別の復旧手順は **[Troubleshooting](docs/troubleshooting.md)** を参照してください。
+エラー別の復旧手順は **[Troubleshooting 日本語版](docs/troubleshooting.ja.md)** を参照してください。
 
 ## ドキュメント
 
 | 文書 | 内容 |
 | --- | --- |
-| [Getting Started](docs/getting-started.md) | install、初回起動、client形、V3、cleanup |
-| [Troubleshooting](docs/troubleshooting.md) | error code別の安全な復旧手順 |
-| [ChatGPT](docs/chatgpt.md) | ChatGPT/App接続境界とtool refresh |
-| [Architecture](docs/architecture.md) | runtime、CDP、state、queue/watchdog |
-| [Compliance](docs/compliance.md) | 利用目的・非目的・規約境界 |
-| [Manual live E2E](docs/manual-e2e.md) | 実Google Maps user-triggered互換性確認 |
-| [Release checklist](docs/release.md) | release前CI、Live check、security、tag手順 |
-| [Security Policy](SECURITY.md) | security modelとprivate vulnerability reporting |
-| [Contributing](CONTRIBUTING.md) | scope、PR、test、security-sensitive change |
+| [日本語ドキュメント一覧](docs/README.ja.md) | 日本語版ドキュメントの目次 |
+| [Getting Started](docs/getting-started.ja.md) | install、初回起動、client形、V3、cleanup |
+| [Troubleshooting](docs/troubleshooting.ja.md) | error code別の安全な復旧手順 |
+| [ChatGPT](docs/chatgpt.ja.md) | ChatGPT/App接続境界とtool refresh |
+| [Architecture](docs/architecture.ja.md) | runtime、CDP、state、queue/watchdog |
+| [Compliance / Safety](docs/compliance.ja.md) | 利用目的・非目的・規約境界 |
+| [Manual Live E2E](docs/manual-e2e.ja.md) | 実Google Maps user-triggered互換性確認 |
+| [Release Checklist](docs/release.ja.md) | release前CI、Live check、security、tag手順 |
+| [Security Policy](SECURITY.ja.md) | security modelとprivate vulnerability reporting |
+| [Contributing](CONTRIBUTING.ja.md) | scope、PR、test、security-sensitive change |
 
 ## Contributing
 
-project scope内のcontributionは歓迎です。PR前に **[CONTRIBUTING.md](CONTRIBUTING.md)** を参照してください。
+Project scope内のcontributionは歓迎です。PR前に **[Contributing 日本語版](CONTRIBUTING.ja.md)** を参照してください。
 
 `main` はprotectedです。変更はbranch + Pull Request + 必須CI/CodeQL経由で入れてください。
 
-## Release status
+## Release Status
 
-repository metadata上のversionは現在 `0.1.0` です。releaseでnpm package公開が明示されるまでは、npm install可能と仮定しないでください。
+Repository metadata上のversionは現在 `0.1.0` です。Releaseでnpm package公開が明示されるまでは、npm install可能と仮定しないでください。
 
-tag/publish前は **[Release checklist](docs/release.md)** を参照してください。
+Tag / publish前は **[Release Checklist 日本語版](docs/release.ja.md)** を参照してください。
 
 ## Security
 
-security issueはGitHub Private Vulnerability Reportingを使用してください。exploit detail、credential、browser profile、private location、tokenをpublic issueへ投稿しないでください。
+Security issueはGitHub Private Vulnerability Reportingを使用してください。exploit detail、credential、browser profile、private location、tokenをpublic Issueへ投稿しないでください。
 
-詳細は **[SECURITY.md](SECURITY.md)** を参照してください。
+詳細は **[Security Policy 日本語版](SECURITY.ja.md)** を参照してください。
 
 ## Disclaimer
 
