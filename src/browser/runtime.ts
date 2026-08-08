@@ -289,12 +289,14 @@ export class MapsBrowserRuntime {
 
   private assertAllowedCurrentUrl(value: string): void {
     if (!value || value === "about:blank") {
+      this.invalidateSemanticState();
       throw new BrowserRuntimeError("MAPS_NOT_OPEN", "Google Maps is not open in the dedicated browser tab");
     }
     if (this.isChallengeUrl(value)) {
+      this.invalidateSemanticState();
       throw new BrowserRuntimeError(
         "HUMAN_INTERVENTION_REQUIRED",
-        "Google presented an access challenge. Automatic bypass is intentionally unsupported."
+        "Google presented an access challenge. Automatic bypass is intentionally unsupported. Repeat the intended Maps action after completing the manual step."
       );
     }
     if (!this.policy.isAllowedMapsUrl(value)) {
@@ -304,9 +306,10 @@ export class MapsBrowserRuntime {
       } catch {
         // Keep generic text.
       }
+      this.invalidateSemanticState();
       throw new BrowserRuntimeError(
         "HUMAN_INTERVENTION_REQUIRED",
-        `Browser left the Google Maps surface (${hostname}). Complete any consent or sign-in step manually.`
+        `Browser left the Google Maps surface (${hostname}). Complete any consent or sign-in step manually, then repeat the intended Maps action.`
       );
     }
   }

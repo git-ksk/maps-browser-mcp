@@ -22,6 +22,12 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm install --ignore-scripts
+      - name: Emit generated lockfile once for repository bootstrap
+        if: matrix.node == 22
+        run: |
+          printf 'LOCKFILE_BASE64='
+          base64 -w0 package-lock.json
+          printf '\n'
       - name: Dependency audit
         run: npm audit --audit-level=moderate
       - run: npm run check
