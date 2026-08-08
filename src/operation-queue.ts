@@ -58,17 +58,16 @@ export class OperationQueue {
     return this.pending;
   }
 
-  private async runGuarded<T>(task: () => Promise<T>): Promise<T> {
+  private runGuarded<T>(task: () => Promise<T>): Promise<T> {
     const timeoutMs = this.options?.timeoutMs;
     if (timeoutMs === undefined) return task();
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let timedOut = false;
     const taskPromise = Promise.resolve().then(task);
-
-    const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        timedOut = true;
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
         void Promise.resolve(this.options?.onTimeout?.())
           .catch(() => undefined)
           .finally(() => {
@@ -78,13 +77,25 @@ export class OperationQueue {
             ));
           });
       }, timeoutMs);
-    });
 
-    try {
-      return await Promise.race([taskPromise, timeoutPromise]);
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-      if (timedOut) void taskPromise.catch(() => undefined);
-    }
+      taskPromise.then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+
+      // A timed-out task may reject after the browser reset. The public result has
+      // already been decided by the watchdog, so consume that late rejection.
+      void taskPromise.catch(() => undefined);
+    });
   }
 }
