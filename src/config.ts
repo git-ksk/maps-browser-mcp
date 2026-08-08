@@ -94,14 +94,22 @@ export function loadConfig(): AppConfig {
   }
 
   const host = process.env.MCP_HTTP_HOST?.trim() || "127.0.0.1";
+  const allowNonLoopback = envBool("MCP_ALLOW_NONLOOPBACK", false);
   const bearerToken = process.env.MCP_BEARER_TOKEN?.trim() || undefined;
   if (bearerToken && bearerToken.length < 24) {
     throw new Error("MCP_BEARER_TOKEN must contain at least 24 characters when configured");
   }
-  if (!isLoopbackBind(host) && !bearerToken) {
-    throw new Error(
-      "Non-loopback MCP_HTTP_HOST requires MCP_BEARER_TOKEN. For tunnel/reverse-proxy deployments, keep the Node server on loopback whenever possible."
-    );
+  if (!isLoopbackBind(host)) {
+    if (!allowNonLoopback) {
+      throw new Error(
+        "Non-loopback MCP_HTTP_HOST requires explicit MCP_ALLOW_NONLOOPBACK=true. Prefer a loopback Node server behind an HTTPS tunnel/reverse proxy."
+      );
+    }
+    if (!bearerToken) {
+      throw new Error(
+        "Non-loopback MCP_HTTP_HOST requires MCP_BEARER_TOKEN in addition to MCP_ALLOW_NONLOOPBACK=true. Do not send the token over an unencrypted network connection."
+      );
+    }
   }
 
   return {
