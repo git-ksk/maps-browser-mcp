@@ -12,6 +12,8 @@
     ".env.example",
     "README.md",
     "README.ja.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
     "LICENSE"
   ],
   "engines": {
