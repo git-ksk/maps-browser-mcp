@@ -24,7 +24,7 @@ export function parseDevToolsActivePort(value: string): ActiveDevToolsEndpoint |
 async function canReachCdp(port: number, expectedBrowserPath?: string): Promise<boolean> {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
-      signal: AbortSignal.timeout(800)
+      signal: AbortSignal.timeout(1_500)
     });
     if (!response.ok) return false;
     const payload = (await response.json()) as { Browser?: unknown; webSocketDebuggerUrl?: unknown };
@@ -150,7 +150,8 @@ export class ChromeProcess {
       startupError = error;
     });
 
-    const deadline = Date.now() + 12_000;
+    const deadline = Date.now() + 30_000;
+    let observedEndpoint: ActiveDevToolsEndpoint | undefined;
     while (Date.now() < deadline) {
       if (startupError) {
         await this.close();
@@ -164,16 +165,22 @@ export class ChromeProcess {
       const endpoint = parseDevToolsActivePort(
         await fsp.readFile(activePortFile, "utf8").catch(() => "")
       );
-      if (endpoint && (await canReachCdp(endpoint.port, endpoint.browserPath))) {
-        this.port = endpoint.port;
-        this.browserPath = endpoint.browserPath;
-        return endpoint.port;
+      if (endpoint) {
+        observedEndpoint = endpoint;
+        if (await canReachCdp(endpoint.port, endpoint.browserPath)) {
+          this.port = endpoint.port;
+          this.browserPath = endpoint.browserPath;
+          return endpoint.port;
+        }
       }
-      await sleep(120);
+      await sleep(100);
     }
 
+    const diagnostic = observedEndpoint
+      ? `DevToolsActivePort appeared on port ${observedEndpoint.port}, but /json/version never became ready`
+      : "DevToolsActivePort was never created";
     await this.close();
-    throw new Error("Chrome started but its DevTools endpoint did not become ready");
+    throw new Error(`Chrome started but its DevTools endpoint did not become ready: ${diagnostic}`);
   }
 
   async close(): Promise<void> {
