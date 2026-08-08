@@ -4,6 +4,7 @@ import { isLoopbackBind, loadConfig } from "../src/config.js";
 
 const KEYS = [
   "MCP_HTTP_HOST",
+  "MCP_ALLOW_NONLOOPBACK",
   "MCP_BEARER_TOKEN",
   "MCP_ALLOWED_HOSTS",
   "MCP_ALLOWED_ORIGINS",
@@ -38,15 +39,25 @@ test("recognizes loopback bind addresses", () => {
   assert.equal(isLoopbackBind("0.0.0.0"), false);
 });
 
-test("refuses unauthenticated non-loopback binding", async () => {
-  await withEnv({ MCP_HTTP_HOST: "0.0.0.0" }, () => {
+test("refuses non-loopback binding without explicit opt-in", async () => {
+  await withEnv({
+    MCP_HTTP_HOST: "0.0.0.0",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
+  }, () => {
+    assert.throws(() => loadConfig(), /MCP_ALLOW_NONLOOPBACK=true/);
+  });
+});
+
+test("refuses unauthenticated non-loopback binding even after opt-in", async () => {
+  await withEnv({ MCP_HTTP_HOST: "0.0.0.0", MCP_ALLOW_NONLOOPBACK: "true" }, () => {
     assert.throws(() => loadConfig(), /requires MCP_BEARER_TOKEN/);
   });
 });
 
-test("allows non-loopback binding only with an application bearer token", async () => {
+test("allows non-loopback binding only with explicit opt-in and an application bearer token", async () => {
   await withEnv({
     MCP_HTTP_HOST: "0.0.0.0",
+    MCP_ALLOW_NONLOOPBACK: "true",
     MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
   }, () => {
     assert.equal(loadConfig().http.host, "0.0.0.0");

@@ -41,9 +41,11 @@ The design is for a single local user/browser session. Multi-user hosting would 
 
 By default, the runtime starts or reuses a dedicated Chrome/Chromium process/profile outside the repository at `~/.maps-browser-mcp/chrome-profile`.
 
-Chrome is launched with a separate `--user-data-dir`, `--remote-debugging-address=127.0.0.1`, and `--remote-debugging-port=0`; the actual loopback DevTools port is read from `DevToolsActivePort`. CDP endpoint identity is checked before reuse. On Unix-like systems, the dedicated profile directory is restricted to the current user.
+Chrome is launched with a separate `--user-data-dir`, `--remote-debugging-address=127.0.0.1`, and `--remote-debugging-port=0`. The project-managed endpoint is read from Chrome's `DevToolsActivePort` record and is reused only when **both** the numeric port and browser WebSocket identity match the live `/json/version` endpoint. This avoids trusting a stale profile file if an unrelated Chrome process later reuses the same numeric port. On Unix-like systems, the dedicated profile directory is restricted to the current user.
 
 A caller may instead set `MAPS_CDP_PORT` to attach to an existing **local** CDP endpoint, but only when `MAPS_ALLOW_EXTERNAL_CDP=true` is also set. This is an advanced escape hatch and weakens the dedicated-profile isolation guarantee. It should never point to a publicly reachable or everyday personal browser instance.
+
+When connecting to the dedicated browser, the runtime accepts zero or one Google Maps page target. If more than one Maps tab is open, it refuses to guess which tab to control and returns an error. This preserves the one-process/one-semantic-session invariant.
 
 If the CDP target becomes stale, reconnects, or is reset by the watchdog, semantic state is invalidated rather than assuming that the newly attached page still represents the previous search/directions operation.
 
@@ -86,12 +88,14 @@ The result explicitly marks Maps labels/text as untrusted external data. The ser
 
 It does not return full DOM/AX dumps, raw HTML, review bodies, network responses, or Google Maps internal API payloads.
 
+The action/read counters are process-local safety guards and reset when the process restarts. They are not persistent accounting or a claim of legal compliance.
+
 ## HTTP transport
 
 The HTTP endpoint is backed by the official MCP TypeScript v2 server entry and supports both protocol eras handled by that entry:
 
 - the 2025-era `initialize` flow,
-- the `2026-07-28` `server/discover` / request `_meta` flow, including standardized MCP HTTP header validation.
+- the `2026-07-28` `server/discover` / request `_meta` flow, including standardized `Mcp-Method` and `Mcp-Name` validation.
 
 The Node HTTP bridge includes:
 
@@ -99,18 +103,24 @@ The Node HTTP bridge includes:
 - Host allowlisting,
 - optional exact Origin allowlisting,
 - optional constant-time Bearer token guard,
-- mandatory application Bearer protection when deliberately binding to a non-loopback address,
+- an explicit `MCP_ALLOW_NONLOOPBACK=true` gate plus mandatory application Bearer protection for deliberate non-loopback binding,
 - bounded request body size,
 - request/header/keep-alive timeouts,
 - client-abort propagation,
 - streamed response backpressure handling,
 - `Cache-Control: no-store` on success, health, and error responses.
 
+Non-loopback binding is an advanced escape hatch. The preferred remote architecture keeps Node on loopback behind an authenticated HTTPS tunnel/reverse proxy. A static Bearer token must not be transmitted over an unencrypted network path.
+
 `/mcp` accepts `POST`; `GET /mcp` is rejected. `/healthz` is separate and supports `GET`/`HEAD`.
+
+## Persistent browser state
+
+The server does not intentionally persist Maps result datasets. The dedicated Chrome profile itself is persistent, however, and Chrome may retain normal local browser artifacts such as cookies, cache, preferences, and browsing history. That profile should be treated as sensitive local state and should not be committed or shared.
 
 ## CI boundary
 
-Normal CI runs dependency audit, type/unit checks, Node.js 20/22/24 builds, real stdio MCP round trips/tool registration, legacy and modern HTTP protocol smoke tests, HTTP security/no-store checks, package dry-run, and real headless Chrome/CDP startup tests.
+Normal CI runs dependency audit, type/unit checks, Node.js 20/22/24 builds, real stdio MCP round trips/tool registration for both the 2025 and 2026-07-28 eras, legacy and modern HTTP protocol smoke tests (including a real modern `tools/call` with `Mcp-Name` and rejection of malformed modern headers), HTTP security/no-store checks, package dry-run, and real headless Chrome/CDP startup tests.
 
 Chrome/CDP startup is exercised without Google Maps traffic on GitHub-hosted Linux, macOS 15 arm64, and Windows runners.
 

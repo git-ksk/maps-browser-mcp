@@ -19,15 +19,19 @@ The default configuration is intentionally local-only:
 If you expose `/mcp` through a tunnel or reverse proxy:
 
 1. keep the Node process on loopback where possible,
-2. authenticate the public endpoint,
+2. authenticate the public HTTPS endpoint,
 3. restrict the allowed Host/Origin values,
 4. do not expose a Chrome DevTools port publicly,
 5. do not reuse your everyday Chrome profile,
 6. rotate any token immediately if it is accidentally exposed.
 
-A non-loopback `MCP_HTTP_HOST` always requires `MCP_BEARER_TOKEN`. Authentication performed by a front proxy is not accepted as a reason to leave a directly reachable non-loopback Node port unauthenticated.
+Non-loopback binding is an advanced escape hatch. A non-loopback `MCP_HTTP_HOST` requires **both** `MCP_ALLOW_NONLOOPBACK=true` and a sufficiently long `MCP_BEARER_TOKEN`. Front-proxy authentication alone is not accepted as a reason to leave a directly reachable non-loopback Node port unauthenticated. Never send the static Bearer token over an unencrypted network connection; externally reachable traffic should be protected by TLS/HTTPS.
 
 Chrome instances launched by this project bind remote debugging to `127.0.0.1`. `MAPS_CDP_PORT` is rejected unless `MAPS_ALLOW_EXTERNAL_CDP=true` is also set, and should only point to a local, dedicated Chrome/Chromium instance you control. CDP provides powerful browser access and must not be exposed to untrusted networks.
+
+For project-managed profiles, Chrome's `DevToolsActivePort` record is validated using both its numeric port and browser WebSocket identity. This prevents a stale profile record from being trusted solely because an unrelated Chrome process later reused the same port number.
+
+The runtime also refuses ambiguous startup when multiple Google Maps page targets are open in the dedicated profile instead of silently taking control of the first target.
 
 ## Runtime failure containment
 
@@ -58,11 +62,13 @@ Do not include any of the following in bug reports, logs, commits, or screenshot
 
 The repository intentionally ignores common environment/profile/runtime files. Review staged changes before publishing them.
 
+The dedicated browser profile is persistent by design and may contain normal Chrome artifacts such as cookies, cache, preferences, and browsing history. It is not a Maps dataset, but it is still sensitive local state. Use a dedicated profile and delete it when you need those artifacts removed.
+
 MCP/health/error HTTP responses are marked `Cache-Control: no-store` because responses can contain location or route information. Reverse proxies should preserve or strengthen this policy rather than caching MCP traffic.
 
 ## Dependency and CI security
 
-GitHub Actions used by this repository are pinned to full commit SHAs. Dependabot monitors npm and GitHub Actions dependencies. CI uses `npm ci --ignore-scripts`, runs `npm audit --audit-level=moderate`, validates both supported MCP HTTP protocol eras plus stdio round trips, and tests Chrome/CDP startup without visiting Google Maps on Linux, macOS, and Windows runners.
+GitHub Actions used by this repository are pinned to full commit SHAs. Dependabot monitors npm and GitHub Actions dependencies. CI uses `npm ci --ignore-scripts`, runs `npm audit --audit-level=moderate`, validates legacy and modern MCP protocol paths over both stdio and HTTP, validates modern HTTP `Mcp-Method` / `Mcp-Name` behavior, and tests Chrome/CDP startup without visiting Google Maps on Linux, macOS, and Windows runners.
 
 ## Reporting a vulnerability
 

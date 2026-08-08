@@ -74,10 +74,11 @@ function modernMeta() {
   };
 }
 
-function modernHeaders(method) {
+function modernHeaders(method, name) {
   return {
     "mcp-protocol-version": "2026-07-28",
-    "mcp-method": method
+    "mcp-method": method,
+    ...(name ? { "mcp-name": name } : {})
   };
 }
 
@@ -117,7 +118,7 @@ try {
   }
 
   // Modern 2026-07-28 path: server/discover + per-request _meta envelope and
-  // SEP-2243 standard HTTP method mirroring.
+  // SEP-2243 standard HTTP method/name mirroring.
   const discovered = await postMcp(baseUrl, {
     jsonrpc: "2.0",
     id: "discover-1",
@@ -142,6 +143,42 @@ try {
   );
   if (toolNames.size !== 9 || !toolNames.has("maps_search") || !toolNames.has("maps_read_route_summary")) {
     throw new Error(`Unexpected modern tools/list response: ${JSON.stringify(modernTools)}`);
+  }
+
+  // Exercise a modern tools/call without touching Chrome. Safe mode is disabled,
+  // so the read tool must return a normal tool execution error. This validates the
+  // required Mcp-Name header/body match in addition to Mcp-Method.
+  const modernToolCall = await postMcp(baseUrl, {
+    jsonrpc: "2.0",
+    id: "tool-modern-1",
+    method: "tools/call",
+    params: {
+      name: "maps_read_place_summary",
+      arguments: {},
+      _meta: modernMeta()
+    }
+  }, modernHeaders("tools/call", "maps_read_place_summary"));
+  if (modernToolCall?.result?.isError !== true) {
+    throw new Error(`Expected safe-mode tool execution error: ${JSON.stringify(modernToolCall)}`);
+  }
+
+  // Modern requests missing a required standardized header must be rejected.
+  const missingMethodHeader = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      "mcp-protocol-version": "2026-07-28"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "bad-modern-1",
+      method: "tools/list",
+      params: { _meta: modernMeta() }
+    })
+  });
+  if (missingMethodHeader.status !== 400) {
+    throw new Error(`Expected missing Mcp-Method = 400, got ${missingMethodHeader.status}`);
   }
 
   const getResponse = await fetch(`${baseUrl}/mcp`);
