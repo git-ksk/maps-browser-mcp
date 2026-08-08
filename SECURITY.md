@@ -66,15 +66,23 @@ The dedicated browser profile is persistent by design and may contain normal Chr
 
 MCP/health/error HTTP responses are marked `Cache-Control: no-store` because responses can contain location or route information. Reverse proxies should preserve or strengthen this policy rather than caching MCP traffic.
 
-## Dependency and CI security
+## Dependency, CI, and repository security
 
 GitHub Actions used by this repository are pinned to full commit SHAs. Dependabot monitors npm and GitHub Actions dependencies. CI uses `npm ci --ignore-scripts`, runs `npm audit --audit-level=moderate`, validates legacy and modern MCP protocol paths over both stdio and HTTP, validates modern HTTP `Mcp-Method` / `Mcp-Name` behavior, and tests Chrome/CDP startup without visiting Google Maps on Linux, macOS, and Windows runners.
 
+CodeQL performs JavaScript/TypeScript analysis. Repository policy tests also guard important source-controlled release invariants such as Action SHA pinning and keeping Live Maps E2E manual-only.
+
+The `main` branch is protected. Required CI/CodeQL checks apply to administrators as well, force pushes and branch deletion are disabled, linear history is required, and review conversations must be resolved before merge.
+
+These repository settings are external to source code, so maintainers should periodically verify them as part of the [release checklist](docs/release.md).
+
 ## Reporting a vulnerability
 
-Do not publish secrets or exploit details in a public issue.
+**GitHub Private Vulnerability Reporting is enabled for this repository.** Use the repository's private vulnerability reporting / Security Advisory flow for security reports.
 
-Prefer GitHub's private vulnerability reporting / Security Advisory flow when available for this repository. If no private reporting option is available, open a minimal public issue stating that you have a security report, without including exploit details or secrets, so a private channel can be established.
+Do not publish secrets, exploit details, private locations, browser profiles, or credentials in a public issue.
+
+If private reporting is temporarily unavailable due to a GitHub/service issue, open only a minimal public issue stating that you need a private security contact. Do not include exploit details or secrets in that issue.
 
 ## Supported versions
 

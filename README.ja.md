@@ -2,20 +2,91 @@
 
 [English](README.md) | [日本語](README.ja.md)
 
-Google Maps Platform APIに依存せず、専用ブラウザセッションを通してGoogle Mapsを操作する軽量MCPサーバーです。
+Google Maps Platform APIに依存せず、専用Chrome / Chromiumセッションを通してGoogle Mapsを操作する軽量MCPサーバーです。
 
-> **ステータス:** V1〜V3実装済み。Google MapsのUI構造に依存する操作はExperimentalです。
+> **ステータス:** V1〜V3実装済み。Google Mapsの実UIに依存するsemantic interactionと限定Visible-State Readerは、UI変更の影響を受けるためExperimentalです。
 
-## できること
+## このプロジェクトの狙い
 
-`maps-browser-mcp` は汎用Browser MCPではなく、Google Maps向けの小さく明確なツールだけを公開します。
+汎用Browser MCPは強力ですが、Google Mapsの操作だけをしたい場合には公開する操作面が大きすぎます。`maps-browser-mcp` は逆に、機能を意図的に絞ります。
 
-- Google公式Maps URLによる検索・経路・地図・Street View表示
-- 専用Chrome / ChromiumプロファイルをCDPで制御
-- 汎用 `click` / `type` / selector / JavaScript実行をMCPとして公開しない
-- 場所候補・経路候補の限定的なsemantic selection
-- オプションのbounded Visible-State Reader
-- Google Maps Platform APIキー不要
+- MCPにはGoogle Maps専用ツールだけを公開
+- 可能な限りGoogle公式Maps URLを使用
+- Chrome DevTools Protocol (CDP) はローカルに閉じる
+- 普段使いとは分離した専用ブラウザprofileを使用
+- UI状態が曖昧ならfail closed
+- 画面読み取りは明示Opt-in・bounded・デフォルトOFF
+- スクレイピング、CAPTCHA回避、stealth、内部Maps API収集は実装しない
+
+## 5分クイックスタート
+
+必要環境はNode.js 20以上とGoogle Chrome / Chromiumです。
+
+```bash
+git clone https://github.com/git-ksk/maps-browser-mcp.git
+cd maps-browser-mcp
+npm ci --ignore-scripts
+npm run build
+npm start
+```
+
+これで**stdio** MCPがSafe Modeで起動します。最初のMaps操作時に専用Chrome profileを起動または再利用します。
+
+Streamable HTTPで使う場合:
+
+```bash
+npm run start:http
+```
+
+デフォルトMCP endpoint:
+
+```text
+http://127.0.0.1:8787/mcp
+```
+
+Health check:
+
+```bash
+curl -i http://127.0.0.1:8787/healthz
+```
+
+初回起動、汎用MCPクライアント設定例、V3有効化、profile cleanupまで含む詳しい手順は **[Getting Started](docs/getting-started.md)** を参照してください。
+
+## 基本的な使い方
+
+NavigationはV3を有効にしなくても使えます。
+
+```text
+maps_search({ query: "東京駅" })
+```
+
+```text
+maps_directions({
+  origin: "東京駅",
+  destination: "横浜駅",
+  mode: "transit"
+})
+```
+
+V3を有効にした場合、場所候補は次の順序で扱うのを推奨します。
+
+```text
+maps_search(...)
+  -> maps_read_place_summary()
+  -> items[{ index, label }] から選ぶ
+  -> maps_select_result({ index, expectedLabel: label })
+```
+
+経路候補も同様です。
+
+```text
+maps_directions(...)
+  -> maps_read_route_summary()
+  -> items[{ index, label }] から選ぶ
+  -> maps_select_route({ index, expectedLabel: label })
+```
+
+`expectedLabel` は重要です。Google Mapsが候補順を動的に並べ替えた場合、別候補を誤クリックせず `UI_STATE_CHANGED` で停止します。
 
 ## MCPツール
 
@@ -37,11 +108,21 @@ Google Maps Platform APIに依存せず、専用ブラウザセッションを�
 - `maps_read_place_summary`
 - `maps_read_route_summary`
 
-画面読み取りは**デフォルトOFF**です。`INTERACTIVE_ASSIST_MODE=true` の場合のみ有効になります。
+V3の画面読み取りは**デフォルトOFF**です。必要な場合だけ有効化します。
 
-Readerは小さな `items[{ index, label }]` と関連UIテキストだけを返します。候補選択時は、可能ならReaderが返した `label` を `expectedLabel` として渡してください。Google Maps側で候補順が変化していた場合、別候補を誤クリックせず `UI_STATE_CHANGED` で停止します。
+```bash
+INTERACTIVE_ASSIST_MODE=true npm start
+```
 
-Google Mapsから読み取った文字列はすべて**信頼されていない外部データ**として扱います。MCPクライアント側でも命令ではなくデータとして扱ってください。
+または:
+
+```bash
+INTERACTIVE_ASSIST_MODE=true npm run start:http
+```
+
+Readerが返すのはboundedな `items[{ index, label }]` と必要最小限のUIテキストです。生HTML、DOM全体、Accessibility Tree全体、network payload、cookie、レビュー本文の収集は行いません。
+
+Google Mapsから返る文字列はすべて**信頼されていない外部データ**として扱います。MCPクライアントでも命令ではなくデータとして扱ってください。
 
 ## アーキテクチャ
 
@@ -60,90 +141,80 @@ maps-browser-mcp
     v
 Dedicated Chrome / Chromium
     |
-   CDP
+   CDP (loopback)
     |
     v
 Google Maps Web
 ```
 
-通常の検索・経路表示は次の最短経路を使います。
+通常Navigationの経路は意図的に短くしています。
 
 ```text
 1 MCP call -> 1 Google公式Maps URL -> 1 CDP Page.navigate
 ```
 
-ブラウザ操作は内部キューで直列化し、待ち行列にも上限を設けます。1操作が `MAPS_OPERATION_TIMEOUT_MS` を超えた場合はwatchdogがブラウザ/CDPセッションをリセットしてから次の操作へ進むため、1回のCDP停止でキュー全体が永久に詰まることを防ぎます。
+1プロセスが1つのsemantic browser stateを管理します。ブラウザ操作は直列化し、待ち行列には上限を設け、1操作がtimeoutした場合はwatchdogがbrowser/CDP sessionをresetします。
 
-詳細は [docs/architecture.md](docs/architecture.md) を参照してください。
+詳細は **[Architecture](docs/architecture.md)** を参照してください。
 
-## 必要環境
+## 必要環境・対応OS
 
 - Node.js 20以上
-- Google Chrome または Chromium
+- Google ChromeまたはChromium
+- macOS / Linux / Windows
 
-macOS / Linux / Windowsの一般的なChromeインストール場所は自動検出します。必要なら `MAPS_CHROME_EXECUTABLE` を指定してください。
+一般的なChrome / Chromiumのinstall pathは自動検出します。必要な場合だけ `MAPS_CHROME_EXECUTABLE` を指定してください。
 
-## インストール
+通常CIではNode.js 20 / 22 / 24を検証し、実Chrome/CDP startupも確認します。macOSおよびWindows runnerでもBrowser smokeを実行します。
 
-```bash
-git clone https://github.com/git-ksk/maps-browser-mcp.git
-cd maps-browser-mcp
-npm ci --ignore-scripts
-npm run build
-```
+## 専用Chrome profile
 
-本パッケージは `maps-browser-mcp` コマンドとして配布するCLIです。プロセスを起動するentrypointをライブラリexportとしては公開しません。
-
-### stdio
-
-```bash
-npm start
-```
-
-### Streamable HTTP
-
-```bash
-npm run start:http
-```
-
-デフォルト:
+デフォルトprofile:
 
 ```text
-http://127.0.0.1:8787/mcp
+~/.maps-browser-mcp/chrome-profile
 ```
 
-HTTP entryは公式MCP TypeScript SDK v2のserver entryを使い、2025系の `initialize` 経路と、`2026-07-28` の `server/discover` / requestごとの `_meta` を使うmodern経路の両方に対応します。`/mcp` は `POST` のみ、`GET /mcp` は拒否します。`/healthz` は `GET` / `HEAD` に対応します。位置・経路情報を含み得るため、HTTP応答には `Cache-Control: no-store` を付与します。
+普段使いのChrome profileを指定しないでください。
 
-## V3の画面読み取り
+本プロジェクトが起動するCDP endpointは `127.0.0.1` にbindします。managed profile再利用時はbrowser identityを検証し、Google Mapsタブが複数ある場合はどれかを勝手に選ばず停止します。
 
-```bash
-INTERACTIVE_ASSIST_MODE=true npm run start:http
-```
+Google側で同意、ログイン、CAPTCHA、アクセスチャレンジが表示された場合は `HUMAN_INTERVENTION_REQUIRED` で停止します。必要な手作業を専用browser上で行い、その後に元のMaps操作を最初から実行してください。
 
-Readerは全DOM、Accessibility Tree全体、生HTML、ネットワークレスポンス、レビュー本文を返しません。
+## HTTP / Remote MCP client
 
-1. 専用タブがGoogle Maps上にいることを確認
-2. 検索/場所または経路/ルートのsemantic stateを確認
-3. 選択処理と同じ限定ロジックで候補を抽出
-4. `role=main` 領域だけを対象にする
-5. Accessibility domainを読み取り中だけ有効化
-6. ノード数・行数・文字数・1時間あたりの読み取り回数を制限
-7. 制御文字・双方向テキスト制御文字を除去
-8. 読み取り後すぐAccessibility domainを無効化
-
-デフォルト:
+HTTP serverはデフォルトでloopback bindです。
 
 ```text
-MAPS_MAX_AX_NODES=120
-MAPS_MAX_READ_CHARS=1800
-MAPS_MAX_VISIBLE_READS_PER_HOUR=30
+127.0.0.1:8787
 ```
 
-V3読み取り上限は通常の1分あたり操作上限とは別です。ただし、これらのrate/read counterは**プロセス内の安全ガード**であり、プロセス再起動でリセットされます。永続的な利用量計測や法的コンプライアンス保証を目的にはしていません。
+推奨構成:
+
+```text
+Remote MCP client
+   -> 認証付きHTTPS Tunnel / Reverse Proxy
+   -> 127.0.0.1:8787/mcp
+   -> maps-browser-mcp
+   -> 専用ローカルChrome
+```
+
+remote boundaryを越えるのはMCP transportだけにしてください。**Chrome DevTools portを公開しないでください。**
+
+意図的にNode serverを非loopbackへbindする場合は、次の両方が必須です。
+
+```text
+MCP_ALLOW_NONLOOPBACK=true
+MCP_BEARER_TOKEN=<24文字以上>
+```
+
+これは推奨構成ではなく上級者向けescape hatchです。
+
+ChatGPT固有の接続・tool refreshについては **[ChatGPT connection notes](docs/chatgpt.md)** を参照してください。
 
 ## 設定
 
-サーバーは `.env` を自動ロードしません。シェルやプロセスマネージャーから設定してください。例は `.env.example` にあります。
+サーバーは `.env` を自動ロードしません。shell、process manager、任意のenvironment loaderから設定してください。例は [.env.example](.env.example) にあります。
 
 | 変数 | デフォルト | 用途 |
 | --- | --- | --- |
@@ -152,81 +223,61 @@ V3読み取り上限は通常の1分あたり操作上限とは別です。た�
 | `MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | 許可Host名 |
 | `MCP_ALLOWED_ORIGINS` | empty | Origin完全一致allowlist（任意） |
 | `MCP_ALLOW_NONLOOPBACK` | `false` | 非loopback bindの明示Opt-in |
-| `MCP_BEARER_TOKEN` | empty | Bearer token。非loopback時も必須、24文字以上 |
+| `MCP_BEARER_TOKEN` | empty | optional guard。非loopback時は必須、24文字以上 |
 | `MCP_MAX_BODY_BYTES` | `262144` | MCP request body最大サイズ |
 | `MAPS_CHROME_EXECUTABLE` | 自動検出 | Chrome / Chromium executable |
 | `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | 専用Chrome profile |
 | `MAPS_ALLOW_EXTERNAL_CDP` | `false` | 既存CDP endpoint接続の明示Opt-in |
-| `MAPS_CDP_PORT` | unset | 上級者向け: 既存ローカルCDP endpoint |
+| `MAPS_CDP_PORT` | unset | 上級者向け既存ローカルCDP endpoint |
 | `MAPS_HEADLESS` | `false` | headless mode |
 | `INTERACTIVE_ASSIST_MODE` | `false` | V3読み取りを有効化 |
-| `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | プロセス内の操作上限 |
-| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | プロセス内のV3独立読み取り上限 |
-| `MAPS_MAX_PENDING_ACTIONS` | `8` | 待機可能なブラウザ操作数 |
-| `MAPS_OPERATION_TIMEOUT_MS` | `25000` | 1操作のwatchdog。超過時にセッションをリセット |
+| `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | process-local操作上限 |
+| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | V3独立読み取り上限 |
+| `MAPS_MAX_AX_NODES` | `120` | V3 Accessibility node上限 |
+| `MAPS_MAX_READ_CHARS` | `1800` | V3返却text上限 |
+| `MAPS_MAX_PENDING_ACTIONS` | `8` | 待機可能なbrowser操作数 |
+| `MAPS_OPERATION_TIMEOUT_MS` | `25000` | 1操作watchdog |
 
-不正なboolean/整数値は曖昧に解釈せず、起動時に失敗します。
+不正なboolean/整数値は曖昧に解釈せず、起動時にfail fastします。
 
-### CDPの安全境界
+### 既存CDP endpoint
 
-`MAPS_CDP_PORT` は上級者向けのescape hatchです。`MAPS_ALLOW_EXTERNAL_CDP=true` がない限り拒否します。設定すると、MCPが自分で専用Chromeを起動せず、既に動作中の**ローカル**CDP endpointへ接続します。
+`MAPS_CDP_PORT` は `MAPS_ALLOW_EXTERNAL_CDP=true` がない限り拒否します。
 
-普段使いの個人ブラウザへの接続は推奨しません。専用profileによる分離境界が弱くなるためです。
+接続する場合も、**自分で管理するローカル専用Chrome / Chromium** に限定してください。普段使いの個人browserへのattachはprofile isolationを弱めるため推奨しません。
 
-本プロジェクトが起動するChromeのremote debugging endpointは明示的に `127.0.0.1` へbindし、Unix系OSではprofileディレクトリを現在ユーザーだけがアクセスできる権限にします。既存の専用profileを再利用する場合は、Chromeの `DevToolsActivePort` に記録された**portとbrowser identityの両方**が現在のendpointと一致することを確認するため、古いファイルのport番号が偶然別Chromeに再利用されても誤接続しません。
+## 安全性・利用境界
 
-また、専用profile内にGoogle Mapsタブが複数ある場合は、先頭タブを勝手に選ばず停止します。MCPで使うMapsタブは1枚にしてください。
-
-## ChatGPTなどRemote MCP Clientから接続する場合
-
-推奨構成は、Nodeサーバーをloopbackのままにして、`/mcp` の前段に認証付きHTTPS Tunnel / Reverse Proxyを置く形です。
-
-1. Nodeサーバーはloopback bindのまま
-2. 公開proxyのhostを `MCP_ALLOWED_HOSTS` に追加
-3. HTTPS Tunnel / Reverse Proxy側で認証・アクセス制御
-4. 必要なら追加防御として `MCP_BEARER_TOKEN`
-5. credential / token / Chrome profile / ローカル環境値をcommitしない
-
-意図的に非loopbackへbindする場合は、**`MCP_ALLOW_NONLOOPBACK=true` と24文字以上の `MCP_BEARER_TOKEN` の両方**が必須です。これは推奨構成ではなく上級者向けescape hatchです。Bearer tokenを暗号化されていないネットワーク経路へ流さず、外部到達トラフィックはTLS/HTTPSで保護してください。
-
-## 安全性・利用方針
-
-このプロジェクトはユーザーから明示的に依頼された操作を代行する**制約付きGoogle Mapsブラウザエージェント**です。
+このプロジェクトは、ユーザーから明示的に依頼された操作を代行する**制約付きGoogle Maps browser agent**です。
 
 以下を目的にはしていません。
 
 - Google Maps Platform APIの代替
 - 汎用Browser MCP
-- Google Mapsの大量スクレイピング
-- 店舗・口コミ・経路データセットの収集
+- Google Mapsのbulk scraper / crawler
+- 店舗・口コミ・経路dataset収集
 - CAPTCHA solver
 - bot検知回避
 
-Google Maps内部API、XHR/fetch収集、stealth plugin、fingerprint偽装、proxy rotation、Mapsデータセットの永続化は意図的に実装しません。
+Google Maps内部API intercept、XHR/fetch収集、stealth plugin、fingerprint偽装、proxy rotation、Maps dataset永続化は意図的に実装しません。
 
-明らかな大量収集要求はPolicy Engineで拒否し、V3には独立したrolling hourly budgetを設け、遷移先はGoogle Maps web surfaceに限定します。アクセスチャレンジが表示された場合は自動突破せず、人間の操作が必要なエラーで停止します。
+明らかなbulk collection要求はPolicy Engineで拒否します。V3には独立したrolling hourly read budgetがあります。navigation先はGoogle Maps HTTPS web surfaceに限定し、visibleなinline access challengeも検出して操作を停止します。
 
-V3の限定読み取りはリスクを抑えた設計ですが、Googleがすべてのブラウザエージェント用途を明示的に許可しているわけではありません。利用者は適用されるGoogle Maps / Google規約と法令を確認する必要があります。詳細は [docs/compliance.md](docs/compliance.md) を参照してください。
+V3はリスクを抑えた設計ですが、すべてのbrowser-agent用途についてGoogleから許可を保証されたものではありません。利用者は適用される規約・法令を確認してください。詳細は **[Compliance](docs/compliance.md)** を参照してください。
 
 ## プライバシー
 
-Google Maps結果の**データセット**を意図的に永続保存しません。一方、専用Chrome profile自体は継続利用できるようpersistentです。そのためChromeは通常のブラウザと同様に、cookie、cache、設定、閲覧履歴などのローカルbrowser artifactを保持する場合があります。
+MCP serverはGoogle Maps結果datasetを意図的に永続保存しません。一方、専用Chrome profileはpersistentなlocal browser stateなので、通常のChromeと同様にcookie、cache、設定、閲覧履歴を保持する場合があります。
 
-専用profileを使い、不要ならGoogleアカウントへログインせず、ローカルbrowser artifactを削除したい場合は専用profile自体を削除してください。
+専用profileを使用し、不要ならGoogleアカウントへログインせず、browser artifactを削除したい場合はMCP/Chromeを停止したうえで専用profileを削除してください。
 
-通常のツール処理では検索語やMaps結果本文をログ出力しません。Remote MCPクライアントには内部詳細を一般化したエラーとして返し、HTTP応答は `Cache-Control: no-store` にします。
+通常tool handlerでは検索語やMaps結果本文をログしません。unexpected errorはremote clientへlocal pathやenvironment detailsを漏らさないgeneralized errorとして返します。HTTP responseは `Cache-Control: no-store` です。
 
-Chrome profile、`.env`、Tunnel credential、token等をGitへcommitしないでください。
+Browser profile、`.env`、Tunnel credential、token、個人情報を含むscreenshot/trace、生成したMaps datasetをcommitしないでください。
 
-## 現在の制限
+## テスト・CI
 
-- Google MapsのUI変更により候補選択ロジックの保守が必要になる可能性があります。
-- V3 Visible-State ReaderはExperimentalです。
-- 現在は1人・1ローカルブラウザセッション向けで、マルチテナント共有ホスティング向けではありません。
-- CAPTCHA、同意、ログイン画面を自動突破しません。
-- 通常のpush / PR CIからGoogle Mapsへアクセスしません。`Live Maps E2E (manual)` だけがユーザーの明示操作時に固定・低ボリュームの実UI互換性確認を行います。
-
-## 開発・検証
+ローカル検証:
 
 ```bash
 npm run typecheck
@@ -237,14 +288,58 @@ npm run smoke:http
 npm run smoke:browser
 ```
 
-CIではNode.js 20 / 22 / 24、依存脆弱性、型チェック、Unit Test、Build、**2025系と2026-07-28系の両方のstdio round-trip**、9ツール登録、modern HTTPの `Mcp-Method` / `Mcp-Name` validationと実 `tools/call`、HTTPセキュリティ / `no-store`、npm package内容、実Chrome/Chromiumのheadless起動とCDP接続を検証します。Google Mapsへアクセスしないbrowser smokeはLinux、GitHub-hosted macOS 15 arm64、Windowsで実行します。GitHub Actionsは完全なcommit SHAへpinし、npmとActions依存はDependabotで監視します。
+通常CIは意図的に**Google Maps本番へアクセスしません**。MCP protocol、package、security、Chrome/CDP、cross-platform動作をMaps自動アクセスなしで検証します。
 
-セキュリティ方針は [SECURITY.md](SECURITY.md) を参照してください。
+実Google Maps UI互換性は、`workflow_dispatch` 専用の **Live Maps E2E (manual)** で固定・低ボリュームのuser-triggered checkとして確認します。詳細は **[Manual live E2E](docs/manual-e2e.md)** を参照してください。
 
-## 免責事項
+GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm/Actionsを監視、CodeQLでJavaScript/TypeScriptを解析します。`main` はprotected branchで、設定済みCI/CodeQL checksを通してからmergeします。
 
-本プロジェクトは独立したOSSであり、Googleによる提供・承認・提携を受けたものではありません。Google Mapsその他の名称・商標は各権利者に帰属します。利用者は適用されるサービス規約および法令を遵守する責任があります。
+## 現在の制限
 
-## ライセンス
+- Google Maps UI変更でExperimentalなsemantic selectorが壊れる可能性があります。
+- V3 Visible-State ReaderはExperimentalかつboundedです。
+- 1processは1人・1local browser session向けで、multi-tenant hosting向けではありません。
+- CAPTCHA、同意、ログインflowを自動突破しません。
+- rate/read counterはprocess-local safety guardで、永続的な利用量計測や法的compliance mechanismではありません。
+
+エラー別の復旧手順は **[Troubleshooting](docs/troubleshooting.md)** を参照してください。
+
+## ドキュメント
+
+| 文書 | 内容 |
+| --- | --- |
+| [Getting Started](docs/getting-started.md) | install、初回起動、client形、V3、cleanup |
+| [Troubleshooting](docs/troubleshooting.md) | error code別の安全な復旧手順 |
+| [ChatGPT](docs/chatgpt.md) | ChatGPT/App接続境界とtool refresh |
+| [Architecture](docs/architecture.md) | runtime、CDP、state、queue/watchdog |
+| [Compliance](docs/compliance.md) | 利用目的・非目的・規約境界 |
+| [Manual live E2E](docs/manual-e2e.md) | 実Google Maps user-triggered互換性確認 |
+| [Release checklist](docs/release.md) | release前CI、Live check、security、tag手順 |
+| [Security Policy](SECURITY.md) | security modelとprivate vulnerability reporting |
+| [Contributing](CONTRIBUTING.md) | scope、PR、test、security-sensitive change |
+
+## Contributing
+
+project scope内のcontributionは歓迎です。PR前に **[CONTRIBUTING.md](CONTRIBUTING.md)** を参照してください。
+
+`main` はprotectedです。変更はbranch + Pull Request + 必須CI/CodeQL経由で入れてください。
+
+## Release status
+
+repository metadata上のversionは現在 `0.1.0` です。releaseでnpm package公開が明示されるまでは、npm install可能と仮定しないでください。
+
+tag/publish前は **[Release checklist](docs/release.md)** を参照してください。
+
+## Security
+
+security issueはGitHub Private Vulnerability Reportingを使用してください。exploit detail、credential、browser profile、private location、tokenをpublic issueへ投稿しないでください。
+
+詳細は **[SECURITY.md](SECURITY.md)** を参照してください。
+
+## Disclaimer
+
+本プロジェクトは独立したOSSであり、Googleによる公式提供・承認・提携を意味しません。Google Maps等の名称・商標は各権利者に帰属します。利用者は適用される利用規約・法令を確認してください。
+
+## License
 
 MIT
