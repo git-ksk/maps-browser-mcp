@@ -9,6 +9,7 @@ function sleep(ms: number): Promise<void> {
 
 type CdpClient = Awaited<ReturnType<typeof CDP>>;
 type CandidateKind = "place" | "route";
+type MapsPathKind = "search" | "place" | "directions" | "map" | "root" | "other";
 
 function actionToView(action: MapsAction): MapsViewState {
   switch (action.kind) {
@@ -20,6 +21,20 @@ function actionToView(action: MapsAction): MapsViewState {
       return "show";
     case "streetview":
       return "streetview";
+  }
+}
+
+function mapsPathKind(value: string): MapsPathKind {
+  try {
+    const pathname = new URL(value).pathname;
+    if (pathname === "/maps" || pathname === "/maps/") return "root";
+    if (pathname.startsWith("/maps/search/")) return "search";
+    if (pathname.startsWith("/maps/place/")) return "place";
+    if (pathname.startsWith("/maps/dir/")) return "directions";
+    if (pathname === "/maps/@" || pathname.startsWith("/maps/@/")) return "map";
+    return "other";
+  } catch {
+    return "other";
   }
 }
 
@@ -146,53 +161,92 @@ export class MapsBrowserRuntime {
   }
 
   async assertReadableView(kind: CandidateKind): Promise<MapsViewState> {
-    await this.assertMapsSurface();
-    const allowed = kind === "place"
-      ? new Set<MapsViewState>(["search", "place"])
-      : new Set<MapsViewState>(["directions", "route"]);
-    if (!allowed.has(this.viewState)) {
+    const url = await this.assertMapsSurface();
+    const pathKind = mapsPathKind(url);
+    const pathCompatible = kind === "place"
+      ? pathKind === "search" || pathKind === "place"
+      : pathKind === "directions";
+    const stateCompatible = kind === "place"
+      ? this.viewState === "search" || this.viewState === "place"
+      : this.viewState === "directions" || this.viewState === "route";
+
+    if (!pathCompatible || !stateCompatible) {
+      this.invalidateSemanticState();
       throw new BrowserRuntimeError(
-        "MAPS_NOT_OPEN",
+        "UI_STATE_CHANGED",
         kind === "place"
-          ? "No Google Maps place/search view is active. Call maps_search first."
-          : "No Google Maps directions view is active. Call maps_directions first."
+          ? "The browser no longer matches the active place/search state. Run maps_search again."
+          : "The browser no longer matches the active directions state. Run maps_directions again."
       );
     }
     return this.viewState;
   }
 
+  async assertDirectionsContext(): Promise<void> {
+    const url = await this.assertMapsSurface();
+    if (mapsPathKind(url) !== "directions" || this.lastAction?.kind !== "directions") {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "The browser no longer matches the active directions request. Run maps_directions again."
+      );
+    }
+  }
+
   async listPlaceResults(): Promise<string[]> {
-    await this.assertMapsSurface();
-    if (this.viewState !== "search") return [];
+    const url = await this.assertMapsSurface();
+    if (this.viewState !== "search" || mapsPathKind(url) !== "search") return [];
     return this.evaluateCandidates("place");
   }
 
   async listRouteResults(): Promise<string[]> {
-    await this.assertMapsSurface();
-    if (this.viewState !== "directions" && this.viewState !== "route") return [];
+    const url = await this.assertMapsSurface();
+    if (
+      (this.viewState !== "directions" && this.viewState !== "route") ||
+      mapsPathKind(url) !== "directions"
+    ) return [];
     return this.evaluateCandidates("route");
   }
 
   async clickPlaceResult(index: number, expectedLabel?: string): Promise<string> {
-    await this.assertMapsSurface();
-    if (this.viewState !== "search") {
-      throw new BrowserRuntimeError("MAPS_NOT_OPEN", "No place result list is active. Call maps_search first.");
+    const url = await this.assertMapsSurface();
+    if (this.viewState !== "search" || mapsPathKind(url) !== "search") {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "The place result list is no longer active. Run maps_search again.");
     }
     const label = await this.clickCandidate("place", index, expectedLabel);
     await sleep(450);
-    await this.assertMapsSurface();
+    const finalUrl = await this.assertMapsSurface();
+    if (mapsPathKind(finalUrl) !== "place") {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Google Maps did not enter a place view after the selection. Run maps_search again."
+      );
+    }
     this.viewState = "place";
     return label;
   }
 
   async clickRouteResult(index: number, expectedLabel?: string): Promise<string> {
-    await this.assertMapsSurface();
-    if (this.viewState !== "directions" && this.viewState !== "route") {
-      throw new BrowserRuntimeError("MAPS_NOT_OPEN", "No route result list is active. Call maps_directions first.");
+    const url = await this.assertMapsSurface();
+    if (
+      (this.viewState !== "directions" && this.viewState !== "route") ||
+      mapsPathKind(url) !== "directions"
+    ) {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "The route result list is no longer active. Run maps_directions again.");
     }
     const label = await this.clickCandidate("route", index, expectedLabel);
     await sleep(350);
-    await this.assertMapsSurface();
+    const finalUrl = await this.assertMapsSurface();
+    if (mapsPathKind(finalUrl) !== "directions") {
+      this.invalidateSemanticState();
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Google Maps left the directions view after the route selection. Run maps_directions again."
+      );
+    }
     this.viewState = "route";
     return label;
   }
