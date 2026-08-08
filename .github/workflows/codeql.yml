@@ -22,6 +22,12 @@ jobs:
         with:
           languages: javascript-typescript
       - name: Analyze
+        id: codeql
         uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           category: /language:javascript-typescript
+          output: codeql-results
+      - name: Require zero CodeQL findings
+        env:
+          CODEQL_SARIF_DIR: ${{ steps.codeql.outputs.sarif-output }}
+        run: node scripts/check-codeql-results.mjs "$CODEQL_SARIF_DIR"
