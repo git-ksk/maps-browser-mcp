@@ -1,0 +1,27 @@
+name: Final live Maps verification
+
+on:
+  push:
+    branches: [final-audit-fixes]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-live-maps-verification
+  cancel-in-progress: true
+
+jobs:
+  live-maps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Run bounded live Maps E2E
+        run: npm run e2e:live:maps
