@@ -94,12 +94,25 @@ single-user で profile の永続化が本当に必要な場合のみ `MAPS_CHRO
 
 `GET /readyz` はmanaged Chromiumとlocal CDP endpointが利用可能かを確認します。必要なら専用Chromium sessionを起動または再利用しますが、**Google Mapsへnavigateしません**。browser startup / CDPに失敗した場合はHTTP `503`と最小限のavailability statusだけを返し、詳細はlocal server logに残します。
 
+`/readyz` はChromiumを能動的に起動できるため、`MCP_BEARER_TOKEN` が設定されている場合は同じbearer認証を必須にします。non-loopbackではbearer token自体が必須なので、外部から未認証でbrowser resourceを起動できません。`/healthz` はHost検証後のpassiveなunauthenticated livenessのままです。
+
+Loopback-onlyでbearer tokenを設定していない場合:
+
 ```bash
 curl -i http://127.0.0.1:8787/healthz
 curl -i http://127.0.0.1:8787/readyz
 ```
 
-Dockerfileの `HEALTHCHECK` は純粋なprocess livenessとして意図的に `/healthz` を使い続けます。browser readinessが必要なruntimeでは `/readyz` を別途利用できます。
+`MCP_BEARER_TOKEN` を設定している場合:
+
+```bash
+curl -i http://127.0.0.1:8787/healthz
+curl -i \
+  -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:8787/readyz
+```
+
+Dockerfileの `HEALTHCHECK` は純粋なprocess livenessとして意図的に `/healthz` を使い続けます。browser readinessが必要なruntimeではauthenticated `/readyz` を別途利用できます。
 
 ## CI coverage
 
@@ -111,7 +124,7 @@ Container検証は独立したoptional jobではなく、repositoryの既存requ
 - sandbox-capableなbrowser/CDP path
 - 制約runtimeでsandboxを勝手に無効化せずfail closedすること
 - `MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true` の明示fallback
-- `PORT` fallback、`/healthz`、`/readyz`
+- `PORT` fallback、`/healthz`、authenticated `/readyz`、bearer設定時のunauthenticated active readiness拒否
 
 通常のcontainer CIはGoogle Mapsへアクセスしません。
 
@@ -126,6 +139,7 @@ HTTP process は `SIGTERM` / `SIGINT` を処理し、MCP handler を閉じ、man
 - bind address のデフォルトは loopback のまま
 - non-loopback bind には `MCP_ALLOW_NONLOOPBACK=true` が必要
 - non-loopback bind には24文字以上の bearer token も必要
+- active `/readyz` browser probeは設定済みbearer tokenを要求
 - Chromium sandbox を無効化する場合も別の明示的opt-inが必要
 - external CDP attachment は引き続き明示的opt-in
 - V3 visible-state reading も引き続きopt-in
