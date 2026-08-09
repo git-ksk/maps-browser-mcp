@@ -4,6 +4,8 @@ Normal CI intentionally does not visit Google Maps pages. UI-dependent releases 
 
 The Live workflow is triggered only through `workflow_dispatch`. It performs exactly two fixed, low-volume public scenarios: a place/category search around `Tokyo Station` and a `Tokyo Station` -> `Yokohama Station` transit route. It does not save screenshots, DOM/AX dumps, reviews, cookies, browser profiles, or Maps result artifacts.
 
+The workflow can run the same bounded script either on the GitHub-hosted runner (`host`) or inside the repository's built container image (`container`). The container option exists only to validate the combination of the packaged headless Chromium runtime and the live Maps UI; it does not make live Maps access part of normal CI.
+
 Do not turn this checklist or workflow into unattended crawling. Use one ordinary request per scenario and stop if Google presents an access challenge.
 
 ## Automated manual-trigger check
@@ -13,7 +15,12 @@ From GitHub Actions:
 1. Open **Live Maps E2E (manual)**.
 2. Choose **Run workflow**.
 3. Select `run-live-check` for the confirmation input.
-4. Run the workflow.
+4. Select one execution environment:
+   - `host` for the normal runner path, or
+   - `container` for the built container image with sandbox-capable Chromium.
+5. Run the workflow.
+
+Use `container` before a release that materially changes the Dockerfile, headless Chromium startup, browser profile paths, container filesystem assumptions, or container-specific Chrome flags. Do not run both modes merely for routine activity; keep live checks low-volume and purpose-driven.
 
 The workflow verifies:
 
@@ -37,7 +44,7 @@ place search
   -> guarded route selection
 ```
 
-No artifact upload step exists in the workflow.
+The container path builds the repository Dockerfile and runs this same bounded script inside that image. It uses a sandbox-capable container configuration and does not enable `MAPS_ALLOW_UNSANDBOXED_CHROMIUM`. No artifact upload step exists in either path.
 
 ## Preconditions for the full manual checklist
 
@@ -107,7 +114,7 @@ If a consent, sign-in, CAPTCHA, or other access challenge appears:
 2. Confirm it does not attempt CAPTCHA solving, stealth/fingerprint changes, proxy rotation, or internal endpoint calls.
 3. If the user manually resolves the screen, repeat the original Maps action instead of continuing from stale state.
 
-Do not intentionally trigger access challenges for testing.
+Do not intentionally trigger access challenges for testing. Deterministic repository tests cover the fail-closed challenge URL/redirect boundary; live confirmation is opportunistic when a challenge naturally appears.
 
 ## 8. Bulk-policy boundary
 
@@ -119,7 +126,7 @@ Do not split a rejected bulk request into many smaller calls. That would violate
 
 ## Release result
 
-Record only pass/fail and the Google Maps UI date/locale used for the check. Do not attach screenshots or logs containing account information, private locations, cookies, browser profiles, or personal identifiers to public issues.
+Record only pass/fail, selected runtime (`host` or `container`), and the Google Maps UI date/locale used for the check. Do not attach screenshots or logs containing account information, private locations, cookies, browser profiles, or personal identifiers to public issues.
 
 If candidate extraction no longer matches the live Maps UI, keep the affected tool experimental/disabled until the semantic selectors are updated and this checklist passes again.
 

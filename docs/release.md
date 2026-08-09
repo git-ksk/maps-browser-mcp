@@ -91,7 +91,7 @@ Before a release that changes any of these areas, run **Live Maps E2E (manual)**
 - browser challenge/navigation safety logic,
 - Chrome/CDP behavior that could affect the live page.
 
-The workflow is deliberately `workflow_dispatch`-only and low-volume.
+The workflow is deliberately `workflow_dispatch`-only and low-volume. Choose `host` for the normal runner path. If the release materially changes the Dockerfile, headless Chromium startup, container profile/filesystem behavior, or container-specific Chrome flags, choose `container` so the same bounded live script runs inside the built image with Chromium sandboxing enabled. Do not run both modes without a concrete compatibility reason.
 
 Expected live path:
 
@@ -104,7 +104,7 @@ place search
   -> index + expectedLabel route selection
 ```
 
-Record pass/fail only. Do not add screenshots, DOM dumps, cookies, browser profiles, reviews, or location-result artifacts to the repository.
+Record pass/fail and the selected runtime only. Do not add screenshots, DOM dumps, cookies, browser profiles, reviews, or location-result artifacts to the repository.
 
 Do not deliberately trigger or attempt to bypass CAPTCHA, consent, sign-in, or access challenges. The deterministic test suite covers fail-closed `HUMAN_INTERVENTION_REQUIRED` boundaries; live challenge handling is rechecked opportunistically only when such a screen occurs naturally.
 
@@ -167,7 +167,7 @@ Release notes should include:
 - notable safety boundaries,
 - supported Node versions,
 - Chrome/Chromium requirement,
-- whether live Maps E2E passed for the release,
+- whether live Maps E2E passed for the release and which runtime (`host` or `container`) was used,
 - known experimental/compatibility limitations,
 - install/run instructions or a link to Getting Started.
 
