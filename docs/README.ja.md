@@ -1,6 +1,6 @@
 # 日本語ドキュメント
 
-[English README](../README.md) | [日本語 README](../README.ja.md)
+[English docs](README.md) | [English README](../README.md) | [日本語 README](../README.ja.md)
 
 `maps-browser-mcp` の日本語ドキュメント一覧です。
 
@@ -19,9 +19,17 @@
 
 ## 開発・リリース
 
+- [Release / Versioning ガイド](releases.ja.md) — 最新安定版、tag checkout、`main`との使い分け、npm公開状況、v0.1.1検証記録
+- [Changelog](../CHANGELOG.md) — 公開Releaseごとの主要変更履歴
 - [Manual Live E2E 日本語版](manual-e2e.ja.md) — 実Google Maps UI互換性を手動起動で確認する手順
 - [Release Checklist 日本語版](release.ja.md) — v0.xリリース前後のチェックリスト
 - [Contributing 日本語版](../CONTRIBUTING.ja.md) — 受け入れる変更、非ゴール、テスト・PRルール
+
+## 現在の安定版
+
+最新の公開GitHub Releaseは **v0.1.1** です。安定版を固定して利用したい場合は `main` ではなく `v0.1.1` tagを使用してください。
+
+現時点ではnpm packageは公開していません。詳細は [Release / Versioning ガイド](releases.ja.md) を参照してください。
 
 ## 原文について
 
