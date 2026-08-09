@@ -94,12 +94,25 @@ Override it with `MAPS_CHROME_PROFILE_DIR` only when you have a specific single-
 
 `GET /readyz` verifies that the managed Chromium process and its local CDP endpoint are usable. It may start/reuse the dedicated Chromium session, but it does **not** navigate to Google Maps. A browser startup/CDP failure returns HTTP `503` with only a bounded availability status; detailed local errors remain in server logs.
 
+Because `/readyz` can actively start Chromium, it is protected by `MCP_BEARER_TOKEN` whenever a bearer token is configured. This is especially important for non-loopback deployments, where a bearer token is already mandatory. `/healthz` remains a passive unauthenticated liveness endpoint after Host validation.
+
+Without a configured bearer token on a loopback-only server:
+
 ```bash
 curl -i http://127.0.0.1:8787/healthz
 curl -i http://127.0.0.1:8787/readyz
 ```
 
-The image's Docker `HEALTHCHECK` intentionally continues to use `/healthz` as pure process liveness. Runtime orchestration can use `/readyz` separately when browser readiness is required.
+When `MCP_BEARER_TOKEN` is configured:
+
+```bash
+curl -i http://127.0.0.1:8787/healthz
+curl -i \
+  -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:8787/readyz
+```
+
+The image's Docker `HEALTHCHECK` intentionally continues to use `/healthz` as pure process liveness. Runtime orchestration can use authenticated `/readyz` separately when browser readiness is required.
 
 ## CI coverage
 
@@ -111,7 +124,7 @@ Container validation is part of the repository's existing required Node 22 CI jo
 - exercises a sandbox-capable browser/CDP path
 - verifies restricted runtimes do not silently downgrade the sandbox
 - exercises the explicit `MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true` fallback
-- verifies `PORT` fallback, `/healthz`, and `/readyz`
+- verifies `PORT` fallback, `/healthz`, authenticated `/readyz`, and rejection of unauthenticated active readiness checks when a bearer token is configured
 
 Normal container CI never visits Google Maps.
 
@@ -126,6 +139,7 @@ The normal safety invariants remain in force in containers:
 - default bind address remains loopback
 - non-loopback binding requires `MCP_ALLOW_NONLOOPBACK=true`
 - non-loopback binding also requires a bearer token of at least 24 characters
+- active `/readyz` browser probes require the configured bearer token
 - Chromium sandbox disabling requires a separate explicit opt-in
 - external CDP attachment remains opt-in
 - V3 visible-state reading remains opt-in
