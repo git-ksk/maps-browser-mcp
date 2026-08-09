@@ -24,6 +24,7 @@
 - [Manual Live E2E 日本語版](manual-e2e.ja.md) — 実Google Maps UI互換性を手動起動で確認する手順
 - [Release Checklist 日本語版](release.ja.md) — v0.xリリース前後のチェックリスト
 - [Contributing 日本語版](../CONTRIBUTING.ja.md) — 受け入れる変更、非ゴール、テスト・PRルール
+- [Code of Conduct 日本語版](../CODE_OF_CONDUCT.ja.md) — collaborationとmoderationの基本方針
 
 ## 現在の安定版
 
