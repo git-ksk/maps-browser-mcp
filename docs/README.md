@@ -24,6 +24,7 @@ Documentation index for `maps-browser-mcp`.
 - [Manual Live E2E](manual-e2e.md) — explicit user-triggered live Google Maps compatibility check
 - [Release Checklist](release.md) — pre-release and post-release procedure
 - [Contributing](../CONTRIBUTING.md) — accepted scope, non-goals, tests and pull-request rules
+- [Code of Conduct](../CODE_OF_CONDUCT.md) — collaboration and moderation expectations
 
 ## Language policy
 
