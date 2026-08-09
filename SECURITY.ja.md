@@ -114,4 +114,12 @@ GitHub側障害等でprivate reportingが一時利用できない場合、privat
 
 ## Supported Versions
 
-現在pre-1.0です。Security fixは最新 `main` に適用します。過去snapshotへのbackportは保証しません。
+現在pre-1.0であり、長期backportは約束しません。
+
+| Version | Security support |
+| --- | --- |
+| `0.1.1` | 現在のstable releaseとしてsupport |
+| `0.1.0` | routine backportなし |
+| `main` | development branch。fixはまずここへ入る |
+
+Security fixは最新 `main` で開発します。Supported stable releaseへ影響する場合、既存tagを書き換えず新しいpatch releaseとして公開します。

@@ -12,6 +12,7 @@ Please read:
 - [docs/architecture.md](docs/architecture.md)
 - [docs/compliance.md](docs/compliance.md)
 - [SECURITY.md](SECURITY.md)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 For setup and debugging:
 

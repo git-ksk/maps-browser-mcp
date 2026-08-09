@@ -12,6 +12,8 @@
     ".env.example",
     "README.md",
     "README.ja.md",
+    "CHANGELOG.md",
+    "CHANGELOG.ja.md",
     "SECURITY.md",
     "SECURITY.ja.md",
     "CONTRIBUTING.md",
