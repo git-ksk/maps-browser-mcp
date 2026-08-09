@@ -4,6 +4,8 @@ import { isLoopbackBind, loadConfig } from "../src/config.js";
 
 const KEYS = [
   "MCP_HTTP_HOST",
+  "MCP_HTTP_PORT",
+  "PORT",
   "MCP_ALLOW_NONLOOPBACK",
   "MCP_BEARER_TOKEN",
   "MCP_ALLOWED_HOSTS",
@@ -37,6 +39,24 @@ test("recognizes loopback bind addresses", () => {
   assert.equal(isLoopbackBind("127.0.0.1"), true);
   assert.equal(isLoopbackBind("::1"), true);
   assert.equal(isLoopbackBind("0.0.0.0"), false);
+});
+
+test("uses PORT as a generic fallback when MCP_HTTP_PORT is unset", async () => {
+  await withEnv({ PORT: "9090" }, () => {
+    assert.equal(loadConfig().http.port, 9090);
+  });
+});
+
+test("MCP_HTTP_PORT takes precedence over PORT", async () => {
+  await withEnv({ MCP_HTTP_PORT: "8788", PORT: "9090" }, () => {
+    assert.equal(loadConfig().http.port, 8788);
+  });
+});
+
+test("validates the generic PORT fallback", async () => {
+  await withEnv({ PORT: "70000" }, () => {
+    assert.throws(() => loadConfig(), /PORT must be an integer between 1 and 65535/);
+  });
 });
 
 test("refuses non-loopback binding without explicit opt-in", async () => {
