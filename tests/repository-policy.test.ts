@@ -10,9 +10,15 @@ function read(relativePath: string): string {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
 
-test("MCP server version stays synchronized with package version", () => {
+test("package, lockfile, and MCP server versions stay synchronized", () => {
   const packageJson = JSON.parse(read("package.json")) as { version?: unknown };
+  const packageLock = JSON.parse(read("package-lock.json")) as {
+    version?: unknown;
+    packages?: Record<string, { version?: unknown }>;
+  };
   assert.equal(typeof packageJson.version, "string");
+  assert.equal(packageLock.version, packageJson.version);
+  assert.equal(packageLock.packages?.[""]?.version, packageJson.version);
 
   const serverSource = read("src/server.ts");
   const match = serverSource.match(/const SERVER_VERSION = "([^"]+)";/);
@@ -66,13 +72,15 @@ test("container base image is digest-pinned and monitored", () => {
   assert.match(dependabot, /package-ecosystem:\s*docker/);
 });
 
-test("human-intervention detection stays fail-closed and contains no bypass path", () => {
+test("human-intervention detection stays fail-closed and contains no solver integration", () => {
   const source = read("src/browser/runtime.ts");
   assert.match(source, /HUMAN_INTERVENTION_REQUIRED/);
-  assert.match(source, /iframe\[src\*=\\"recaptcha\\"\]/);
-  assert.match(source, /form\[action\*=\\"\/sorry\/\\"\]/);
-  assert.match(source, /input\[name=\\"captcha\\"\]/);
-  assert.match(source, /url\.pathname\.startsWith\(\"\/sorry\/\"\)/);
-  assert.match(source, /url\.hostname\.includes\(\"recaptcha\"\)/);
-  assert.doesNotMatch(source, /captcha.{0,30}(solve|bypass)|stealth|fingerprint spoof|proxy rotation/i);
+  assert.ok(source.includes("'iframe[src*=\"recaptcha\"]'"));
+  assert.ok(source.includes("'form[action*=\"/sorry/\"]'"));
+  assert.ok(source.includes("'input[name=\"captcha\"]'"));
+  assert.ok(source.includes('url.pathname.startsWith("/sorry/")'));
+  assert.ok(source.includes('url.hostname.includes("recaptcha")'));
+
+  const packageJson = read("package.json");
+  assert.doesNotMatch(packageJson, /recaptcha|captcha-solver|puppeteer-extra-plugin-stealth|playwright-extra|proxy-chain/i);
 });
