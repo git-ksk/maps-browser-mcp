@@ -112,10 +112,14 @@ export function loadConfig(): AppConfig {
     }
   }
 
+  const httpPort = process.env.MCP_HTTP_PORT === undefined
+    ? envInt("PORT", 8787, 1, 65535)
+    : envInt("MCP_HTTP_PORT", 8787, 1, 65535);
+
   return {
     http: {
       host,
-      port: envInt("MCP_HTTP_PORT", 8787, 1, 65535),
+      port: httpPort,
       allowedHosts: envHosts("MCP_ALLOWED_HOSTS", ["localhost", "127.0.0.1", "::1"]),
       allowedOrigins: envOrigins("MCP_ALLOWED_ORIGINS"),
       bearerToken,
