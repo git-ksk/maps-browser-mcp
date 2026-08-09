@@ -58,3 +58,41 @@ jobs:
       - run: npm run build
       - name: Chrome/CDP smoke test (no Google Maps access)
         run: npm run smoke:browser
+
+  container:
+    name: Container smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build container image
+        run: docker build --tag maps-browser-mcp:ci .
+      - name: Chrome/CDP smoke inside container
+        run: docker run --rm --entrypoint node maps-browser-mcp:ci scripts/smoke-browser.mjs
+      - name: HTTP liveness and PORT fallback inside container
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker rm -f maps-browser-mcp-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run --detach --rm \
+            --name maps-browser-mcp-ci \
+            -p 127.0.0.1:8790:8790 \
+            -e PORT=8790 \
+            -e MCP_HTTP_HOST=0.0.0.0 \
+            -e MCP_ALLOW_NONLOOPBACK=true \
+            -e MCP_BEARER_TOKEN=0123456789abcdefghijklmnopqrstuv \
+            maps-browser-mcp:ci
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:8790/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs maps-browser-mcp-ci || true
+          exit 1
