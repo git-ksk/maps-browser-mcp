@@ -24,7 +24,12 @@ async function removeDirectoryWithRetry(directory) {
 }
 
 const profileDir = await fsp.mkdtemp(path.join(os.tmpdir(), "maps-browser-mcp-ci-"));
-const chrome = new ChromeProcess({ profileDir, headless: true });
+const chrome = new ChromeProcess({
+  profileDir,
+  headless: true,
+  executable: process.env.MAPS_CHROME_EXECUTABLE || undefined,
+  allowUnsandboxedChromium: process.env.MAPS_ALLOW_UNSANDBOXED_CHROMIUM === "true"
+});
 
 try {
   const port = await chrome.start();
