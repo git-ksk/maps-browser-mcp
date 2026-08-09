@@ -12,6 +12,7 @@ const KEYS = [
   "MCP_ALLOWED_ORIGINS",
   "MAPS_CDP_PORT",
   "MAPS_ALLOW_EXTERNAL_CDP",
+  "MAPS_ALLOW_UNSANDBOXED_CHROMIUM",
   "MAPS_OPERATION_TIMEOUT_MS",
   "MAPS_HEADLESS"
 ] as const;
@@ -99,6 +100,15 @@ test("requires explicit opt-in before attaching to an existing CDP endpoint", as
     const config = loadConfig();
     assert.equal(config.browser.externalCdpPort, 9222);
     assert.equal(config.browser.allowExternalCdp, true);
+  });
+});
+
+test("keeps Chromium sandboxing enabled unless explicitly opted out", async () => {
+  await withEnv({}, () => {
+    assert.equal(loadConfig().browser.allowUnsandboxedChromium, false);
+  });
+  await withEnv({ MAPS_ALLOW_UNSANDBOXED_CHROMIUM: "true" }, () => {
+    assert.equal(loadConfig().browser.allowUnsandboxedChromium, true);
   });
 });
 
