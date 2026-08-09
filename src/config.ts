@@ -71,6 +71,7 @@ export interface AppConfig {
     externalCdpPort?: number;
     allowExternalCdp: boolean;
     headless: boolean;
+    allowUnsandboxedChromium: boolean;
   };
   policy: {
     interactiveAssist: boolean;
@@ -132,7 +133,8 @@ export function loadConfig(): AppConfig {
         path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile"),
       externalCdpPort,
       allowExternalCdp,
-      headless: envBool("MAPS_HEADLESS", false)
+      headless: envBool("MAPS_HEADLESS", false),
+      allowUnsandboxedChromium: envBool("MAPS_ALLOW_UNSANDBOXED_CHROMIUM", false)
     },
     policy: {
       interactiveAssist: envBool("INTERACTIVE_ASSIST_MODE", false),
