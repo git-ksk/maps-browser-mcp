@@ -10,7 +10,7 @@ import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import { TRAVEL_MODES } from "./types.js";
 
-const SERVER_VERSION = "0.1.0";
+const SERVER_VERSION = "0.1.1";
 const config = loadConfig();
 const compiler = new MapsUrlCompiler();
 const policy = new PolicyEngine({
@@ -196,6 +196,13 @@ export function buildServer(): McpServer {
   );
 
   return server;
+}
+
+export async function probeBrowserReady(): Promise<void> {
+  await operationQueue.run(async () => {
+    const client = await runtime.getClient();
+    await client.Runtime.evaluate({ expression: "1", returnByValue: true });
+  });
 }
 
 export async function shutdownRuntime(): Promise<void> {
