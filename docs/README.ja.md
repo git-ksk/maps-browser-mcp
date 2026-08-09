@@ -20,7 +20,7 @@
 ## 開発・リリース
 
 - [Release / Versioning ガイド](releases.ja.md) — 最新安定版、tag checkout、`main`との使い分け、npm公開状況、v0.1.1検証記録
-- [Changelog](../CHANGELOG.md) — 公開Releaseごとの主要変更履歴
+- [Changelog 日本語版](../CHANGELOG.ja.md) — 公開Releaseごとの主要変更履歴
 - [Manual Live E2E 日本語版](manual-e2e.ja.md) — 実Google Maps UI互換性を手動起動で確認する手順
 - [Release Checklist 日本語版](release.ja.md) — v0.xリリース前後のチェックリスト
 - [Contributing 日本語版](../CONTRIBUTING.ja.md) — 受け入れる変更、非ゴール、テスト・PRルール
