@@ -7,6 +7,7 @@
 ## はじめに
 
 - [Getting Started 日本語版](getting-started.ja.md) — インストール、初回起動、stdio / HTTP、V3有効化、Remote MCP、終了・クリーンアップ
+- [Container / headless Linux 日本語版](container.ja.md) — 標準Linuxコンテナ、headless Chromium、port/profile/sandboxの安全な設定
 - [Troubleshooting 日本語版](troubleshooting.ja.md) — エラーコード別の原因と安全な復旧手順
 - [ChatGPT 接続ガイド 日本語版](chatgpt.ja.md) — ChatGPT App / Remote MCP接続、認証境界、Tool再スキャン
 

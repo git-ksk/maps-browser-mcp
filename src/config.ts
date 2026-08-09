@@ -71,6 +71,7 @@ export interface AppConfig {
     externalCdpPort?: number;
     allowExternalCdp: boolean;
     headless: boolean;
+    allowUnsandboxedChromium: boolean;
   };
   policy: {
     interactiveAssist: boolean;
@@ -112,10 +113,14 @@ export function loadConfig(): AppConfig {
     }
   }
 
+  const httpPort = process.env.MCP_HTTP_PORT === undefined
+    ? envInt("PORT", 8787, 1, 65535)
+    : envInt("MCP_HTTP_PORT", 8787, 1, 65535);
+
   return {
     http: {
       host,
-      port: envInt("MCP_HTTP_PORT", 8787, 1, 65535),
+      port: httpPort,
       allowedHosts: envHosts("MCP_ALLOWED_HOSTS", ["localhost", "127.0.0.1", "::1"]),
       allowedOrigins: envOrigins("MCP_ALLOWED_ORIGINS"),
       bearerToken,
@@ -128,7 +133,8 @@ export function loadConfig(): AppConfig {
         path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile"),
       externalCdpPort,
       allowExternalCdp,
-      headless: envBool("MAPS_HEADLESS", false)
+      headless: envBool("MAPS_HEADLESS", false),
+      allowUnsandboxedChromium: envBool("MAPS_ALLOW_UNSANDBOXED_CHROMIUM", false)
     },
     policy: {
       interactiveAssist: envBool("INTERACTIVE_ASSIST_MODE", false),

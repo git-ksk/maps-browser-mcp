@@ -4,12 +4,15 @@ import { isLoopbackBind, loadConfig } from "../src/config.js";
 
 const KEYS = [
   "MCP_HTTP_HOST",
+  "MCP_HTTP_PORT",
+  "PORT",
   "MCP_ALLOW_NONLOOPBACK",
   "MCP_BEARER_TOKEN",
   "MCP_ALLOWED_HOSTS",
   "MCP_ALLOWED_ORIGINS",
   "MAPS_CDP_PORT",
   "MAPS_ALLOW_EXTERNAL_CDP",
+  "MAPS_ALLOW_UNSANDBOXED_CHROMIUM",
   "MAPS_OPERATION_TIMEOUT_MS",
   "MAPS_HEADLESS"
 ] as const;
@@ -37,6 +40,24 @@ test("recognizes loopback bind addresses", () => {
   assert.equal(isLoopbackBind("127.0.0.1"), true);
   assert.equal(isLoopbackBind("::1"), true);
   assert.equal(isLoopbackBind("0.0.0.0"), false);
+});
+
+test("uses PORT as a generic fallback when MCP_HTTP_PORT is unset", async () => {
+  await withEnv({ PORT: "9090" }, () => {
+    assert.equal(loadConfig().http.port, 9090);
+  });
+});
+
+test("MCP_HTTP_PORT takes precedence over PORT", async () => {
+  await withEnv({ MCP_HTTP_PORT: "8788", PORT: "9090" }, () => {
+    assert.equal(loadConfig().http.port, 8788);
+  });
+});
+
+test("validates the generic PORT fallback", async () => {
+  await withEnv({ PORT: "70000" }, () => {
+    assert.throws(() => loadConfig(), /PORT must be an integer between 1 and 65535/);
+  });
 });
 
 test("refuses non-loopback binding without explicit opt-in", async () => {
@@ -79,6 +100,15 @@ test("requires explicit opt-in before attaching to an existing CDP endpoint", as
     const config = loadConfig();
     assert.equal(config.browser.externalCdpPort, 9222);
     assert.equal(config.browser.allowExternalCdp, true);
+  });
+});
+
+test("keeps Chromium sandboxing enabled unless explicitly opted out", async () => {
+  await withEnv({}, () => {
+    assert.equal(loadConfig().browser.allowUnsandboxedChromium, false);
+  });
+  await withEnv({ MAPS_ALLOW_UNSANDBOXED_CHROMIUM: "true" }, () => {
+    assert.equal(loadConfig().browser.allowUnsandboxedChromium, true);
   });
 });
 

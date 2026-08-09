@@ -12,6 +12,14 @@ export interface ActiveDevToolsEndpoint {
   browserPath: string;
 }
 
+export interface ChromeProcessOptions {
+  executable?: string;
+  profileDir: string;
+  externalCdpPort?: number;
+  headless: boolean;
+  allowUnsandboxedChromium?: boolean;
+}
+
 export function parseDevToolsActivePort(value: string): ActiveDevToolsEndpoint | undefined {
   const [portLine, browserPathLine] = value.split(/\r?\n/);
   const port = Number.parseInt(portLine ?? "", 10);
@@ -19,6 +27,24 @@ export function parseDevToolsActivePort(value: string): ActiveDevToolsEndpoint |
   if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined;
   if (!/^\/devtools\/browser\/[A-Za-z0-9._:-]+$/.test(browserPath)) return undefined;
   return { port, browserPath };
+}
+
+export function buildChromeArgs(options: ChromeProcessOptions): string[] {
+  const args = [
+    `--user-data-dir=${options.profileDir}`,
+    "--remote-debugging-address=127.0.0.1",
+    "--remote-debugging-port=0",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-session-crashed-bubble",
+    "--new-window",
+    "about:blank"
+  ];
+  if (options.headless) args.unshift("--headless=new");
+  if (process.platform === "linux" && options.allowUnsandboxedChromium) {
+    args.unshift("--no-sandbox");
+  }
+  return args;
 }
 
 async function canReachCdp(port: number, expectedBrowserPath?: string): Promise<boolean> {
@@ -85,15 +111,9 @@ export class ChromeProcess {
   private child?: ChildProcess;
   private port?: number;
   private browserPath?: string;
+  private warnedUnsandboxed = false;
 
-  constructor(
-    private readonly options: {
-      executable?: string;
-      profileDir: string;
-      externalCdpPort?: number;
-      headless: boolean;
-    }
-  ) {}
+  constructor(private readonly options: ChromeProcessOptions) {}
 
   async start(): Promise<number> {
     if (this.options.externalCdpPort !== undefined) {
@@ -132,17 +152,13 @@ export class ChromeProcess {
     }
 
     const executable = findChromeExecutable(this.options.executable);
-    const args = [
-      `--user-data-dir=${this.options.profileDir}`,
-      "--remote-debugging-address=127.0.0.1",
-      "--remote-debugging-port=0",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-session-crashed-bubble",
-      "--new-window",
-      "about:blank"
-    ];
-    if (this.options.headless) args.unshift("--headless=new");
+    const args = buildChromeArgs(this.options);
+    if (process.platform === "linux" && this.options.allowUnsandboxedChromium && !this.warnedUnsandboxed) {
+      this.warnedUnsandboxed = true;
+      console.error(
+        "[maps-browser-mcp] WARNING: Chromium is running with --no-sandbox because MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true. Use this only in a dedicated, isolated single-user runtime."
+      );
+    }
 
     this.child = spawn(executable, args, { stdio: "ignore" });
     let startupError: Error | undefined;
