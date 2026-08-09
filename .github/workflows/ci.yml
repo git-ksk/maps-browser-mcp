@@ -67,26 +67,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build container image
         run: docker build --tag maps-browser-mcp:ci .
-      - name: Chromium sandbox preflight
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm --entrypoint sh maps-browser-mcp:ci -lc '
-            set -eu
-            ls -l /usr/lib/chromium/chrome-sandbox
-            status=0
-            timeout 8s /usr/bin/chromium \
-              --headless=new \
-              --remote-debugging-address=127.0.0.1 \
-              --remote-debugging-port=0 \
-              --user-data-dir=/tmp/chromium-preflight \
-              about:blank 2>&1 || status=$?
-            if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
-              exit "$status"
-            fi
-          '
-      - name: Chrome/CDP smoke inside container
-        run: docker run --rm --entrypoint node maps-browser-mcp:ci scripts/smoke-browser.mjs
+      - name: Verify unsandboxed Chromium is not enabled by the image
+        run: >-
+          docker run --rm --entrypoint sh maps-browser-mcp:ci
+          -lc 'test -z "${MAPS_ALLOW_UNSANDBOXED_CHROMIUM:-}"'
+      - name: Chrome/CDP smoke inside restricted container runtime
+        run: >-
+          docker run --rm
+          -e MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true
+          --entrypoint node
+          maps-browser-mcp:ci
+          scripts/smoke-browser.mjs
       - name: HTTP liveness and PORT fallback inside container
         shell: bash
         run: |
