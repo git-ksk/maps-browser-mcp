@@ -43,6 +43,13 @@ function validateProbeMethod(req: IncomingMessage, res: ServerResponse): boolean
   return false;
 }
 
+function validateActiveProbeAuthorization(req: IncomingMessage, res: ServerResponse): boolean {
+  if (bearerAllowed(req.headers.authorization, config.http.bearerToken)) return true;
+  res.setHeader("www-authenticate", "Bearer");
+  reject(res, 401, "invalid_token");
+  return false;
+}
+
 function writeProbeResponse(req: IncomingMessage, res: ServerResponse, status: number, payload: object): void {
   if (res.destroyed || res.writableEnded) return;
   setPrivateResponseHeaders(res);
@@ -142,6 +149,7 @@ async function startHttp(): Promise<void> {
 
     if (requestUrl.pathname === "/readyz") {
       if (!validateProbeMethod(req, res)) return;
+      if (!validateActiveProbeAuthorization(req, res)) return;
       void probeBrowserReady()
         .then(() => writeProbeResponse(req, res, 200, { ok: true, browser: "ready" }))
         .catch((error) => {
