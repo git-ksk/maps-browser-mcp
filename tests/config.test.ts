@@ -75,7 +75,7 @@ test("refuses unauthenticated non-loopback binding even after opt-in", async () 
   });
 });
 
-test("allows non-loopback binding only with explicit opt-in and an application bearer token", async () => {
+test("allows non-loopback binding only with explicit opt-in and a static bearer transport guard", async () => {
   await withEnv({
     MCP_HTTP_HOST: "0.0.0.0",
     MCP_ALLOW_NONLOOPBACK: "true",
@@ -88,6 +88,12 @@ test("allows non-loopback binding only with explicit opt-in and an application b
 test("rejects weak configured bearer tokens", async () => {
   await withEnv({ MCP_BEARER_TOKEN: "short" }, () => {
     assert.throws(() => loadConfig(), /at least 24 characters/);
+  });
+});
+
+test("rejects whitespace in configured bearer transport tokens", async () => {
+  await withEnv({ MCP_BEARER_TOKEN: "0123456789abc defghijklmn" }, () => {
+    assert.throws(() => loadConfig(), /must not contain whitespace/);
   });
 });
 
