@@ -1,0 +1,52 @@
+name: Feature proposal
+description: Propose a focused improvement that fits the existing Maps-only safety scope
+title: "[Proposal]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement.
+
+        This project intentionally keeps a narrow scope. Generic browser control, bulk scraping/crawling, review harvesting, internal Google Maps API interception, CAPTCHA bypass, stealth/fingerprint spoofing, bot-evasion proxy rotation, and shared multi-tenant browser hosting are out of scope unless the project's security architecture is explicitly reconsidered first.
+
+        For security vulnerabilities, use GitHub Private Vulnerability Reporting instead of this public form.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What concrete user or maintainer problem should this proposal solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the smallest change that solves the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What simpler or existing approaches did you consider?
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope confirmation
+      options:
+        - label: This proposal keeps MCP tools Maps-specific and does not add generic browser primitives.
+          required: true
+        - label: This proposal does not add bulk scraping/crawling, review harvesting, CAPTCHA bypass, stealth/evasion, or internal Maps API harvesting.
+          required: true
+        - label: I have considered whether documentation, tests, or a manual Live Maps E2E run would need updating.
+          required: true
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety / compatibility impact
+      description: Note any effect on URL allowlists, CDP/profile isolation, V3 bounds, untrusted text, HTTP auth, containers, or Google Maps UI compatibility.
