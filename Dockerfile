@@ -16,7 +16,7 @@ ENV NODE_ENV=production \
     MAPS_HEADLESS=true
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium ca-certificates \
+    && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system mcp \
     && useradd --system --gid mcp --create-home --home-dir /home/mcp mcp \
