@@ -43,11 +43,19 @@ test("GitHub Actions dependencies are pinned to immutable commit SHAs", () => {
   }
 });
 
-test("Live Maps E2E remains manual-only", () => {
+test("Live Maps E2E remains manual-only and supports an explicit container path", () => {
   const source = read(".github/workflows/live-maps-e2e.yml");
   assert.match(source, /^\s{2}workflow_dispatch:\s*$/m);
   assert.doesNotMatch(source, /^\s{2}(push|pull_request|schedule|workflow_run):\s*$/m);
   assert.match(source, /^permissions:\s*\n\s{2}contents:\s*read\s*$/m);
+  assert.match(source, /^\s{6}runtime:\s*$/m);
+  assert.match(source, /^\s{10}- host\s*$/m);
+  assert.match(source, /^\s{10}- container\s*$/m);
+  assert.match(source, /inputs\.runtime == 'container'/);
+  assert.match(source, /docker build --tag maps-browser-mcp:live \./);
+  assert.match(source, /--cap-add=SYS_ADMIN/);
+  assert.doesNotMatch(source, /MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true/);
+  assert.doesNotMatch(source, /upload-artifact/i);
 });
 
 test("container portability is gated by the existing required Node 22 check", () => {
