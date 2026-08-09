@@ -8,6 +8,12 @@ function normalizeHostname(value: string): string {
   return normalized.replace(/\.$/, "");
 }
 
+function bearerCredential(authorizationHeader: string | undefined): string | undefined {
+  if (!authorizationHeader) return undefined;
+  const match = /^Bearer +(\S+)$/i.exec(authorizationHeader);
+  return match?.[1];
+}
+
 export function hostnameFromHostHeader(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {
@@ -41,8 +47,8 @@ export function originAllowed(
 
 export function bearerAllowed(authorizationHeader: string | undefined, expected?: string): boolean {
   if (!expected) return true;
-  if (!authorizationHeader?.startsWith("Bearer ")) return false;
-  const supplied = authorizationHeader.slice("Bearer ".length);
+  const supplied = bearerCredential(authorizationHeader);
+  if (!supplied) return false;
   const a = Buffer.from(supplied);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
