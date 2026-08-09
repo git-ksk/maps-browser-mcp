@@ -56,8 +56,16 @@ test("container portability is gated by the existing required Node 22 check", ()
   assert.match(source, /matrix:\s*\n\s+node:\s*\[20, 22, 24\]/m);
   assert.match(source, /- name: Build container image\s*\n\s+if: matrix\.node == 22/m);
   assert.match(source, /- name: Sandboxed Chrome\/CDP smoke in a sandbox-capable container\s*\n\s+if: matrix\.node == 22/m);
-  assert.match(source, /- name: HTTP liveness, browser readiness, and PORT fallback inside container\s*\n\s+if: matrix\.node == 22/m);
+  assert.match(source, /- name: HTTP liveness, authenticated browser readiness, and PORT fallback inside container\s*\n\s+if: matrix\.node == 22/m);
   assert.doesNotMatch(source, /^  container:\s*$/m, "container validation must not live in a separate optional job");
+});
+
+test("active browser readiness is bearer-protected whenever a token is configured", () => {
+  const source = read("src/index.ts");
+  assert.match(source, /requestUrl\.pathname === "\/readyz"/);
+  assert.match(source, /validateActiveProbeAuthorization\(req, res\)/);
+  assert.match(source, /bearerAllowed\(req\.headers\.authorization, config\.http\.bearerToken\)/);
+  assert.match(source, /www-authenticate/);
 });
 
 test("container base image is digest-pinned and monitored", () => {
