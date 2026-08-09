@@ -12,8 +12,10 @@ docker build -t maps-browser-mcp .
 
 - non-root の `mcp` ユーザーで実行
 - `/usr/bin/chromium` を使用
+- Chromium の sandbox helper をインストール
 - headless mode を有効化
 - 専用の一時 profile `/tmp/maps-browser-mcp/chrome-profile` を使用
+- Chromium の config/cache も writable な `/tmp/maps-browser-mcp` 配下に配置
 - Streamable HTTP transport を起動
 - 明示的に変更しない限り、アプリ本来の loopback bind デフォルトを維持
 
@@ -35,6 +37,34 @@ docker run --rm \
 可能な限り、ホスト側の公開ポートは loopback に限定してください。remote MCP client から接続する必要がある場合は、認証付き HTTPS/TLS の仕組みを前段に置き、必要に応じて `MCP_ALLOWED_HOSTS` と `MCP_ALLOWED_ORIGINS` を実際のルーティングに合わせて設定してください。
 
 Chrome DevTools/CDP port は公開しないでください。
+
+## Chromium sandbox の互換モード
+
+Chromium sandbox はデフォルトで有効のままです。一部の隔離された container runtime では、Chromium sandbox が必要とする Linux namespace 操作が禁止されており、`/healthz` は成功しても browser operation だけ失敗する場合があります。
+
+可能であれば Chromium 自身の sandbox を利用できる runtime 設定を優先してください。それが利用できず、かつ dedicated・isolated・single-user な環境に限り、次の明示的な互換モードを使用できます。
+
+```bash
+-e MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true
+```
+
+この設定は Chromium に `--no-sandbox` を追加します。browser isolation の重要な防御層を外すため、**デフォルトでは無効で、自動的に有効化されることもなく、共有・マルチテナント環境には適しません**。実際に使用された場合は server log に警告を出します。
+
+制約のある runtime で明示的に fallback する例:
+
+```bash
+TOKEN="$(openssl rand -hex 24)"
+
+docker run --rm \
+  -p 127.0.0.1:8787:8787 \
+  -e MCP_HTTP_HOST=0.0.0.0 \
+  -e MCP_ALLOW_NONLOOPBACK=true \
+  -e MCP_BEARER_TOKEN="$TOKEN" \
+  -e MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true \
+  maps-browser-mcp
+```
+
+sandbox 起動に失敗した場合でも、project側が勝手に `--no-sandbox` で再試行することはありません。
 
 ## ポートの優先順位
 
@@ -58,7 +88,7 @@ single-user で profile の永続化が本当に必要な場合のみ `MAPS_CHRO
 
 ## Health check
 
-`GET /healthz` は小さな process-health response を返し、Google Maps へのアクセスや browser operation は実行しません。これは HTTP process の liveness 確認用であり、実Google Maps UIへ到達できることを保証する readiness check ではありません。
+`GET /healthz` は小さな process-health response を返し、Google Maps へのアクセスや browser operation は実行しません。これは HTTP process の liveness 確認用であり、Chromium や実Google Maps UIへ到達できることを保証する readiness check ではありません。
 
 コンテナイメージにも、この endpoint を使用する `HEALTHCHECK` が含まれています。
 
@@ -73,6 +103,7 @@ HTTP process は `SIGTERM` / `SIGINT` を処理し、MCP handler を閉じ、man
 - bind address のデフォルトは loopback のまま
 - non-loopback bind には `MCP_ALLOW_NONLOOPBACK=true` が必要
 - non-loopback bind には24文字以上の bearer token も必要
+- Chromium sandbox を無効化する場合も別の明示的opt-inが必要
 - external CDP attachment は引き続き明示的opt-in
 - V3 visible-state reading も引き続きopt-in
 - Maps由来テキストは untrusted external data として扱う
