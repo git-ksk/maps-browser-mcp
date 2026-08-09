@@ -12,6 +12,7 @@
 - [Architecture 日本語版](docs/architecture.ja.md)
 - [Compliance / Safety 日本語版](docs/compliance.ja.md)
 - [Security Policy 日本語版](SECURITY.ja.md)
+- [Code of Conduct 日本語版](CODE_OF_CONDUCT.ja.md)
 
 Setup / debugging:
 
