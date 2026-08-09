@@ -9,6 +9,14 @@ on:
         type: choice
         options:
           - run-live-check
+      runtime:
+        description: "Execution environment for the bounded live check"
+        required: true
+        default: host
+        type: choice
+        options:
+          - host
+          - container
 
 permissions:
   contents: read
@@ -21,14 +29,38 @@ jobs:
   live-maps:
     if: ${{ inputs.confirm == 'run-live-check' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+
+      - name: Set up Node.js
+        if: ${{ inputs.runtime == 'host' }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --ignore-scripts
-      - run: npm run build
-      - name: Run bounded live Maps E2E
+
+      - name: Install dependencies
+        if: ${{ inputs.runtime == 'host' }}
+        run: npm ci --ignore-scripts
+
+      - name: Build host runtime
+        if: ${{ inputs.runtime == 'host' }}
+        run: npm run build
+
+      - name: Run bounded live Maps E2E on host
+        if: ${{ inputs.runtime == 'host' }}
         run: node scripts/live-maps-e2e.mjs
+
+      - name: Build container image
+        if: ${{ inputs.runtime == 'container' }}
+        run: docker build --tag maps-browser-mcp:live .
+
+      - name: Run bounded live Maps E2E in sandbox-capable container
+        if: ${{ inputs.runtime == 'container' }}
+        run: >-
+          docker run --rm
+          --cap-add=SYS_ADMIN
+          --mount type=bind,source="${{ github.workspace }}/scripts/live-maps-e2e.mjs",target=/app/scripts/live-maps-e2e.mjs,readonly
+          maps-browser-mcp:live
+          node scripts/live-maps-e2e.mjs
