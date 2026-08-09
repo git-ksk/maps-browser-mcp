@@ -11,7 +11,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +39,123 @@ jobs:
       - name: Package dry run
         if: matrix.node == 22
         run: npm pack --dry-run
+      - name: Build container image
+        if: matrix.node == 22
+        run: docker build --tag maps-browser-mcp:ci .
+      - name: Record container runtime versions
+        if: matrix.node == 22
+        run: >-
+          docker run --rm --entrypoint sh maps-browser-mcp:ci
+          -lc 'node --version && /usr/bin/chromium --version'
+      - name: Verify unsandboxed Chromium is not enabled by the image
+        if: matrix.node == 22
+        run: >-
+          docker run --rm --entrypoint sh maps-browser-mcp:ci
+          -lc 'test -z "${MAPS_ALLOW_UNSANDBOXED_CHROMIUM:-}"'
+      - name: Sandboxed Chrome/CDP smoke in a sandbox-capable container
+        if: matrix.node == 22
+        run: >-
+          docker run --rm
+          --cap-add=SYS_ADMIN
+          --entrypoint node
+          maps-browser-mcp:ci
+          scripts/smoke-browser.mjs
+      - name: Restricted runtime does not silently disable Chromium sandboxing
+        if: matrix.node == 22
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          output="$(docker run --rm --entrypoint node maps-browser-mcp:ci scripts/smoke-browser.mjs 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+
+          if grep -Fq 'WARNING: Chromium is running with --no-sandbox' <<<"$output"; then
+            echo 'Default container path silently disabled the Chromium sandbox.' >&2
+            exit 1
+          fi
+
+          if [ "$status" -eq 0 ]; then
+            echo 'Default restricted runtime supports Chromium sandboxing on this runner.'
+          else
+            grep -Eq 'Chrome/Chromium exited before its DevTools endpoint became ready|Chrome started but its DevTools endpoint did not become ready' <<<"$output"
+            echo 'Default restricted runtime failed closed; explicit compatibility mode is tested next.'
+          fi
+      - name: Explicit unsandboxed fallback smoke in restricted container
+        if: matrix.node == 22
+        run: >-
+          docker run --rm
+          -e MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true
+          --entrypoint node
+          maps-browser-mcp:ci
+          scripts/smoke-browser.mjs
+      - name: HTTP liveness, authenticated browser readiness, and PORT fallback inside container
+        if: matrix.node == 22
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            docker rm -f maps-browser-mcp-sandboxed maps-browser-mcp-restricted >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          wait_endpoint() {
+            local container="$1"
+            local url="$2"
+            local token="${3:-}"
+            for attempt in $(seq 1 35); do
+              if [ -n "$token" ]; then
+                if curl --fail --silent --show-error -H "Authorization: Bearer $token" "$url" >/dev/null; then
+                  return 0
+                fi
+              elif curl --fail --silent --show-error "$url" >/dev/null; then
+                return 0
+              fi
+              sleep 1
+            done
+            docker logs "$container" || true
+            return 1
+          }
+
+          require_readyz_auth() {
+            local url="$1"
+            local status
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$url")"
+            test "$status" = "401"
+          }
+
+          token=0123456789abcdefghijklmnopqrstuv
+
+          docker run --detach --rm \
+            --name maps-browser-mcp-sandboxed \
+            --cap-add=SYS_ADMIN \
+            -p 127.0.0.1:8791:8791 \
+            -e PORT=8791 \
+            -e MCP_HTTP_HOST=0.0.0.0 \
+            -e MCP_ALLOW_NONLOOPBACK=true \
+            -e MCP_BEARER_TOKEN="$token" \
+            maps-browser-mcp:ci
+
+          wait_endpoint maps-browser-mcp-sandboxed http://127.0.0.1:8791/healthz
+          require_readyz_auth http://127.0.0.1:8791/readyz
+          wait_endpoint maps-browser-mcp-sandboxed http://127.0.0.1:8791/readyz "$token"
+          docker rm -f maps-browser-mcp-sandboxed >/dev/null
+
+          docker run --detach --rm \
+            --name maps-browser-mcp-restricted \
+            -p 127.0.0.1:8790:8790 \
+            -e PORT=8790 \
+            -e MCP_HTTP_HOST=0.0.0.0 \
+            -e MCP_ALLOW_NONLOOPBACK=true \
+            -e MCP_BEARER_TOKEN="$token" \
+            -e MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true \
+            maps-browser-mcp:ci
+
+          wait_endpoint maps-browser-mcp-restricted http://127.0.0.1:8790/healthz
+          require_readyz_auth http://127.0.0.1:8790/readyz
+          wait_endpoint maps-browser-mcp-restricted http://127.0.0.1:8790/readyz "$token"
 
   platform-browser:
     name: Browser smoke (${{ matrix.os }})
@@ -58,50 +175,3 @@ jobs:
       - run: npm run build
       - name: Chrome/CDP smoke test (no Google Maps access)
         run: npm run smoke:browser
-
-  container:
-    name: Container smoke
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Build container image
-        run: docker build --tag maps-browser-mcp:ci .
-      - name: Verify unsandboxed Chromium is not enabled by the image
-        run: >-
-          docker run --rm --entrypoint sh maps-browser-mcp:ci
-          -lc 'test -z "${MAPS_ALLOW_UNSANDBOXED_CHROMIUM:-}"'
-      - name: Chrome/CDP smoke inside restricted container runtime
-        run: >-
-          docker run --rm
-          -e MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true
-          --entrypoint node
-          maps-browser-mcp:ci
-          scripts/smoke-browser.mjs
-      - name: HTTP liveness and PORT fallback inside container
-        shell: bash
-        run: |
-          set -euo pipefail
-          cleanup() {
-            docker rm -f maps-browser-mcp-ci >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker run --detach --rm \
-            --name maps-browser-mcp-ci \
-            -p 127.0.0.1:8790:8790 \
-            -e PORT=8790 \
-            -e MCP_HTTP_HOST=0.0.0.0 \
-            -e MCP_ALLOW_NONLOOPBACK=true \
-            -e MCP_BEARER_TOKEN=0123456789abcdefghijklmnopqrstuv \
-            maps-browser-mcp:ci
-
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent --show-error http://127.0.0.1:8790/healthz >/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-
-          docker logs maps-browser-mcp-ci || true
-          exit 1

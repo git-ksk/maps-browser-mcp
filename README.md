@@ -44,10 +44,16 @@ Default MCP endpoint:
 http://127.0.0.1:8787/mcp
 ```
 
-Health check:
+Process liveness:
 
 ```bash
 curl -i http://127.0.0.1:8787/healthz
+```
+
+Browser/CDP readiness without visiting Google Maps:
+
+```bash
+curl -i http://127.0.0.1:8787/readyz
 ```
 
 For a complete first-run walkthrough, browser behavior, generic MCP client configuration, V3 opt-in, and cleanup, see **[Getting Started](docs/getting-started.md)**.
@@ -165,7 +171,7 @@ See **[Architecture](docs/architecture.md)** for the detailed runtime/state/secu
 
 Common Chrome/Chromium install locations are auto-detected. Set `MAPS_CHROME_EXECUTABLE` if required.
 
-Normal CI covers Node.js 20/22/24 and real Chrome/CDP startup. Browser startup is additionally smoke-tested on GitHub-hosted macOS and Windows runners.
+Normal CI covers Node.js 20/22/24 and real Chrome/CDP startup. Browser startup is additionally smoke-tested on GitHub-hosted macOS and Windows runners. The required Node 22 check also builds the container image, exercises sandboxed and explicit restricted-runtime browser paths, and verifies both `/healthz` and `/readyz` without visiting Google Maps.
 
 ## Dedicated browser profile
 
@@ -219,7 +225,8 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address |
-| `MCP_HTTP_PORT` | `8787` | HTTP port |
+| `MCP_HTTP_PORT` | `8787` | Project-specific HTTP port; takes precedence over `PORT` |
+| `PORT` | unset | Generic HTTP-port fallback when `MCP_HTTP_PORT` is unset |
 | `MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | Accepted Host names |
 | `MCP_ALLOWED_ORIGINS` | empty | Optional exact Origin allowlist |
 | `MCP_ALLOW_NONLOOPBACK` | `false` | Explicit opt-in before non-loopback bind |
@@ -230,6 +237,7 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Explicit opt-in before existing-CDP attachment |
 | `MAPS_CDP_PORT` | unset | Advanced: existing local CDP endpoint |
 | `MAPS_HEADLESS` | `false` | Headless Chrome |
+| `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable V3 bounded reading |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent V3 read budget |
@@ -286,11 +294,13 @@ npm run smoke:http
 npm run smoke:browser
 ```
 
-Normal CI intentionally **does not visit Google Maps**. It verifies protocol, package, browser/CDP, security, and cross-platform behavior without turning GitHub Actions into unattended Maps automation.
+Normal CI intentionally **does not visit Google Maps**. It verifies protocol, package, browser/CDP, security, cross-platform behavior, and container/headless portability without turning GitHub Actions into unattended Maps automation.
 
-The repository also provides **Live Maps E2E (manual)**, a `workflow_dispatch`-only, fixed, low-volume compatibility check for the experimental live-UI paths. See **[Manual live E2E](docs/manual-e2e.md)**.
+Container validation is part of the existing required `check (22)` job rather than a separate optional job. It verifies that the image does not enable `--no-sandbox` by default, exercises a sandbox-capable container path, checks fail-closed behavior in a restricted runtime, exercises the explicit compatibility mode, and verifies `/healthz`, `/readyz`, and generic `PORT` fallback behavior.
 
-GitHub Actions dependencies are pinned to full commit SHAs. Dependabot monitors npm and Actions dependencies. CodeQL runs JavaScript/TypeScript analysis and the protected `main` branch requires the configured CI/CodeQL checks before merge.
+The repository also provides **Live Maps E2E (manual)**, a `workflow_dispatch`-only, fixed, low-volume compatibility check for the experimental live-UI paths. See **[Manual live E2E](docs/manual-e2e.md)**. Consent/sign-in/CAPTCHA/challenge behavior is never deliberately triggered or bypassed; those live cases are rechecked opportunistically when they occur naturally, while deterministic repository tests enforce the no-bypass boundary.
+
+GitHub Actions dependencies are pinned to full commit SHAs. Dependabot monitors npm, GitHub Actions, and the container base image. CodeQL runs JavaScript/TypeScript analysis and the protected `main` branch requires the configured CI/CodeQL checks before merge.
 
 ## Current limitations
 
@@ -307,6 +317,7 @@ See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and err
 | Document | Purpose |
 | --- | --- |
 | [Getting Started](docs/getting-started.md) | Installation, first run, client shape, V3 opt-in, cleanup |
+| [Container / headless Linux](docs/container.md) | Standard Linux container, headless Chromium, ports, profiles, readiness, and sandbox boundaries |
 | [Troubleshooting](docs/troubleshooting.md) | Error codes and safe recovery procedures |
 | [ChatGPT](docs/chatgpt.md) | Remote ChatGPT/App connection boundary and tool refresh |
 | [Architecture](docs/architecture.md) | Runtime, CDP, state, queue/watchdog design |
@@ -324,7 +335,7 @@ Contributions are welcome within the project's constrained scope. Read **[CONTRI
 
 ## Release status
 
-The repository metadata is currently versioned as `0.1.0`. Do not assume npm installation is available until a release explicitly documents a published npm package.
+The repository metadata on `main` is currently versioned as `0.1.1`. The latest published GitHub release may intentionally lag unreleased `main`. Do not assume npm installation is available until a release explicitly documents a published npm package.
 
 See **[Release checklist](docs/release.md)** before tagging or publishing.
 

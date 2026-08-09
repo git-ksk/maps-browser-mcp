@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { buildServer, config, shutdownRuntime } from "./server.js";
+import { buildServer, config, probeBrowserReady, shutdownRuntime } from "./server.js";
 import {
   bearerAllowed,
   hostAllowed,
@@ -34,6 +34,27 @@ function reject(res: ServerResponse, status: number, message: string): void {
   setPrivateResponseHeaders(res);
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify({ error: message }));
+}
+
+function validateProbeMethod(req: IncomingMessage, res: ServerResponse): boolean {
+  if (req.method === "GET" || req.method === "HEAD") return true;
+  res.setHeader("allow", "GET, HEAD");
+  reject(res, 405, "method_not_allowed");
+  return false;
+}
+
+function validateActiveProbeAuthorization(req: IncomingMessage, res: ServerResponse): boolean {
+  if (bearerAllowed(req.headers.authorization, config.http.bearerToken)) return true;
+  res.setHeader("www-authenticate", "Bearer");
+  reject(res, 401, "invalid_token");
+  return false;
+}
+
+function writeProbeResponse(req: IncomingMessage, res: ServerResponse, status: number, payload: object): void {
+  if (res.destroyed || res.writableEnded) return;
+  setPrivateResponseHeaders(res);
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  res.end(req.method === "HEAD" ? undefined : JSON.stringify(payload));
 }
 
 async function readRequestBody(req: IncomingMessage): Promise<string | undefined> {
@@ -121,14 +142,20 @@ async function startHttp(): Promise<void> {
 
     const requestUrl = new URL(req.url ?? "/", "http://localhost");
     if (requestUrl.pathname === "/healthz") {
-      if (req.method !== "GET" && req.method !== "HEAD") {
-        res.setHeader("allow", "GET, HEAD");
-        reject(res, 405, "method_not_allowed");
-        return;
-      }
-      setPrivateResponseHeaders(res);
-      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(req.method === "HEAD" ? undefined : JSON.stringify({ ok: true }));
+      if (!validateProbeMethod(req, res)) return;
+      writeProbeResponse(req, res, 200, { ok: true });
+      return;
+    }
+
+    if (requestUrl.pathname === "/readyz") {
+      if (!validateProbeMethod(req, res)) return;
+      if (!validateActiveProbeAuthorization(req, res)) return;
+      void probeBrowserReady()
+        .then(() => writeProbeResponse(req, res, 200, { ok: true, browser: "ready" }))
+        .catch((error) => {
+          console.error("[maps-browser-mcp] Browser readiness probe failed", error);
+          writeProbeResponse(req, res, 503, { ok: false, browser: "unavailable" });
+        });
       return;
     }
 

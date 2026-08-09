@@ -1,6 +1,6 @@
 # Release checklist
 
-Use this checklist for pre-1.0 releases. The goal is to keep code, MCP metadata, package contents, browser compatibility, and GitHub security controls aligned.
+Use this checklist for pre-1.0 releases. The goal is to keep code, MCP metadata, package contents, browser compatibility, container portability, and GitHub security controls aligned.
 
 ## 1. Prepare the release branch
 
@@ -11,7 +11,7 @@ Use this checklist for pre-1.0 releases. The goal is to keep code, MCP metadata,
 
 ## 2. Version consistency
 
-Update `package.json` to the intended version.
+Update `package.json` to the intended version and regenerate `package-lock.json` with the same npm major used by the project when release metadata changes.
 
 The repository policy test requires the MCP server version in `src/server.ts` to match `package.json`.
 
@@ -21,7 +21,7 @@ Run:
 npm run check
 ```
 
-Do not create a tag whose version disagrees with package/server metadata.
+Before tagging, also verify the root package metadata in `package-lock.json` matches the intended version. Do not create a tag whose version disagrees with package/server metadata.
 
 ## 3. Dependency and build verification
 
@@ -57,11 +57,28 @@ Review `npm pack --dry-run` output. The published package must not contain brows
 - `Browser smoke (windows-2022)`
 - `Analyze (JavaScript/TypeScript)`
 
+Container/headless validation intentionally runs inside the existing required `check (22)` job. A container regression must therefore fail a required check rather than an optional standalone job.
+
 The CodeQL workflow is expected to require zero findings for its configured analysis.
 
 Do not bypass required checks or force-push `main` to ship a release.
 
-## 5. Manual live Google Maps compatibility
+## 5. Container/headless verification
+
+For releases that change browser startup, HTTP transport, configuration, Dockerfile, or container documentation, confirm the required Node 22 job passes all container stages:
+
+- image build and runtime version reporting
+- default Chromium sandbox remains enabled
+- sandbox-capable Chrome/CDP smoke
+- restricted-runtime fail-closed behavior without silent sandbox downgrade
+- explicit `MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true` compatibility smoke
+- generic `PORT` fallback
+- `/healthz` process liveness
+- `/readyz` managed Chromium/CDP readiness without Google Maps navigation
+
+The Node base image should remain digest-pinned and Docker dependencies should remain covered by Dependabot. Chromium package updates should not be frozen indefinitely merely for byte-for-byte image reproduction; record the actual browser version in CI instead.
+
+## 6. Manual live Google Maps compatibility
 
 Normal push/PR CI does not visit Google Maps.
 
@@ -89,25 +106,28 @@ place search
 
 Record pass/fail only. Do not add screenshots, DOM dumps, cookies, browser profiles, reviews, or location-result artifacts to the repository.
 
+Do not deliberately trigger or attempt to bypass CAPTCHA, consent, sign-in, or access challenges. The deterministic test suite covers fail-closed `HUMAN_INTERVENTION_REQUIRED` boundaries; live challenge handling is rechecked opportunistically only when such a screen occurs naturally.
+
 For documentation-only or obviously non-runtime changes, a new live Maps run is normally unnecessary unless the live compatibility baseline is already in doubt.
 
-## 6. Security/repository settings
+## 7. Security/repository settings
 
 Before the first public release and periodically afterward, confirm:
 
 - `main` remains protected,
 - required status checks remain configured,
+- container validation still executes inside the required `check (22)` job,
 - admin enforcement remains enabled,
 - force pushes and branch deletion remain disabled,
 - linear history remains required,
 - conversation resolution remains required,
 - Private vulnerability reporting remains enabled,
-- Dependabot configuration is present,
+- Dependabot configuration covers npm, GitHub Actions, and Docker,
 - GitHub Actions dependencies remain pinned to full commit SHAs.
 
-Repository tests enforce the workflow pinning/manual-live invariants that can be represented in source. GitHub-hosted repository settings still need periodic verification outside the codebase.
+Repository tests enforce the workflow pinning/manual-live/container-gating invariants that can be represented in source. GitHub-hosted repository settings still need periodic verification outside the codebase.
 
-## 7. Documentation review
+## 8. Documentation review
 
 Confirm the following still match the release:
 
@@ -115,6 +135,7 @@ Confirm the following still match the release:
 - `README.ja.md`
 - `.env.example`
 - `docs/getting-started.md`
+- `docs/container.md`
 - `docs/troubleshooting.md`
 - `docs/chatgpt.md`
 - `docs/architecture.md`
@@ -123,21 +144,21 @@ Confirm the following still match the release:
 - `SECURITY.md`
 - `CONTRIBUTING.md`
 
-In particular, verify defaults, tool names, environment variables, error/recovery guidance, and plan/client-specific statements that may become stale.
+In particular, verify defaults, tool names, environment variables, health/readiness behavior, error/recovery guidance, and plan/client-specific statements that may become stale.
 
-## 8. Merge and tag
+## 9. Merge and tag
 
 Merge through the protected `main` branch after all required checks pass.
 
-For version `0.1.0`, the tag should be:
+For version `<version>`, the tag should be:
 
 ```text
-v0.1.0
+v<version>
 ```
 
 Create the tag from the exact tested `main` commit, not from an earlier PR head.
 
-## 9. GitHub Release notes
+## 10. GitHub Release notes
 
 Release notes should include:
 
@@ -152,7 +173,7 @@ Release notes should include:
 
 Do not describe V3 as guaranteed compatible with future Google Maps UI versions.
 
-## 10. npm publication, if/when enabled
+## 11. npm publication, if/when enabled
 
 Do not imply npm availability in README until the package has actually been published and the package ownership/provenance setup is verified.
 
@@ -166,7 +187,7 @@ Prefer provenance/2FA-capable publishing practices supported by the registry at 
 
 After publication, install the published artifact in a clean environment and run at least the non-live smoke path before advertising it as the recommended installation method.
 
-## 11. Post-release
+## 12. Post-release
 
 - Verify the GitHub tag/release points to the intended commit.
 - Verify `main` CI remains green.

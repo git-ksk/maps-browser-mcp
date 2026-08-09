@@ -44,10 +44,16 @@ npm run start:http
 http://127.0.0.1:8787/mcp
 ```
 
-Health check:
+HTTP processのliveness確認:
 
 ```bash
 curl -i http://127.0.0.1:8787/healthz
+```
+
+Google Mapsへアクセスせずmanaged Chromium + CDPまで確認するreadiness:
+
+```bash
+curl -i http://127.0.0.1:8787/readyz
 ```
 
 初回起動、汎用MCPクライアント設定例、V3有効化、profile cleanupまで含む詳しい手順は **[Getting Started 日本語版](docs/getting-started.ja.md)** を参照してください。
@@ -165,7 +171,7 @@ Google Maps Web
 
 一般的なChrome / Chromiumのinstall pathは自動検出します。必要な場合だけ `MAPS_CHROME_EXECUTABLE` を指定してください。
 
-通常CIではNode.js 20 / 22 / 24を検証し、実Chrome/CDP startupも確認します。macOSおよびWindows runnerでもBrowser smokeを実行します。
+通常CIではNode.js 20 / 22 / 24を検証し、実Chrome/CDP startupも確認します。macOSおよびWindows runnerでもBrowser smokeを実行します。既存のrequired `check (22)` 内でcontainer image build、sandboxed / restricted-runtime browser path、`/healthz`、`/readyz` まで検証します。
 
 ## 専用Chrome profile
 
@@ -219,7 +225,8 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | 変数 | デフォルト | 用途 |
 | --- | --- | --- |
 | `MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address |
-| `MCP_HTTP_PORT` | `8787` | HTTP port |
+| `MCP_HTTP_PORT` | `8787` | project固有HTTP port。`PORT` より優先 |
+| `PORT` | unset | `MCP_HTTP_PORT` 未指定時だけ使う汎用port fallback |
 | `MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | 許可Host名 |
 | `MCP_ALLOWED_ORIGINS` | empty | Origin完全一致allowlist（任意） |
 | `MCP_ALLOW_NONLOOPBACK` | `false` | 非loopback bindの明示Opt-in |
@@ -230,6 +237,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MAPS_ALLOW_EXTERNAL_CDP` | `false` | 既存CDP endpoint接続の明示Opt-in |
 | `MAPS_CDP_PORT` | unset | 上級者向け既存ローカルCDP endpoint |
 | `MAPS_HEADLESS` | `false` | headless mode |
+| `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linuxの制約runtime向け最終手段。明示時のみ `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | V3読み取りを有効化 |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | process-local操作上限 |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | V3独立読み取り上限 |
@@ -288,11 +296,13 @@ npm run smoke:http
 npm run smoke:browser
 ```
 
-通常CIは意図的に**Google Maps本番へアクセスしません**。MCP protocol、package、security、Chrome/CDP、cross-platform動作をMaps自動アクセスなしで検証します。
+通常CIは意図的に**Google Maps本番へアクセスしません**。MCP protocol、package、security、Chrome/CDP、cross-platform、container/headless portabilityをMaps自動アクセスなしで検証します。
 
-実Google Maps UI互換性は、`workflow_dispatch` 専用の **Live Maps E2E (manual)** で固定・低ボリュームのuser-triggered checkとして確認します。詳細は **[Manual Live E2E 日本語版](docs/manual-e2e.ja.md)** を参照してください。
+Container検証は独立したoptional jobではなく、既存のrequired `check (22)` に組み込みます。imageがデフォルトで `--no-sandbox` を有効にしていないこと、sandbox-capable path、制約runtimeでのfail-closed、明示compatibility mode、`/healthz`、`/readyz`、`PORT` fallbackを確認します。
 
-GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm/Actionsを監視、CodeQLでJavaScript/TypeScriptを解析します。`main` はprotected branchで、設定済みCI/CodeQL checksを通してからmergeします。
+実Google Maps UI互換性は、`workflow_dispatch` 専用の **Live Maps E2E (manual)** で固定・低ボリュームのuser-triggered checkとして確認します。詳細は **[Manual Live E2E 日本語版](docs/manual-e2e.ja.md)** を参照してください。consent / sign-in / CAPTCHA / challengeを意図的に発生・突破するテストは行わず、自然発生時のみ実環境で再確認し、通常CIではno-bypass境界を決定論的に検証します。
+
+GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions / container base imageを監視、CodeQLでJavaScript/TypeScriptを解析します。`main` はprotected branchで、設定済みCI/CodeQL checksを通してからmergeします。
 
 ## 現在の制限
 
@@ -310,6 +320,7 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm/Actionsを�
 | --- | --- |
 | [日本語ドキュメント一覧](docs/README.ja.md) | 日本語版ドキュメントの目次 |
 | [Getting Started](docs/getting-started.ja.md) | install、初回起動、client形、V3、cleanup |
+| [Container / headless Linux](docs/container.ja.md) | 標準Linux container、headless Chromium、port/profile/readiness/sandbox境界 |
 | [Troubleshooting](docs/troubleshooting.ja.md) | error code別の安全な復旧手順 |
 | [ChatGPT](docs/chatgpt.ja.md) | ChatGPT/App接続境界とtool refresh |
 | [Architecture](docs/architecture.ja.md) | runtime、CDP、state、queue/watchdog |
@@ -327,7 +338,7 @@ Project scope内のcontributionは歓迎です。PR前に **[Contributing 日本
 
 ## Release Status
 
-Repository metadata上のversionは現在 `0.1.0` です。Releaseでnpm package公開が明示されるまでは、npm install可能と仮定しないでください。
+`main` のrepository metadata上のversionは現在 `0.1.1` です。公開済みGitHub Releaseが未リリースの`main`より古い状態はあり得ます。Releaseでnpm package公開が明示されるまでは、npm install可能と仮定しないでください。
 
 Tag / publish前は **[Release Checklist 日本語版](docs/release.ja.md)** を参照してください。
 

@@ -19,6 +19,8 @@ The image:
 - starts the Streamable HTTP transport
 - keeps the application's normal loopback bind default unless you explicitly override it
 
+The Node base image is digest-pinned so an unchanged Dockerfile does not silently move to a different base image. Dependabot monitors Docker dependencies. Chromium itself intentionally follows the current Debian Bookworm package available at build time so security updates are not frozen indefinitely; CI records the actual Node and Chromium versions used by the built image.
+
 ## Run locally through a published container port
 
 A process bound to `127.0.0.1` inside a container is not reachable through a published host port. To publish the MCP endpoint, explicitly opt in to non-loopback binding and configure a strong application bearer token:
@@ -40,7 +42,7 @@ Do not expose the Chrome DevTools/CDP port.
 
 ## Chromium sandbox compatibility
 
-Chromium's sandbox remains enabled by default. Some isolated container runtimes prohibit the Linux namespace operations Chromium needs for that sandbox. In such an environment, browser operations can fail even though `/healthz` succeeds.
+Chromium's sandbox remains enabled by default. Some isolated container runtimes prohibit the Linux namespace operations Chromium needs for that sandbox. In such an environment, `/healthz` can succeed while `/readyz` and browser operations fail.
 
 Prefer a runtime configuration that allows Chromium's own sandbox. If that is not available and this is a dedicated, isolated, single-user runtime, an explicit compatibility mode is available:
 
@@ -86,11 +88,45 @@ The image defaults to an ephemeral dedicated profile:
 
 Override it with `MAPS_CHROME_PROFILE_DIR` only when you have a specific single-user persistence requirement. Never point the server at an everyday browser profile, and never share one profile across concurrent users or instances.
 
-## Health check
+## Health and readiness
 
-`GET /healthz` returns a small local process-health response and does not access Google Maps or start a browser operation. Treat it as HTTP-process liveness, not as proof that Chromium or the live Google Maps UI is reachable.
+`GET /healthz` returns a small process-liveness response. It does not start Chromium and does not access Google Maps.
 
-The image includes a container `HEALTHCHECK` using this endpoint.
+`GET /readyz` verifies that the managed Chromium process and its local CDP endpoint are usable. It may start/reuse the dedicated Chromium session, but it does **not** navigate to Google Maps. A browser startup/CDP failure returns HTTP `503` with only a bounded availability status; detailed local errors remain in server logs.
+
+Because `/readyz` can actively start Chromium, it is protected by `MCP_BEARER_TOKEN` whenever a bearer token is configured. This is especially important for non-loopback deployments, where a bearer token is already mandatory. `/healthz` remains a passive unauthenticated liveness endpoint after Host validation.
+
+Without a configured bearer token on a loopback-only server:
+
+```bash
+curl -i http://127.0.0.1:8787/healthz
+curl -i http://127.0.0.1:8787/readyz
+```
+
+When `MCP_BEARER_TOKEN` is configured:
+
+```bash
+curl -i http://127.0.0.1:8787/healthz
+curl -i \
+  -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:8787/readyz
+```
+
+The image's Docker `HEALTHCHECK` intentionally continues to use `/healthz` as pure process liveness. Runtime orchestration can use authenticated `/readyz` separately when browser readiness is required.
+
+## CI coverage
+
+Container validation is part of the repository's existing required Node 22 CI job rather than a separate optional job. CI:
+
+- builds the image
+- records Node/Chromium versions
+- verifies that unsandboxed Chromium is not enabled by the image
+- exercises a sandbox-capable browser/CDP path
+- verifies restricted runtimes do not silently downgrade the sandbox
+- exercises the explicit `MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true` fallback
+- verifies `PORT` fallback, `/healthz`, authenticated `/readyz`, and rejection of unauthenticated active readiness checks when a bearer token is configured
+
+Normal container CI never visits Google Maps.
 
 ## Shutdown
 
@@ -103,6 +139,7 @@ The normal safety invariants remain in force in containers:
 - default bind address remains loopback
 - non-loopback binding requires `MCP_ALLOW_NONLOOPBACK=true`
 - non-loopback binding also requires a bearer token of at least 24 characters
+- active `/readyz` browser probes require the configured bearer token
 - Chromium sandbox disabling requires a separate explicit opt-in
 - external CDP attachment remains opt-in
 - V3 visible-state reading remains opt-in

@@ -19,6 +19,8 @@ docker build -t maps-browser-mcp .
 - Streamable HTTP transport を起動
 - 明示的に変更しない限り、アプリ本来の loopback bind デフォルトを維持
 
+Node base image は digest 固定し、同じ Dockerfile が意図せず別base imageへ移動しないようにします。Docker dependency は Dependabot で監視します。一方Chromiumはセキュリティ更新を長期間凍結しないため、build時点のDebian Bookworm packageを追従します。CIではbuildされたimageのNode / Chromium実バージョンを記録します。
+
 ## ホストへポート公開して実行する
 
 コンテナ内部で `127.0.0.1` に bind したプロセスは、通常の published port 経由ではホストから到達できません。MCP endpoint を公開する場合は、non-loopback bind を明示的に許可し、十分に強い application bearer token を設定してください。
@@ -40,7 +42,7 @@ Chrome DevTools/CDP port は公開しないでください。
 
 ## Chromium sandbox の互換モード
 
-Chromium sandbox はデフォルトで有効のままです。一部の隔離された container runtime では、Chromium sandbox が必要とする Linux namespace 操作が禁止されており、`/healthz` は成功しても browser operation だけ失敗する場合があります。
+Chromium sandbox はデフォルトで有効のままです。一部の隔離された container runtime では、Chromium sandbox が必要とする Linux namespace 操作が禁止されており、`/healthz` は成功しても `/readyz` や browser operation が失敗する場合があります。
 
 可能であれば Chromium 自身の sandbox を利用できる runtime 設定を優先してください。それが利用できず、かつ dedicated・isolated・single-user な環境に限り、次の明示的な互換モードを使用できます。
 
@@ -86,11 +88,45 @@ HTTP port は次の順番で決まります。
 
 single-user で profile の永続化が本当に必要な場合のみ `MAPS_CHROME_PROFILE_DIR` で変更してください。普段使いの browser profile を指定したり、複数ユーザー・複数instanceで1つの profile を共有したりしないでください。
 
-## Health check
+## Health / Readiness
 
-`GET /healthz` は小さな process-health response を返し、Google Maps へのアクセスや browser operation は実行しません。これは HTTP process の liveness 確認用であり、Chromium や実Google Maps UIへ到達できることを保証する readiness check ではありません。
+`GET /healthz` はprocessのlivenessのみ確認します。Chromiumは起動せず、Google Mapsにもアクセスしません。
 
-コンテナイメージにも、この endpoint を使用する `HEALTHCHECK` が含まれています。
+`GET /readyz` はmanaged Chromiumとlocal CDP endpointが利用可能かを確認します。必要なら専用Chromium sessionを起動または再利用しますが、**Google Mapsへnavigateしません**。browser startup / CDPに失敗した場合はHTTP `503`と最小限のavailability statusだけを返し、詳細はlocal server logに残します。
+
+`/readyz` はChromiumを能動的に起動できるため、`MCP_BEARER_TOKEN` が設定されている場合は同じbearer認証を必須にします。non-loopbackではbearer token自体が必須なので、外部から未認証でbrowser resourceを起動できません。`/healthz` はHost検証後のpassiveなunauthenticated livenessのままです。
+
+Loopback-onlyでbearer tokenを設定していない場合:
+
+```bash
+curl -i http://127.0.0.1:8787/healthz
+curl -i http://127.0.0.1:8787/readyz
+```
+
+`MCP_BEARER_TOKEN` を設定している場合:
+
+```bash
+curl -i http://127.0.0.1:8787/healthz
+curl -i \
+  -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:8787/readyz
+```
+
+Dockerfileの `HEALTHCHECK` は純粋なprocess livenessとして意図的に `/healthz` を使い続けます。browser readinessが必要なruntimeではauthenticated `/readyz` を別途利用できます。
+
+## CI coverage
+
+Container検証は独立したoptional jobではなく、repositoryの既存required Node 22 checkへ組み込んでいます。CIでは次を確認します。
+
+- image build
+- Node / Chromium version記録
+- imageがunsandboxed Chromiumをデフォルト有効化していないこと
+- sandbox-capableなbrowser/CDP path
+- 制約runtimeでsandboxを勝手に無効化せずfail closedすること
+- `MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true` の明示fallback
+- `PORT` fallback、`/healthz`、authenticated `/readyz`、bearer設定時のunauthenticated active readiness拒否
+
+通常のcontainer CIはGoogle Mapsへアクセスしません。
 
 ## Shutdown
 
@@ -103,6 +139,7 @@ HTTP process は `SIGTERM` / `SIGINT` を処理し、MCP handler を閉じ、man
 - bind address のデフォルトは loopback のまま
 - non-loopback bind には `MCP_ALLOW_NONLOOPBACK=true` が必要
 - non-loopback bind には24文字以上の bearer token も必要
+- active `/readyz` browser probeは設定済みbearer tokenを要求
 - Chromium sandbox を無効化する場合も別の明示的opt-inが必要
 - external CDP attachment は引き続き明示的opt-in
 - V3 visible-state reading も引き続きopt-in
