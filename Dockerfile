@@ -13,14 +13,19 @@ FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     MAPS_CHROME_EXECUTABLE=/usr/bin/chromium \
     MAPS_CHROME_PROFILE_DIR=/tmp/maps-browser-mcp/chrome-profile \
-    MAPS_HEADLESS=true
+    MAPS_HEADLESS=true \
+    XDG_CONFIG_HOME=/tmp/maps-browser-mcp/xdg-config \
+    XDG_CACHE_HOME=/tmp/maps-browser-mcp/xdg-cache
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system mcp \
     && useradd --system --gid mcp --create-home --home-dir /home/mcp mcp \
-    && mkdir -p /tmp/maps-browser-mcp/chrome-profile \
+    && mkdir -p \
+      /tmp/maps-browser-mcp/chrome-profile \
+      /tmp/maps-browser-mcp/xdg-config \
+      /tmp/maps-browser-mcp/xdg-cache \
     && chown -R mcp:mcp /tmp/maps-browser-mcp /home/mcp
 
 WORKDIR /app
