@@ -90,7 +90,7 @@ jobs:
           --entrypoint node
           maps-browser-mcp:ci
           scripts/smoke-browser.mjs
-      - name: HTTP liveness, browser readiness, and PORT fallback inside container
+      - name: HTTP liveness, authenticated browser readiness, and PORT fallback inside container
         if: matrix.node == 22
         shell: bash
         run: |
@@ -104,14 +104,26 @@ jobs:
           wait_endpoint() {
             local container="$1"
             local url="$2"
+            local token="${3:-}"
             for attempt in $(seq 1 35); do
-              if curl --fail --silent --show-error "$url" >/dev/null; then
+              if [ -n "$token" ]; then
+                if curl --fail --silent --show-error -H "Authorization: Bearer $token" "$url" >/dev/null; then
+                  return 0
+                fi
+              elif curl --fail --silent --show-error "$url" >/dev/null; then
                 return 0
               fi
               sleep 1
             done
             docker logs "$container" || true
             return 1
+          }
+
+          require_readyz_auth() {
+            local url="$1"
+            local status
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$url")"
+            test "$status" = "401"
           }
 
           token=0123456789abcdefghijklmnopqrstuv
@@ -127,7 +139,8 @@ jobs:
             maps-browser-mcp:ci
 
           wait_endpoint maps-browser-mcp-sandboxed http://127.0.0.1:8791/healthz
-          wait_endpoint maps-browser-mcp-sandboxed http://127.0.0.1:8791/readyz
+          require_readyz_auth http://127.0.0.1:8791/readyz
+          wait_endpoint maps-browser-mcp-sandboxed http://127.0.0.1:8791/readyz "$token"
           docker rm -f maps-browser-mcp-sandboxed >/dev/null
 
           docker run --detach --rm \
@@ -141,7 +154,8 @@ jobs:
             maps-browser-mcp:ci
 
           wait_endpoint maps-browser-mcp-restricted http://127.0.0.1:8790/healthz
-          wait_endpoint maps-browser-mcp-restricted http://127.0.0.1:8790/readyz
+          require_readyz_auth http://127.0.0.1:8790/readyz
+          wait_endpoint maps-browser-mcp-restricted http://127.0.0.1:8790/readyz "$token"
 
   platform-browser:
     name: Browser smoke (${{ matrix.os }})
