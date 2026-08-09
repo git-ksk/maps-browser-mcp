@@ -16,7 +16,7 @@
 
 v0.1.1ではprovider非依存のcontainer / headless Linux対応に加え、runtime、CI、readiness、Chromium sandbox、challenge境界のhardeningを追加しています。
 
-詳細な変更履歴は [CHANGELOG.md](../CHANGELOG.md) を参照してください。
+詳細な変更履歴は [CHANGELOG 日本語版](../CHANGELOG.ja.md) を参照してください。
 
 ## 安定版を使う場合
 
