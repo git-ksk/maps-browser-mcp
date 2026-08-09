@@ -11,6 +11,8 @@ Live workflowは `workflow_dispatch` からのみ起動します。固定・低�
 
 Screenshot、DOM / AX dump、review、cookie、browser profile、Maps result artifactは保存しません。
 
+同じbounded scriptをGitHub-hosted runner上の `host` path、またはrepository Dockerfileからbuildしたimage内の `container` pathで実行できます。`container` はpackaged headless Chromium runtimeと実Google Maps UIの組み合わせを必要時だけ検証するためのもので、通常CIへlive Maps accessを追加するものではありません。
+
 このworkflow / checklistをunattended crawlingへ拡張しないでください。各scenarioは通常requestを1件だけ使い、Googleがaccess challengeを表示した場合は停止します。
 
 ## GitHub Actionsから手動実行
@@ -18,7 +20,12 @@ Screenshot、DOM / AX dump、review、cookie、browser profile、Maps result art
 1. GitHub Actionsで **Live Maps E2E (manual)** を開く
 2. **Run workflow** を選択
 3. confirmation inputへ `run-live-check` を指定
-4. workflowを実行
+4. Execution environmentを1つ選択
+   - 通常runner pathは `host`
+   - buildしたcontainer imageで確認する場合は `container`
+5. workflowを実行
+
+Dockerfile、headless Chromium startup、browser profile path、container filesystem前提、container固有Chrome flagを実質的に変更したrelease前は `container` を選択してください。Routine activityのたびに両方を実行せず、live checkは低ボリュームかつ目的に応じて実行します。
 
 確認内容:
 
@@ -42,7 +49,7 @@ place search
   -> guarded route selection
 ```
 
-Workflowにはartifact upload stepを置きません。
+`container` pathはrepository Dockerfileをbuildし、同じbounded scriptをそのimage内で実行します。Chromium sandboxが使えるcontainer設定を使い、`MAPS_ALLOW_UNSANDBOXED_CHROMIUM` は有効化しません。どちらのpathにもartifact upload stepはありません。
 
 ## Full Manual Checklistの前提条件
 
@@ -122,7 +129,7 @@ Step 6前にlistが変わった場合、期待動作はbest-effort clickでは�
 2. CAPTCHA solving、stealth / fingerprint変更、proxy rotation、internal endpoint callを試みないことを確認
 3. Userが手動解決した場合、古いstateから継続せず元のMaps actionを再実行
 
-Test目的でaccess challengeを意図的に発生させないでください。
+Test目的でaccess challengeを意図的に発生させないでください。Challenge URL / redirectのfail-closed境界はdeterministic repository testで確認し、live confirmationは自然発生時だけ行います。
 
 ## 8. Bulk Policy Boundary
 
@@ -134,7 +141,7 @@ Test目的でaccess challengeを意図的に発生させないでください。
 
 ## Release Result
 
-記録するのはpass / failと、確認時のGoogle Maps UI date / localeだけにしてください。
+記録するのはpass / fail、選択したruntime（`host` / `container`）、確認時のGoogle Maps UI date / localeだけにしてください。
 
 Public Issueへ以下を添付しないでください。
 
