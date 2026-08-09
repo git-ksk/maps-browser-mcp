@@ -97,7 +97,7 @@ Node base imageはdigest固定を維持し、Docker dependencyはDependabot監�
 - browser challenge / navigation safety logic
 - Live pageへ影響し得るChrome / CDP behavior
 
-Workflowは意図的に `workflow_dispatch` onlyかつ低ボリュームです。
+Workflowは意図的に `workflow_dispatch` onlyかつ低ボリュームです。通常runner pathは `host` を選択します。Dockerfile、headless Chromium startup、container profile / filesystem前提、container固有Chrome flagを実質的に変更したreleaseでは `container` を選び、同じbounded live scriptをbuild済みimage内でChromium sandboxを有効にしたまま実行します。具体的な互換性理由がない限り、両modeを同時に繰り返し実行しません。
 
 期待path:
 
@@ -110,7 +110,7 @@ place search
   -> index + expectedLabel route selection
 ```
 
-記録するのはpass / failだけ。Repositoryへscreenshot、DOM dump、cookie、browser profile、review、location-result artifactを追加しないでください。
+記録するのはpass / failと選択runtimeだけ。Repositoryへscreenshot、DOM dump、cookie、browser profile、review、location-result artifactを追加しないでください。
 
 CAPTCHA、consent、sign-in、access challengeを意図的に発生させたり突破したりしないでください。通常testで `HUMAN_INTERVENTION_REQUIRED` のfail-closed境界を決定論的に確認し、live環境では自然発生した場合だけ再確認します。
 
@@ -174,7 +174,7 @@ Release noteに含める内容:
 - 主なsafety boundary
 - Supported Node version
 - Chrome / Chromium requirement
-- Releaseに対してLive Maps E2Eを通したか
+- Releaseに対してLive Maps E2Eを通したか、および使用runtime（`host` / `container`）
 - Experimental / compatibility limitation
 - Install / run手順、またはGetting Startedへのlink
 
