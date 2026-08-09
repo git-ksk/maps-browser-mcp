@@ -100,6 +100,9 @@ export function loadConfig(): AppConfig {
   if (bearerToken && bearerToken.length < 24) {
     throw new Error("MCP_BEARER_TOKEN must contain at least 24 characters when configured");
   }
+  if (bearerToken && /\s/.test(bearerToken)) {
+    throw new Error("MCP_BEARER_TOKEN must not contain whitespace");
+  }
   if (!isLoopbackBind(host)) {
     if (!allowNonLoopback) {
       throw new Error(

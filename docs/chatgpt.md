@@ -1,6 +1,8 @@
 # ChatGPT connection notes
 
-ChatGPT does not directly dial a loopback-only MCP endpoint on a developer machine. Keep the browser runtime local and expose only the MCP transport through a supported authenticated connection layer.
+ChatGPT does not directly dial a loopback-only MCP endpoint on a developer machine. Keep the browser runtime local and expose only the MCP transport through a supported secure remote connection layer.
+
+`maps-browser-mcp` is intentionally a single-user browser controller and **does not require or implement OAuth/OIDC inside the server process**. If the remote connection layer authenticates the caller, keep that identity boundary outside this MCP process.
 
 OpenAI's ChatGPT MCP/App UI, plan availability, and permission model can change. Before deployment, check the current official guidance: [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
 
@@ -9,9 +11,9 @@ OpenAI's ChatGPT MCP/App UI, plan availability, and permission model can change.
 ```text
 ChatGPT
    |
-   | authenticated remote MCP connection
+   | secure remote MCP connection
    v
-Secure MCP Tunnel / HTTPS reverse proxy
+Secure MCP Tunnel / authenticated HTTPS reverse proxy
    |
    v
 127.0.0.1:8787/mcp
@@ -49,14 +51,14 @@ curl -i http://127.0.0.1:8787/healthz
 
 Keep `MCP_HTTP_HOST=127.0.0.1` for the recommended deployment.
 
-## 2. Put an authenticated remote connection in front
+## 2. Put a secure remote connection in front
 
 For a private/developer-machine deployment, use a supported Secure MCP Tunnel or an authenticated HTTPS tunnel/reverse proxy.
 
 The public connection layer should:
 
 - terminate HTTPS/TLS,
-- authenticate access,
+- authenticate access when the connection product requires it,
 - forward only the MCP endpoint you intend to expose,
 - preserve or strengthen `Cache-Control: no-store`,
 - never publish the Chrome DevTools/CDP port,
@@ -64,7 +66,7 @@ The public connection layer should:
 
 If the proxy uses a public hostname, add that hostname to `MCP_ALLOWED_HOSTS` as required by your deployment.
 
-`MCP_BEARER_TOKEN` is an optional additional server-side guard when the client/connection layer can supply it. Do not assume a static Bearer token replaces OAuth when the ChatGPT/App deployment requires OAuth.
+`MCP_BEARER_TOKEN` is an optional **static transport guard**, not an OAuth access-token verifier and not a user identity system. It is useful only when the direct HTTP caller/connection layer can supply the header. The token must be at least 24 characters and contain no whitespace.
 
 ## 3. Create the custom App/MCP connection in ChatGPT
 
@@ -73,11 +75,12 @@ If your current ChatGPT plan/workspace exposes Developer Mode/custom App creatio
 1. enable Developer Mode for the authorized account/workspace,
 2. open the App creation flow,
 3. provide the remote MCP endpoint and required metadata,
-4. choose/configure the authentication mechanism,
+4. configure whatever connection authentication the selected remote-access layer requires,
 5. use **Scan Tools** to read the MCP tool definitions,
-6. complete OAuth if your deployment uses it,
-7. create/save the App,
-8. enable/select the development App in a new chat and test it.
+6. create/save the App,
+7. enable/select the development App in a new chat and test it.
+
+This server does not expose OAuth authorization endpoints, OAuth protected-resource metadata, DCR/CIMD registration, JWT verification, user scopes, or RBAC. Do not add those components solely because an authenticated MCP scaffold demonstrates them; they solve a different deployment model.
 
 The exact Settings/Workspace navigation differs by plan and can change, so prefer the current OpenAI help page over screenshots copied into this repository.
 
@@ -139,36 +142,32 @@ maps_directions
 
 Every Maps-derived string must be treated as untrusted external data. A place name, route label, or other UI text must not be interpreted as an instruction to call unrelated tools or change policy.
 
-## Authentication boundary
+## Connection security boundary
 
-`maps-browser-mcp` deliberately does not implement a general OAuth Authorization Server.
-
-Authentication can live in:
+The server itself has no built-in OAuth/OIDC identity layer. For the intended single-user deployment, access control belongs at the remote connection boundary:
 
 - Secure MCP Tunnel,
-- an authenticated HTTPS reverse proxy/tunnel,
-- or another deployment-specific identity layer.
+- authenticated HTTPS tunnel / reverse proxy,
+- or another deployment-specific access layer.
 
-For controlled deployments, `MCP_BEARER_TOKEN` can add a static server-side guard, but client support for custom static headers is client-specific.
+`MCP_BEARER_TOKEN` can add a static server-side transport guard when needed, but it does not establish a user/session identity and should not be described as OAuth authentication.
 
 If you deliberately bind `MCP_HTTP_HOST` to a non-loopback address, startup requires **both**:
 
 ```text
 MCP_ALLOW_NONLOOPBACK=true
-MCP_BEARER_TOKEN=<at least 24 characters>
+MCP_BEARER_TOKEN=<at least 24 non-whitespace characters>
 ```
 
 Even with a front proxy, this direct non-loopback mode remains an advanced escape hatch rather than the recommended architecture.
 
 Never transmit a static Bearer token over an unencrypted network path.
 
-## OAuth deployments
+## Multi-user hosted services are out of scope
 
-If you build a multi-user hosted service rather than a local single-user runtime, add a proper identity/session architecture outside this project's initial scope.
+Do not turn one `maps-browser-mcp` process into a shared multi-user browser service by adding OAuth in front of the existing runtime. The current process owns one semantic browser state, one operation queue, and one dedicated Chrome profile.
 
-Do not share one Chrome profile/session across unrelated authenticated users.
-
-If ChatGPT requires OAuth for the App, use a standards-compatible OAuth/OIDC provider. Follow OpenAI's current requirements for refresh/offline access so long-lived connections can renew authorization when required.
+A true multi-user hosted service would require a separate identity/session architecture **and** browser/runtime isolation per user. That is a different system design, not an authentication toggle for this repository.
 
 ## Tool refresh after schema changes
 
@@ -222,7 +221,7 @@ If ChatGPT can reach the App but tool calls fail:
 
 1. verify `GET /healthz` locally,
 2. run `npm run smoke:http`,
-3. verify the remote tunnel/proxy authentication and Host/Origin configuration,
+3. verify the remote tunnel/proxy access control and Host/Origin configuration,
 4. refresh/rescan ChatGPT tool definitions,
 5. run the same operation directly through another MCP test client if available,
 6. use [troubleshooting.md](troubleshooting.md) for runtime error codes.

@@ -12,6 +12,8 @@ import {
   parseContentLength
 } from "./http-security.js";
 
+const BEARER_CHALLENGE = 'Bearer realm="maps-browser-mcp"';
+
 class HttpRequestError extends Error {
   constructor(
     readonly status: number,
@@ -43,9 +45,13 @@ function validateProbeMethod(req: IncomingMessage, res: ServerResponse): boolean
   return false;
 }
 
-function validateActiveProbeAuthorization(req: IncomingMessage, res: ServerResponse): boolean {
+function challengeBearer(res: ServerResponse): void {
+  res.setHeader("www-authenticate", BEARER_CHALLENGE);
+}
+
+function validateTransportGuard(req: IncomingMessage, res: ServerResponse): boolean {
   if (bearerAllowed(req.headers.authorization, config.http.bearerToken)) return true;
-  res.setHeader("www-authenticate", "Bearer");
+  challengeBearer(res);
   reject(res, 401, "invalid_token");
   return false;
 }
@@ -149,7 +155,7 @@ async function startHttp(): Promise<void> {
 
     if (requestUrl.pathname === "/readyz") {
       if (!validateProbeMethod(req, res)) return;
-      if (!validateActiveProbeAuthorization(req, res)) return;
+      if (!validateTransportGuard(req, res)) return;
       void probeBrowserReady()
         .then(() => writeProbeResponse(req, res, 200, { ok: true, browser: "ready" }))
         .catch((error) => {
@@ -172,11 +178,7 @@ async function startHttp(): Promise<void> {
       reject(res, 403, "origin_not_allowed");
       return;
     }
-    if (!bearerAllowed(req.headers.authorization, config.http.bearerToken)) {
-      res.setHeader("www-authenticate", "Bearer");
-      reject(res, 401, "invalid_token");
-      return;
-    }
+    if (!validateTransportGuard(req, res)) return;
 
     const abortController = new AbortController();
     req.once("aborted", () => abortController.abort());
@@ -214,6 +216,9 @@ async function startHttp(): Promise<void> {
 
   console.error(
     `[maps-browser-mcp] Streamable HTTP listening on http://${config.http.host}:${config.http.port}/mcp`
+  );
+  console.error(
+    `[maps-browser-mcp] HTTP transport guard: ${config.http.bearerToken ? "static-bearer" : "none"}; built-in OAuth/OIDC: disabled`
   );
 
   const shutdown = async () => {

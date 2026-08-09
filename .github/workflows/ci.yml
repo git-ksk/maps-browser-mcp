@@ -90,7 +90,7 @@ jobs:
           --entrypoint node
           maps-browser-mcp:ci
           scripts/smoke-browser.mjs
-      - name: HTTP liveness, authenticated browser readiness, and PORT fallback inside container
+      - name: HTTP liveness, guarded browser readiness, and PORT fallback inside container
         if: matrix.node == 22
         shell: bash
         run: |
@@ -119,7 +119,7 @@ jobs:
             return 1
           }
 
-          require_readyz_auth() {
+          require_readyz_guard() {
             local url="$1"
             local status
             status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$url")"
@@ -139,7 +139,7 @@ jobs:
             maps-browser-mcp:ci
 
           wait_endpoint maps-browser-mcp-sandboxed http://127.0.0.1:8791/healthz
-          require_readyz_auth http://127.0.0.1:8791/readyz
+          require_readyz_guard http://127.0.0.1:8791/readyz
           wait_endpoint maps-browser-mcp-sandboxed http://127.0.0.1:8791/readyz "$token"
           docker rm -f maps-browser-mcp-sandboxed >/dev/null
 
@@ -154,7 +154,7 @@ jobs:
             maps-browser-mcp:ci
 
           wait_endpoint maps-browser-mcp-restricted http://127.0.0.1:8790/healthz
-          require_readyz_auth http://127.0.0.1:8790/readyz
+          require_readyz_guard http://127.0.0.1:8790/readyz
           wait_endpoint maps-browser-mcp-restricted http://127.0.0.1:8790/readyz "$token"
 
   platform-browser:
