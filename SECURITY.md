@@ -86,4 +86,12 @@ If private reporting is temporarily unavailable due to a GitHub/service issue, o
 
 ## Supported versions
 
-The project is currently pre-1.0. Security fixes are applied to the latest `main` branch. Older snapshots are not guaranteed to receive backports.
+The project is pre-1.0 and does not promise long-term backports.
+
+| Version | Security support |
+| --- | --- |
+| `0.1.1` | Supported as the current stable release |
+| `0.1.0` | No routine backports |
+| `main` | Development branch; fixes land here first |
+
+Security fixes are developed on the latest `main`. When a fix affects the supported stable release, a new patch release is published rather than moving or rewriting an existing tag.
