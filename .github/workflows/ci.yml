@@ -29,13 +29,38 @@ jobs:
       - run: npm run build
       - name: Install Firebase auth adapter dependencies
         if: matrix.node == 22
-        run: npm install --prefix adapters/auth-firebase --ignore-scripts
+        run: npm install --prefix adapters/auth-firebase --ignore-scripts --package-lock=false
       - name: Audit Firebase auth adapter dependencies
         if: matrix.node == 22
-        run: npm audit --prefix adapters/auth-firebase --audit-level=moderate
+        shell: bash
+        run: |
+          set +e
+          npm audit --prefix adapters/auth-firebase --audit-level=moderate --json > adapter-audit.json
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            node <<'NODE'
+          const fs = require("node:fs");
+          const report = JSON.parse(fs.readFileSync("adapter-audit.json", "utf8"));
+          for (const [name, vulnerability] of Object.entries(report.vulnerabilities || {})) {
+            const via = (vulnerability.via || []).map((item) => typeof item === "string" ? item : `${item.name || "advisory"}:${item.url || item.title || ""}`).join(", ");
+            const fix = JSON.stringify(vulnerability.fixAvailable ?? false);
+            console.log(`::error title=Firebase adapter npm audit::${name} severity=${vulnerability.severity}; via=${via}; fixAvailable=${fix}`);
+          }
+          NODE
+            exit "$status"
+          fi
       - name: Test Firebase auth adapter
-        if: matrix.node == 22
+        if: always() && matrix.node == 22
         run: npm test --prefix adapters/auth-firebase
+      - name: Build Firebase auth adapter container
+        if: always() && matrix.node == 22
+        run: docker build --file adapters/auth-firebase/Dockerfile --tag maps-browser-mcp:firebase-ci .
+      - name: Verify Firebase adapter module loads in container
+        if: always() && matrix.node == 22
+        run: >-
+          docker run --rm --entrypoint node maps-browser-mcp:firebase-ci
+          -e 'import("file:///app/adapters/auth-firebase/index.mjs")'
       - name: stdio MCP smoke test
         if: matrix.node == 22
         run: npm run smoke:stdio

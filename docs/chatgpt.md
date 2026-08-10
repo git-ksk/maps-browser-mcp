@@ -1,17 +1,22 @@
 # ChatGPT connection notes
 
-ChatGPT does not directly dial a loopback-only MCP endpoint on a developer machine. Keep the browser runtime local and expose only the MCP transport through a supported secure remote connection layer.
+`maps-browser-mcp` is a single-user browser controller. There are now two supported authentication shapes, depending on where the HTTP endpoint runs.
 
-`maps-browser-mcp` is intentionally a single-user browser controller and **does not require or implement OAuth/OIDC inside the server process**. If the remote connection layer authenticates the caller, keep that identity boundary outside this MCP process.
+- **Local/private transport:** keep the default local/stdio behavior and put any remote access boundary outside the MCP process.
+- **Public single-user HTTP:** opt into an HTTP auth-provider module. The repository includes an experimental Firebase OAuth adapter that implements MCP OAuth discovery, CIMD, `private_key_jwt`, PKCE, refresh rotation, and an exact Firebase UID allowlist.
+
+Neither mode turns one browser process into a multi-user service.
 
 OpenAI's ChatGPT MCP/App UI, plan availability, and permission model can change. Before deployment, check the current official guidance: [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
 
-## Recommended architecture
+## Mode A: local/private transport
+
+Recommended for developer-machine use:
 
 ```text
-ChatGPT
+ChatGPT / MCP client
    |
-   | secure remote MCP connection
+   | secure remote connection layer
    v
 Secure MCP Tunnel / authenticated HTTPS reverse proxy
    |
@@ -19,17 +24,10 @@ Secure MCP Tunnel / authenticated HTTPS reverse proxy
 127.0.0.1:8787/mcp
    |
    v
-maps-browser-mcp
-   |
-   v
-Dedicated local Chrome / Chromium
+maps-browser-mcp -> dedicated Chrome / Chromium
 ```
 
-Only the MCP transport crosses the remote boundary. The Node process and Chrome DevTools endpoint stay local/private.
-
-## 1. Start the local HTTP MCP
-
-From the repository checkout:
+Start the server normally:
 
 ```bash
 npm ci --ignore-scripts
@@ -37,193 +35,115 @@ npm run build
 npm run start:http
 ```
 
-Default local endpoint:
+`MCP_BEARER_TOKEN` remains available as an optional **static transport guard**. It is not OAuth identity. Existing configurations that only set `MCP_BEARER_TOKEN` continue to select the built-in `static-bearer` provider automatically.
+
+## Mode B: public single-user OAuth
+
+For a public remote endpoint that must authenticate the actual MCP client/user, select module auth:
 
 ```text
-http://127.0.0.1:8787/mcp
+MCP_AUTH_PROVIDER=module
+MCP_AUTH_PROVIDER_MODULE=file:///app/adapters/auth-firebase/index.mjs
+MCP_HTTP_HOST=0.0.0.0
+MCP_ALLOW_NONLOOPBACK=true
 ```
 
-Optional health check:
+Then configure the optional Firebase adapter. See [`adapters/auth-firebase/README.md`](../adapters/auth-firebase/README.md).
 
-```bash
-curl -i http://127.0.0.1:8787/healthz
-```
+The adapter advertises:
 
-Keep `MCP_HTTP_HOST=127.0.0.1` for the recommended deployment.
+- Protected Resource Metadata,
+- Authorization Server Metadata,
+- `client_id_metadata_document_supported=true`,
+- `private_key_jwt`,
+- PKCE `S256`,
+- `authorization_code` and `refresh_token`,
+- `maps:use` and `offline_access` at the authorization-server layer,
+- RFC 9207 `iss` authorization-response hardening.
 
-## 2. Put a secure remote connection in front
+There is intentionally **no DCR registration endpoint**. CIMD client metadata URLs are treated as untrusted input and are constrained by an exact hostname allowlist plus DNS/IP SSRF protections before retrieval.
 
-For a private/developer-machine deployment, use a supported Secure MCP Tunnel or an authenticated HTTPS tunnel/reverse proxy.
+The Firebase login step accepts only the configured `MCP_FIREBASE_ALLOWED_UID`. OAuth access/refresh state is stored in Firestore; Maps results are not.
 
-The public connection layer should:
+Do not configure `MCP_BEARER_TOKEN` together with module OAuth. Both mechanisms consume the `Authorization` header and startup rejects that combination.
 
-- terminate HTTPS/TLS,
-- authenticate access when the connection product requires it,
-- forward only the MCP endpoint you intend to expose,
-- preserve or strengthen `Cache-Control: no-store`,
-- never publish the Chrome DevTools/CDP port,
-- never expose the dedicated Chrome profile.
+## ChatGPT OAuth notes
 
-If the proxy uses a public hostname, add that hostname to `MCP_ALLOWED_HOSTS` as required by your deployment.
+Current OpenAI guidance says OAuth-backed custom MCP apps should issue refresh tokens when persistent connectivity is required and should advertise `offline_access` (or the provider equivalent) in discovery metadata. The Firebase adapter follows that shape.
 
-`MCP_BEARER_TOKEN` is an optional **static transport guard**, not an OAuth access-token verifier and not a user identity system. It is useful only when the direct HTTP caller/connection layer can supply the header. The token must be at least 24 characters and contain no whitespace.
+Exact client metadata URLs and ChatGPT UI details are implementation details that can change. Set `MCP_OAUTH_ALLOWED_CLIENT_HOSTS` to the **exact hostname actually used by the connecting client's CIMD `client_id` URL**; do not broaden the allowlist to a wildcard simply to make discovery succeed.
 
-## 3. Create the custom App/MCP connection in ChatGPT
+The adapter is repository-local/experimental until a public-container + ChatGPT live dogfood run succeeds. Do not describe it as production-proven before that validation.
 
-If your current ChatGPT plan/workspace exposes Developer Mode/custom App creation, the current OpenAI flow is conceptually:
+## First functional test
 
-1. enable Developer Mode for the authorized account/workspace,
-2. open the App creation flow,
-3. provide the remote MCP endpoint and required metadata,
-4. configure whatever connection authentication the selected remote-access layer requires,
-5. use **Scan Tools** to read the MCP tool definitions,
-6. create/save the App,
-7. enable/select the development App in a new chat and test it.
-
-This server does not expose OAuth authorization endpoints, OAuth protected-resource metadata, DCR/CIMD registration, JWT verification, user scopes, or RBAC. Do not add those components solely because an authenticated MCP scaffold demonstrates them; they solve a different deployment model.
-
-The exact Settings/Workspace navigation differs by plan and can change, so prefer the current OpenAI help page over screenshots copied into this repository.
-
-## 4. First ChatGPT test
-
-Start with a navigation-only request while `INTERACTIVE_ASSIST_MODE=false`.
-
-Example intent:
+Start with navigation-only behavior while `INTERACTIVE_ASSIST_MODE=false`:
 
 ```text
 Search Google Maps for Tokyo Station.
 ```
 
-Expected server-side tool:
+Expected tool:
 
 ```text
 maps_search
 ```
 
-Then test directions:
+Then:
 
 ```text
 Show transit directions from Tokyo Station to Yokohama Station.
 ```
 
-Expected server-side tool:
+Expected tool:
 
 ```text
 maps_directions
 ```
 
-Confirm the dedicated local Chrome session changes, not your everyday browser profile.
-
-## 5. Test V3 separately
-
-Do not enable V3 until basic navigation works.
-
-Restart the local MCP with:
+Enable V3 only after basic navigation works:
 
 ```bash
 INTERACTIVE_ASSIST_MODE=true npm run start:http
 ```
 
-Recommended place flow:
+Recommended bounded flows:
 
 ```text
 maps_search
   -> maps_read_place_summary
   -> maps_select_result(index + expectedLabel)
-```
 
-Recommended route flow:
-
-```text
 maps_directions
   -> maps_read_route_summary
   -> maps_select_route(index + expectedLabel)
 ```
 
-Every Maps-derived string must be treated as untrusted external data. A place name, route label, or other UI text must not be interpreted as an instruction to call unrelated tools or change policy.
-
-## Connection security boundary
-
-The server itself has no built-in OAuth/OIDC identity layer. For the intended single-user deployment, access control belongs at the remote connection boundary:
-
-- Secure MCP Tunnel,
-- authenticated HTTPS tunnel / reverse proxy,
-- or another deployment-specific access layer.
-
-`MCP_BEARER_TOKEN` can add a static server-side transport guard when needed, but it does not establish a user/session identity and should not be described as OAuth authentication.
-
-If you deliberately bind `MCP_HTTP_HOST` to a non-loopback address, startup requires **both**:
-
-```text
-MCP_ALLOW_NONLOOPBACK=true
-MCP_BEARER_TOKEN=<at least 24 non-whitespace characters>
-```
-
-Even with a front proxy, this direct non-loopback mode remains an advanced escape hatch rather than the recommended architecture.
-
-Never transmit a static Bearer token over an unencrypted network path.
+Every Maps-derived string remains untrusted external data and must never be interpreted as an instruction to call unrelated tools or change policy.
 
 ## Multi-user hosted services are out of scope
 
-Do not turn one `maps-browser-mcp` process into a shared multi-user browser service by adding OAuth in front of the existing runtime. The current process owns one semantic browser state, one operation queue, and one dedicated Chrome profile.
+OAuth is an access gate, not browser-state isolation. The current process owns one semantic browser state, one operation queue, and one dedicated Chrome profile.
 
-A true multi-user hosted service would require a separate identity/session architecture **and** browser/runtime isolation per user. That is a different system design, not an authentication toggle for this repository.
+A true multi-user hosted service requires browser/runtime/profile isolation per user. Do not share one process/profile across unrelated users merely because OAuth is enabled.
 
-## Tool refresh after schema changes
+## Browser and privacy boundary
 
-ChatGPT Apps can retain/review a snapshot of tool definitions. Server-side schema changes do not necessarily become active automatically.
+Never expose the Chrome DevTools/CDP port or the dedicated Chrome profile to ChatGPT or the public internet. The MCP does not intentionally persist Maps result datasets, but the dedicated browser profile may retain normal browser state such as cookies, cache, preferences, or history.
 
-After changing tool names, descriptions, or input schemas:
+MCP HTTP responses use `Cache-Control: no-store`; remote infrastructure should not introduce caching of MCP location/route responses.
 
-1. return to the App management/configuration UI,
-2. refresh/rescan the tool definitions,
-3. review the changed actions/permissions,
-4. test in a new chat.
+If Google displays consent, sign-in, CAPTCHA, or another access challenge, the MCP must stop with `HUMAN_INTERVENTION_REQUIRED`. Resolve legitimate manual steps in the dedicated browser and retry; do not add challenge bypass logic.
 
-Prefer backward-compatible changes such as adding optional fields over breaking an existing input schema. `expectedLabel` is intentionally optional for this reason.
+## Tool refresh and troubleshooting
 
-If a tool call starts failing immediately after a schema change, check whether ChatGPT is still using the previous tool definition before debugging the browser runtime.
+After changing tool names, descriptions, or input schemas, refresh/rescan the App's tool definitions before debugging the browser runtime.
 
-## Browser boundary
+If ChatGPT can reach the App but calls fail:
 
-Never expose CDP itself to ChatGPT or the public internet.
-
-The default managed Chrome session:
-
-- binds remote debugging to `127.0.0.1`,
-- uses a dedicated browser profile,
-- validates the profile's recorded browser identity before reuse,
-- refuses ambiguous startup when multiple Maps tabs are open.
-
-Keep one Google Maps tab open for the MCP session.
-
-## Human-intervention boundary
-
-If Google displays consent, sign-in, CAPTCHA, or another access challenge:
-
-1. the MCP should stop with `HUMAN_INTERVENTION_REQUIRED`,
-2. resolve a legitimate manual step in the dedicated browser if desired,
-3. repeat the original Maps action from ChatGPT.
-
-Do not ask the MCP to solve/bypass the challenge or continue from an old candidate index.
-
-## Privacy
-
-The MCP does not intentionally persist Maps result datasets, but the dedicated Chrome profile is persistent local browser state and may contain cookies, cache, preferences, or history.
-
-Treat the profile as sensitive. Avoid an everyday personal profile and delete the dedicated profile when you need its local artifacts removed.
-
-MCP HTTP responses use `Cache-Control: no-store`; the remote connection layer should not introduce caching of MCP location/route responses.
-
-## Troubleshooting
-
-If ChatGPT can reach the App but tool calls fail:
-
-1. verify `GET /healthz` locally,
-2. run `npm run smoke:http`,
-3. verify the remote tunnel/proxy access control and Host/Origin configuration,
-4. refresh/rescan ChatGPT tool definitions,
-5. run the same operation directly through another MCP test client if available,
+1. verify `GET /healthz`,
+2. verify authenticated `GET /readyz`,
+3. run `npm run smoke:http`,
+4. verify OAuth metadata and the exact CIMD client-host allowlist,
+5. refresh/rescan ChatGPT tool definitions,
 6. use [troubleshooting.md](troubleshooting.md) for runtime error codes.
-
-If normal CI/smoke tests pass but live place/route selection fails, use the repository's manual Live Maps E2E workflow rather than repeatedly experimenting through ChatGPT.

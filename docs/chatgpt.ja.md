@@ -2,34 +2,34 @@
 
 [English](chatgpt.md) | 日本語
 
-ChatGPTは開発者PC上のloopback-only MCP endpointへ直接接続しません。Browser runtimeはlocalに残し、MCP transportだけを安全なRemote接続層を通して公開します。
+`maps-browser-mcp` はsingle-userのbrowser controllerです。HTTP endpointの置き場所に応じて、認証は2つの形を使えます。
 
-`maps-browser-mcp` は意図的にsingle-user browser controllerとして設計しており、**server process内にOAuth / OIDCを実装する必要はありません**。Remote接続層がcallerを認証する構成なら、identity boundaryはMCP processの外側に置きます。
+- **Local / private transport:** 従来どおりlocal/stdioを使い、Remote accessの認証境界はMCP processの外側に置く。
+- **Public single-user HTTP:** HTTP auth provider moduleを明示的に有効化する。Repositoryには、MCP OAuth discovery、CIMD、`private_key_jwt`、PKCE、refresh rotation、Firebase UID allowlistを実装したexperimentalなFirebase adapterを同梱する。
 
-ChatGPTのMCP / App UI、利用可能plan、権限modelは変更される可能性があります。実際の接続前にはOpenAI公式の最新案内を確認してください。
+どちらも1つのbrowser processをmulti-user serviceには変えません。
 
-## 推奨アーキテクチャ
+ChatGPTのMCP / App UI、利用可能plan、権限modelは変更される可能性があります。実際の接続前にはOpenAI公式の最新案内を確認してください: [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt)
+
+## Mode A: Local / private transport
+
+Developer machineではこの構成を推奨します。
 
 ```text
-ChatGPT
+ChatGPT / MCP client
    |
-   | secure Remote MCP connection
+   | secure remote connection layer
    v
-Secure MCP Tunnel / 認証付きHTTPS Reverse Proxy
+Secure MCP Tunnel / 認証付きHTTPS reverse proxy
    |
    v
 127.0.0.1:8787/mcp
    |
    v
-maps-browser-mcp
-   |
-   v
-専用ローカルChrome / Chromium
+maps-browser-mcp -> 専用Chrome / Chromium
 ```
 
-Remote boundaryを越えるのはMCP transportだけです。Node processとChrome DevTools endpointはlocal / privateに保ちます。
-
-## 1. Local HTTP MCPを起動
+通常起動:
 
 ```bash
 npm ci --ignore-scripts
@@ -37,58 +37,49 @@ npm run build
 npm run start:http
 ```
 
-デフォルトlocal endpoint:
+`MCP_BEARER_TOKEN` はoptionalな**static transport guard**として残ります。OAuth identityではありません。従来どおり `MCP_BEARER_TOKEN` だけを設定した構成は、自動的にbuilt-in `static-bearer` providerとして扱われます。
+
+## Mode B: Public single-user OAuth
+
+Public Remote MCPで実際のMCP client/userを認証する場合はmodule authを選択します。
 
 ```text
-http://127.0.0.1:8787/mcp
+MCP_AUTH_PROVIDER=module
+MCP_AUTH_PROVIDER_MODULE=file:///app/adapters/auth-firebase/index.mjs
+MCP_HTTP_HOST=0.0.0.0
+MCP_ALLOW_NONLOOPBACK=true
 ```
 
-Health check:
+その上でoptional Firebase adapterを設定します。詳細は [`adapters/auth-firebase/README.md`](../adapters/auth-firebase/README.md) を参照してください。
 
-```bash
-curl -i http://127.0.0.1:8787/healthz
-```
+Adapterは以下を公開・実装します。
 
-推奨構成では `MCP_HTTP_HOST=127.0.0.1` のまま使います。
+- Protected Resource Metadata
+- Authorization Server Metadata
+- `client_id_metadata_document_supported=true`
+- `private_key_jwt`
+- PKCE `S256`
+- `authorization_code` / `refresh_token`
+- Authorization Server側の `maps:use` / `offline_access`
+- RFC 9207のauthorization response `iss`
 
-## 2. 安全なRemote接続層を前段に置く
+**DCR registration endpointは意図的に公開しません。** CIMDのclient metadata URLはuntrusted inputとして扱い、取得前にexact hostname allowlistとDNS/IP SSRF防御を通します。
 
-Developer PC / private deploymentでは、対応するSecure MCP Tunnelまたは認証付きHTTPS Tunnel / Reverse Proxyを使います。
+Firebase loginは設定された `MCP_FIREBASE_ALLOWED_UID` だけ許可します。OAuth access/refresh stateはFirestoreへ保存しますが、Google Mapsの結果datasetは保存しません。
 
-公開側の接続層で必要なこと:
+Module OAuthと `MCP_BEARER_TOKEN` は同時設定しないでください。どちらも `Authorization` headerを使うため、serverはこの組み合わせを起動時に拒否します。
 
-- HTTPS / TLSを終端する
-- 接続product側で必要なaccess認証を行う
-- 公開するMCP endpointだけをforwardする
-- `Cache-Control: no-store` を維持または強化する
-- Chrome DevTools / CDP portを公開しない
-- 専用Chrome profileを公開しない
+## ChatGPT OAuthの注意点
 
-Proxyにpublic hostnameを使う場合は、構成に応じてそのhostを `MCP_ALLOWED_HOSTS` へ追加してください。
+OpenAIの現行案内では、OAuthを使うCustom MCP Appで接続を維持するにはrefresh tokenが重要で、`offline_access`（またはprovider相当）をdiscovery metadataへ出すことが案内されています。このFirebase adapterもその形に合わせています。
 
-`MCP_BEARER_TOKEN` はoptionalな**static transport guard**です。OAuth access token verifierでもuser identity systemでもありません。Direct HTTP caller / 接続層がheaderを送れる場合だけ追加guardとして使います。Tokenは24文字以上かつ空白なしです。
+ChatGPTのclient metadata URLやUIの細部は変更される可能性があります。`MCP_OAUTH_ALLOWED_CLIENT_HOSTS` には、接続時に実際に使われるCIMD `client_id` URLの**exact hostname**だけを設定してください。接続を通す目的でwildcardへ広げないでください。
 
-## 3. ChatGPTでCustom App / MCP接続を作成
+Firebase adapterはpublic container + ChatGPTのlive dogfoodが完了するまではrepository-local / experimental扱いです。検証前にproduction-provenとは扱いません。
 
-利用中のplan / workspaceでDeveloper ModeとCustom App作成が利用できる場合、概念的には次の流れです。
+## 最初の機能テスト
 
-1. 対象account / workspaceでDeveloper Modeを有効化
-2. App作成画面を開く
-3. Remote MCP endpointと必要metadataを入力
-4. 選択したRemote接続層で必要なconnection authenticationを設定
-5. **Scan Tools** でMCP tool definitionを読み込む
-6. Appを作成・保存
-7. 新しいchatでdevelopment Appを有効化してテスト
-
-このserverはOAuth authorization endpoint、OAuth protected-resource metadata、DCR / CIMD registration、JWT verification、user scope、RBACを公開しません。Authenticated MCP scaffoldにそれらが含まれているという理由だけで、このprojectへ追加しないでください。対象とするdeployment modelが異なります。
-
-SettingsやWorkspace内の正確な画面位置はplanや時期で変わるため、このrepositoryへUI screenshotを固定せず、OpenAI公式の現行案内を優先します。
-
-## 4. 最初のChatGPTテスト
-
-まず `INTERACTIVE_ASSIST_MODE=false` のNavigation-onlyで確認してください。
-
-例:
+まず `INTERACTIVE_ASSIST_MODE=false` のnavigation-onlyで確認します。
 
 ```text
 Google Mapsで東京駅を検索して。
@@ -112,116 +103,49 @@ maps_search
 maps_directions
 ```
 
-普段使いbrowserではなく、専用local Chrome sessionが操作されることを確認してください。
-
-## 5. V3は別に確認
-
-基本Navigationが動く前にV3を有効化しないでください。
+基本navigationが動いてからV3を有効化します。
 
 ```bash
 INTERACTIVE_ASSIST_MODE=true npm run start:http
 ```
 
-推奨place flow:
+推奨bounded flow:
 
 ```text
 maps_search
   -> maps_read_place_summary
   -> maps_select_result(index + expectedLabel)
-```
 
-推奨route flow:
-
-```text
 maps_directions
   -> maps_read_route_summary
   -> maps_select_route(index + expectedLabel)
 ```
 
-Google Maps由来の文字列はすべて信頼されていない外部データとして扱います。place name、route label、その他UI textを、別toolを呼ぶ命令やpolicy変更命令として解釈しないでください。
-
-## 接続セキュリティ境界
-
-Server自体にはbuilt-in OAuth / OIDC identity layerを持たせません。想定しているsingle-user deploymentではaccess controlをRemote接続境界へ置きます。
-
-- Secure MCP Tunnel
-- 認証付きHTTPS Tunnel / Reverse Proxy
-- その他deployment固有のaccess layer
-
-`MCP_BEARER_TOKEN` は必要な場合にstatic server-side transport guardを追加できますが、user / session identityは確立しません。OAuth認証として説明しないでください。
-
-Node serverを意図的に非loopbackへbindする場合、両方必須です。
-
-```text
-MCP_ALLOW_NONLOOPBACK=true
-MCP_BEARER_TOKEN=<24文字以上・空白なし>
-```
-
-前段proxyがあっても、direct non-loopback modeは推奨構成ではなくadvanced escape hatchです。
-
-Static Bearer tokenを暗号化されていないnetwork経路へ流さないでください。
+Google Maps由来の文字列はすべてuntrusted external dataとして扱い、別toolの呼び出し命令やpolicy変更命令として解釈しません。
 
 ## Multi-user hosted serviceはscope外
 
-既存の `maps-browser-mcp` processの前にOAuthを追加するだけでshared multi-user browser serviceへ変えないでください。現状のprocessは1つのsemantic browser state、1つのoperation queue、1つの専用Chrome profileを所有します。
+OAuthはaccess gateであり、browser state isolationではありません。現在のprocessは1つのsemantic browser state、1つのoperation queue、1つの専用Chrome profileを所有します。
 
-本当のmulti-user hosted serviceを作る場合は、identity / session architectureに加えて**userごとのbrowser/runtime isolation**が必要です。これはこのrepositoryのauthentication toggleではなく、別のsystem designです。
+本当のmulti-user hosted serviceにはuserごとのbrowser/runtime/profile isolationが必要です。OAuthを有効にしただけで、無関係な複数ユーザーへ同じprocess/profileを共有しないでください。
 
-## Tool schema変更後のRefresh
+## Browser / Privacy境界
 
-ChatGPT Appはtool definitionのsnapshotを保持する場合があります。Server側schemaを変更しても自動反映されるとは限りません。
+Chrome DevTools/CDP portや専用Chrome profileをChatGPT/public internetへ公開しません。MCPはMaps結果datasetを意図的に永続化しませんが、専用browser profileには通常のcookie、cache、preferences、history等が残る場合があります。
 
-Tool名、description、input schemaを変更した場合:
+MCP HTTP responseは `Cache-Control: no-store` を使います。Remote infrastructureでもlocation / route responseをcacheしないでください。
 
-1. App管理画面へ戻る
-2. tool definitionをrefresh / rescan
-3. 変更されたaction / permissionを確認
-4. 新しいchatでテスト
+Googleが同意、ログイン、CAPTCHA、その他access challengeを表示した場合、MCPは `HUMAN_INTERVENTION_REQUIRED` で停止します。正規の手作業を専用browserで行ってから再試行し、challenge bypassを追加しません。
 
-既存input schemaを壊す変更より、optional field追加などbackward-compatibleな変更を優先します。`expectedLabel` がoptionalなのもこのためです。
+## Tool refresh / Troubleshooting
 
-Schema変更直後だけtool callが失敗する場合、browser runtimeを疑う前にChatGPT側が古いtool definitionを使っていないか確認してください。
+Tool名、description、input schemaを変更した場合は、browser runtimeを疑う前にChatGPT側のtool definitionをrefresh / rescanします。
 
-## Browser境界
+ChatGPTからAppへ到達できるのにcallが失敗する場合:
 
-CDP自体をChatGPTやpublic internetへ公開しないでください。
-
-デフォルトmanaged Chrome sessionは:
-
-- remote debuggingを `127.0.0.1` にbind
-- 専用browser profileを使用
-- profileに記録されたbrowser identityを再利用前に検証
-- Maps tabが複数ある曖昧な状態では起動を拒否
-
-MCP session用のGoogle Maps tabは1枚にしてください。
-
-## Human Intervention境界
-
-Googleが同意、ログイン、CAPTCHA、その他access challengeを表示した場合:
-
-1. MCPは `HUMAN_INTERVENTION_REQUIRED` で停止
-2. 必要なら専用browser上で正規の手作業を実施
-3. ChatGPTから元のMaps actionを最初から再実行
-
-Challenge突破や古いcandidate indexからの継続をMCPへ要求しないでください。
-
-## Privacy
-
-MCPはMaps結果datasetを意図的に永続化しません。ただし専用Chrome profileはpersistentなlocal browser stateなので、cookie、cache、preferences、history等を保持する場合があります。
-
-専用profileは機密local stateとして扱い、普段使いprofileを使わず、不要になったら削除してください。
-
-MCP HTTP responseは `Cache-Control: no-store` を使います。Remote接続層でもlocation / route responseをcacheしないでください。
-
-## Troubleshooting
-
-ChatGPTからAppへ到達できるがtool callが失敗する場合:
-
-1. localで `GET /healthz` を確認
-2. `npm run smoke:http` を実行
-3. Remote Tunnel / Proxyのaccess controlとHost / Origin設定を確認
-4. ChatGPTのtool definitionをrefresh / rescan
-5. 可能なら別MCP test clientで同じ操作を確認
+1. `GET /healthz` を確認
+2. 認証付き `GET /readyz` を確認
+3. `npm run smoke:http` を実行
+4. OAuth metadataとexact CIMD client-host allowlistを確認
+5. ChatGPTのtool definitionをrefresh / rescan
 6. [Troubleshooting 日本語版](troubleshooting.ja.md) でruntime error codeを確認
-
-通常CI / smokeが通るのにplace / routeの実UI操作だけ失敗する場合は、ChatGPT経由で何度も試すのではなくManual Live Maps E2Eを使ってください。

@@ -1,43 +1,51 @@
 # Firebase OAuth adapter (optional)
 
-This adapter adds a **single-user** OAuth 2.1 authorization boundary for remote `maps-browser-mcp` deployments. It is intentionally separate from the root package so local/stdio users do not install Firebase.
+This repository includes an **optional, single-user** Firebase OAuth adapter for remote `maps-browser-mcp` deployments. The root package remains Firebase-free, and local/stdio users do not need this adapter.
 
-It is designed for one MCP owner, one browser profile, and one browser state. It is **not** a multi-user hosting layer.
+The adapter is intentionally scoped to one MCP owner, one dedicated browser profile, and one browser state. Authentication does **not** turn the browser runtime into a multi-user service.
+
+> Status: repository-local/experimental until the public-container + ChatGPT live dogfood is complete. The adapter package is currently marked `private` and is not published separately.
 
 ## What it provides
 
 - Firebase Authentication for the interactive Google sign-in step
 - exact Firebase UID allowlist (`MCP_FIREBASE_ALLOWED_UID`)
-- Firestore-backed authorization transactions, authorization codes, opaque access tokens, refresh tokens, and token families
+- OAuth Protected Resource Metadata and Authorization Server Metadata
+- Client ID Metadata Documents (CIMD)
+- exact client-metadata hostname allowlist before any outbound fetch
+- DNS/IP SSRF checks plus DNS-pinned HTTPS metadata/JWKS retrieval
+- same-origin client JWKS requirement
+- `private_key_jwt` client authentication with RS256
+- `iss` / `sub` / `aud` / `iat` / `exp` / `jti` validation and assertion replay protection
 - PKCE `S256`
 - RFC 8707 resource binding to the exact `/mcp` resource
-- OAuth Protected Resource Metadata and Authorization Server Metadata
-- `iss` in authorization responses
+- Firestore-backed authorization transactions, codes, opaque access tokens, refresh tokens, token families, and consumed client assertions
 - one-hour access tokens
 - rotating refresh tokens with token-family revocation on reuse
-- pre-registered OAuth client only; no DCR endpoint
+- `iss` in authorization responses
+- no Dynamic Client Registration endpoint
 
-The MCP specification permits pre-registration as a client-registration mechanism. DCR is deliberately not enabled here because it is deprecated in the current MCP authorization specification and adds unnecessary surface area for a single-user deployment.
+The current MCP authorization specification prefers CIMD over DCR for clients and servers without a pre-existing registration relationship. This adapter advertises `client_id_metadata_document_supported=true` and deliberately exposes no `registration_endpoint`.
 
 ## Required configuration
 
 ```text
 MCP_AUTH_PROVIDER=module
-MCP_AUTH_PROVIDER_MODULE=@maps-browser-mcp/auth-firebase
+MCP_AUTH_PROVIDER_MODULE=file:///app/adapters/auth-firebase/index.mjs
 MCP_PUBLIC_BASE_URL=https://your-mcp.example.com
+
+# Exact CIMD metadata hostnames only. No wildcards.
+# Use the hostname actually present in the connecting client's client_id URL.
+MCP_OAUTH_ALLOWED_CLIENT_HOSTS=chatgpt.com
 
 MCP_FIREBASE_PROJECT_ID=your-project-id
 MCP_FIREBASE_ALLOWED_UID=exact-firebase-uid
 MCP_FIREBASE_WEB_API_KEY=...
 MCP_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
 MCP_FIREBASE_WEB_APP_ID=...
-
-MCP_OAUTH_CLIENT_ID=maps-browser-mcp-client
-MCP_OAUTH_CLIENT_SECRET=<32+ random non-whitespace characters>
-MCP_OAUTH_REDIRECT_URIS=https://exact-client-callback.example/callback
 ```
 
-For a public container bind, also configure:
+For a public container bind:
 
 ```text
 MCP_HTTP_HOST=0.0.0.0
@@ -49,19 +57,33 @@ Do **not** configure `MCP_BEARER_TOKEN` at the same time as module auth. OAuth a
 
 ## Firebase setup
 
-Enable Google sign-in in Firebase Authentication, register the web app values above, and create Firestore. The server-side Admin SDK uses Application Default Credentials; on Cloud Run, use a dedicated service account with only the Firebase Auth verification / Firestore access needed by this deployment.
+1. Enable Google sign-in in Firebase Authentication.
+2. Register the Firebase web app values used above.
+3. Add the public MCP hostname to Firebase Authentication's authorized domains when required by the Firebase web flow.
+4. Create Firestore.
+5. Run the server with Application Default Credentials from a dedicated service account with only the permissions required by this deployment.
 
-The adapter stores only OAuth control-plane state in Firestore. It does not store Google Maps result datasets.
+`verifyIdToken(..., true)` performs revocation-aware Firebase token verification, so the runtime identity must be able to perform the corresponding Firebase Auth verification/user lookup operations in addition to its Firestore access.
 
-## Installation from this repository
+The adapter stores only OAuth control-plane state. It does not store Google Maps result datasets. Raw authorization codes, access tokens, refresh tokens, and client assertion JTIs are never used as Firestore document IDs; SHA-256 derived keys are stored instead.
 
-Until this adapter is published separately, install it into a checkout without saving it into the root package:
+For collections containing an `expiresAt` Firestore Timestamp, enabling Firestore TTL is recommended so expired OAuth control-plane records are reclaimed automatically. Token-family cleanup can also be handled by a small periodic maintenance job if this deployment is long-lived.
+
+## Repository installation
+
+For development from this checkout:
 
 ```bash
-npm install --no-save ./adapters/auth-firebase
+npm install --no-save --package-lock=false ./adapters/auth-firebase
 ```
 
-The root `maps-browser-mcp` package remains Firebase-free.
+For a container image that already includes the adapter and its dependencies:
+
+```bash
+docker build -f adapters/auth-firebase/Dockerfile -t maps-browser-mcp:firebase .
+```
+
+The adapter-specific image defaults to module auth and a non-loopback HTTP bind, but still fails closed until the required Firebase/OAuth environment is supplied.
 
 ## OAuth endpoints
 
@@ -74,6 +96,8 @@ The root `maps-browser-mcp` package remains Firebase-free.
 /oauth/token
 ```
 
+There is intentionally no `/register` or `/oauth/register` DCR endpoint.
+
 The protected resource is exactly:
 
 ```text
@@ -82,8 +106,23 @@ ${MCP_PUBLIC_BASE_URL}/mcp
 
 The resource-required scope is `maps:use`. `offline_access` is advertised by the authorization server for clients that need refresh tokens, but is intentionally not advertised as a resource-required scope.
 
+## CIMD security boundary
+
+The authorization endpoint treats `client_id` as untrusted input. Before fetching a metadata document, the adapter requires:
+
+- an HTTPS client ID URL with a path,
+- an exact hostname match in `MCP_OAUTH_ALLOWED_CLIENT_HOSTS`,
+- public DNS results only,
+- a DNS-pinned HTTPS connection,
+- valid JSON metadata whose `client_id` exactly matches the requested URL,
+- an exact redirect URI from that metadata,
+- `private_key_jwt`,
+- inline JWKS or an HTTPS `jwks_uri` on the same origin as the metadata URL.
+
+Never replace the exact client-host allowlist with a broad wildcard merely to make an unknown client connect.
+
 ## Operational boundary
 
-Keep Cloud Run (or another host) at one logical user and one dedicated browser runtime. Authentication does not make the existing single-browser process safe for unrelated users. Do not share one browser profile/session across users.
+Keep the deployment at one logical user and one dedicated browser runtime. If using a platform that can autoscale or multiplex requests, keep the effective browser workload at one instance/user and one operation stream unless browser-state isolation is redesigned first.
 
-Use HTTPS. Never log or persist raw OAuth access tokens, refresh tokens, Firebase ID tokens, client secrets, or Authorization headers. Stored OAuth bearer values are SHA-256 keyed in Firestore.
+Use HTTPS. Never log raw OAuth access tokens, refresh tokens, Firebase ID tokens, private-key JWTs, Authorization headers, or Firebase credentials.
