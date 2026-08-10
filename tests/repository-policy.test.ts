@@ -68,13 +68,16 @@ test("container portability is gated by the existing required Node 22 check", ()
   assert.doesNotMatch(source, /^  container:\s*$/m, "container validation must not live in a separate optional job");
 });
 
-test("active browser readiness uses the static bearer transport guard whenever configured", () => {
-  const source = read("src/index.ts");
-  assert.match(source, /requestUrl\.pathname === "\/readyz"/);
-  assert.match(source, /validateTransportGuard\(req, res\)/);
-  assert.match(source, /bearerAllowed\(req\.headers\.authorization, config\.http\.bearerToken\)/);
-  assert.match(source, /www-authenticate/);
-  assert.match(source, /built-in OAuth\/OIDC: disabled/);
+test("active browser readiness and MCP requests share the pluggable auth provider", () => {
+  const indexSource = read("src/index.ts");
+  const authSource = read("src/auth-provider.ts");
+  assert.match(indexSource, /requestUrl\.pathname === "\/readyz"/);
+  assert.match(indexSource, /validateAuthProvider\(authProvider, req, res, requestUrl\)/);
+  assert.match(indexSource, /requestUrl\.pathname !== "\/mcp"/);
+  assert.match(indexSource, /authProvider\.handlesPath/);
+  assert.match(authSource, /createHttpAuthProvider/);
+  assert.match(authSource, /bearerAllowed\(request\.headers\.authorization, expectedToken\)/);
+  assert.match(authSource, /www-authenticate/);
 });
 
 test("container base image is digest-pinned and monitored", () => {
