@@ -7,6 +7,8 @@ const KEYS = [
   "MCP_HTTP_PORT",
   "PORT",
   "MCP_ALLOW_NONLOOPBACK",
+  "MCP_AUTH_PROVIDER",
+  "MCP_AUTH_PROVIDER_MODULE",
   "MCP_BEARER_TOKEN",
   "MCP_ALLOWED_HOSTS",
   "MCP_ALLOWED_ORIGINS",
@@ -60,6 +62,12 @@ test("validates the generic PORT fallback", async () => {
   });
 });
 
+test("keeps legacy bearer configuration backward compatible", async () => {
+  await withEnv({ MCP_BEARER_TOKEN: "0123456789abcdefghijklmn" }, () => {
+    assert.equal(loadConfig().auth.provider, "static-bearer");
+  });
+});
+
 test("refuses non-loopback binding without explicit opt-in", async () => {
   await withEnv({
     MCP_HTTP_HOST: "0.0.0.0",
@@ -71,17 +79,54 @@ test("refuses non-loopback binding without explicit opt-in", async () => {
 
 test("refuses unauthenticated non-loopback binding even after opt-in", async () => {
   await withEnv({ MCP_HTTP_HOST: "0.0.0.0", MCP_ALLOW_NONLOOPBACK: "true" }, () => {
-    assert.throws(() => loadConfig(), /requires MCP_BEARER_TOKEN/);
+    assert.throws(() => loadConfig(), /requires an HTTP auth provider/);
   });
 });
 
-test("allows non-loopback binding only with explicit opt-in and a static bearer transport guard", async () => {
+test("allows non-loopback binding with explicit opt-in and a static bearer transport guard", async () => {
   await withEnv({
     MCP_HTTP_HOST: "0.0.0.0",
     MCP_ALLOW_NONLOOPBACK: "true",
     MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
   }, () => {
-    assert.equal(loadConfig().http.host, "0.0.0.0");
+    const config = loadConfig();
+    assert.equal(config.http.host, "0.0.0.0");
+    assert.equal(config.auth.provider, "static-bearer");
+  });
+});
+
+test("allows non-loopback binding with an explicit auth provider module", async () => {
+  await withEnv({
+    MCP_HTTP_HOST: "0.0.0.0",
+    MCP_ALLOW_NONLOOPBACK: "true",
+    MCP_AUTH_PROVIDER: "module",
+    MCP_AUTH_PROVIDER_MODULE: "@example/maps-auth"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.auth.provider, "module");
+    assert.equal(config.auth.module, "@example/maps-auth");
+  });
+});
+
+test("requires a module specifier for module auth", async () => {
+  await withEnv({ MCP_AUTH_PROVIDER: "module" }, () => {
+    assert.throws(() => loadConfig(), /requires MCP_AUTH_PROVIDER_MODULE/);
+  });
+});
+
+test("rejects module configuration outside module auth mode", async () => {
+  await withEnv({ MCP_AUTH_PROVIDER_MODULE: "@example/maps-auth" }, () => {
+    assert.throws(() => loadConfig(), /requires MCP_AUTH_PROVIDER=module/);
+  });
+});
+
+test("rejects combining static bearer and module auth", async () => {
+  await withEnv({
+    MCP_AUTH_PROVIDER: "module",
+    MCP_AUTH_PROVIDER_MODULE: "@example/maps-auth",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
+  }, () => {
+    assert.throws(() => loadConfig(), /cannot be combined/);
   });
 });
 
