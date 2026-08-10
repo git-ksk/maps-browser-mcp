@@ -51,12 +51,23 @@ function envOrigins(name: string): string[] {
   }))];
 }
 
+function envAuthProvider(bearerToken: string | undefined): "none" | "static-bearer" | "module" {
+  const raw = process.env.MCP_AUTH_PROVIDER?.trim().toLowerCase();
+  if (!raw) return bearerToken ? "static-bearer" : "none";
+  if (raw === "none" || raw === "static-bearer" || raw === "module") return raw;
+  throw new Error("MCP_AUTH_PROVIDER must be one of: none, static-bearer, module");
+}
+
 export function isLoopbackBind(host: string): boolean {
   const normalized = normalizeHostname(host);
   return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
 }
 
 export interface AppConfig {
+  auth: {
+    provider: "none" | "static-bearer" | "module";
+    module?: string;
+  };
   http: {
     host: string;
     port: number;
@@ -103,15 +114,34 @@ export function loadConfig(): AppConfig {
   if (bearerToken && /\s/.test(bearerToken)) {
     throw new Error("MCP_BEARER_TOKEN must not contain whitespace");
   }
+
+  const authProvider = envAuthProvider(bearerToken);
+  const authModule = process.env.MCP_AUTH_PROVIDER_MODULE?.trim() || undefined;
+  if (authProvider === "static-bearer" && !bearerToken) {
+    throw new Error("MCP_AUTH_PROVIDER=static-bearer requires MCP_BEARER_TOKEN");
+  }
+  if (authProvider === "module" && !authModule) {
+    throw new Error("MCP_AUTH_PROVIDER=module requires MCP_AUTH_PROVIDER_MODULE");
+  }
+  if (authProvider !== "module" && authModule) {
+    throw new Error("MCP_AUTH_PROVIDER_MODULE requires MCP_AUTH_PROVIDER=module");
+  }
+  if (authProvider === "module" && bearerToken) {
+    throw new Error("MCP_BEARER_TOKEN cannot be combined with MCP_AUTH_PROVIDER=module because both consume the Authorization header");
+  }
+  if (authProvider === "none" && bearerToken) {
+    throw new Error("MCP_BEARER_TOKEN requires MCP_AUTH_PROVIDER=static-bearer or an unset MCP_AUTH_PROVIDER");
+  }
+
   if (!isLoopbackBind(host)) {
     if (!allowNonLoopback) {
       throw new Error(
         "Non-loopback MCP_HTTP_HOST requires explicit MCP_ALLOW_NONLOOPBACK=true. Prefer a loopback Node server behind an HTTPS tunnel/reverse proxy."
       );
     }
-    if (!bearerToken) {
+    if (authProvider === "none") {
       throw new Error(
-        "Non-loopback MCP_HTTP_HOST requires MCP_BEARER_TOKEN in addition to MCP_ALLOW_NONLOOPBACK=true. Do not send the token over an unencrypted network connection."
+        "Non-loopback MCP_HTTP_HOST requires an HTTP auth provider in addition to MCP_ALLOW_NONLOOPBACK=true. Configure static-bearer or a trusted auth provider module and use HTTPS/TLS."
       );
     }
   }
@@ -121,6 +151,10 @@ export function loadConfig(): AppConfig {
     : envInt("MCP_HTTP_PORT", 8787, 1, 65535);
 
   return {
+    auth: {
+      provider: authProvider,
+      module: authModule
+    },
     http: {
       host,
       port: httpPort,
