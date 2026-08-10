@@ -9,7 +9,7 @@ RUN npm run build
 
 COPY adapters/auth-firebase/package.json ./adapters/auth-firebase/package.json
 RUN npm install --prefix adapters/auth-firebase --ignore-scripts --package-lock=false
-COPY adapters/auth-firebase/index.mjs adapters/auth-firebase/cimd.mjs ./adapters/auth-firebase/
+COPY adapters/auth-firebase/index.mjs adapters/auth-firebase/cimd.mjs adapters/auth-firebase/oauth-state.mjs ./adapters/auth-firebase/
 
 FROM node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS runtime
 

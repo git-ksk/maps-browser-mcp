@@ -7,6 +7,7 @@ import {
   parseAllowedClientHosts,
   verifyCimdPrivateKeyJwt
 } from "./cimd.mjs";
+import { signOAuthTransaction, verifyOAuthTransaction } from "./oauth-state.mjs";
 
 const ACCESS_TTL_MS = 60 * 60 * 1000;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -20,7 +21,7 @@ const OPTIONAL_SCOPE = "offline_access";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const randomToken = () => randomBytes(32).toString("base64url");
 const now = () => Date.now();
-const timestamp = (millis) => Timestamp.fromMillis(millis);
+const timestamp = (value) => Timestamp.fromMillis(value);
 const millis = (value) => typeof value?.toMillis === "function" ? value.toMillis() : Number(value || 0);
 const form = (request) => request.text().then((body) => new URLSearchParams(body));
 
@@ -47,8 +48,8 @@ function html(status, body, headers = {}) {
   });
 }
 
-function oauthError(code, description, status = 400) {
-  return json(status, { error: code, error_description: description });
+function oauthError(code, description, status = 400, headers = {}) {
+  return json(status, { error: code, error_description: description }, headers);
 }
 
 function parseScopes(value) {
@@ -83,13 +84,27 @@ function env(name) {
   return value;
 }
 
+function envInt(name, fallback, min, max) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  return value;
+}
+
 function readConfig() {
   const baseUrl = safeBaseUrl(env("MCP_PUBLIC_BASE_URL"));
+  const transactionSecret = env("MCP_OAUTH_TRANSACTION_SECRET");
+  if (Buffer.byteLength(transactionSecret, "utf8") < 32 || /\s/.test(transactionSecret)) {
+    throw new Error("MCP_OAUTH_TRANSACTION_SECRET must be at least 32 non-whitespace bytes");
+  }
   return {
     baseUrl,
     resource: `${baseUrl}/mcp`,
     tokenEndpoint: `${baseUrl}/oauth/token`,
     allowedClientHosts: parseAllowedClientHosts(env("MCP_OAUTH_ALLOWED_CLIENT_HOSTS")),
+    transactionSecret,
+    maxAuthRequestsPerMinute: envInt("MCP_OAUTH_MAX_REQUESTS_PER_MINUTE", 60, 10, 600),
     projectId: env("MCP_FIREBASE_PROJECT_ID"),
     allowedUid: env("MCP_FIREBASE_ALLOWED_UID"),
     webApiKey: env("MCP_FIREBASE_WEB_API_KEY"),
@@ -146,14 +161,25 @@ function cookieValue(request, name) {
   }
 }
 
+function createGlobalRateLimiter(limit) {
+  const accepted = [];
+  return () => {
+    const cutoff = now() - 60_000;
+    while (accepted.length && accepted[0] <= cutoff) accepted.shift();
+    if (accepted.length >= limit) return false;
+    accepted.push(now());
+    return true;
+  };
+}
+
 export async function createAuthProvider() {
   const config = readConfig();
   const app = getApps()[0] ?? initializeApp({ credential: applicationDefault(), projectId: config.projectId });
   const auth = getAuth(app);
   const db = getFirestore(app);
   const m = metadata(config);
+  const allowAuthRequest = createGlobalRateLimiter(config.maxAuthRequestsPerMinute);
   const collections = {
-    tx: db.collection("_mapsBrowserMcpOAuthTransactions"),
     codes: db.collection("_mapsBrowserMcpOAuthCodes"),
     access: db.collection("_mapsBrowserMcpOAuthAccessTokens"),
     refresh: db.collection("_mapsBrowserMcpOAuthRefreshTokens"),
@@ -182,7 +208,17 @@ export async function createAuthProvider() {
     if (request.method !== "GET") return oauthError("invalid_request", "GET required", 405);
     const q = new URL(request.url).searchParams;
     const clientId = q.get("client_id") || "";
-    if (q.get("response_type") !== "code" || !clientId) return oauthError("invalid_request", "unsupported authorization request");
+    const state = q.get("state") || "";
+    if (q.get("response_type") !== "code" || !clientId || clientId.length > 2048 || state.length > 512) {
+      return oauthError("invalid_request", "unsupported authorization request");
+    }
+    if (q.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43,128}$/.test(q.get("code_challenge") || "")) {
+      return oauthError("invalid_request", "PKCE S256 is required");
+    }
+    if (q.get("resource") !== config.resource) return oauthError("invalid_target", "resource must identify this MCP server");
+    let scopes;
+    try { scopes = parseScopes(q.get("scope") || REQUIRED_SCOPE); }
+    catch { return oauthError("invalid_scope", "unsupported scope"); }
     let client;
     try { client = await loadCimdClient(clientId, config.allowedClientHosts); }
     catch { return oauthError("invalid_client", "client metadata could not be validated"); }
@@ -191,26 +227,22 @@ export async function createAuthProvider() {
     try { normalizedRedirect = new URL(redirectUri).toString(); }
     catch { return oauthError("invalid_request", "redirect_uri is invalid"); }
     if (!client.redirectUris.includes(normalizedRedirect)) return oauthError("invalid_request", "redirect_uri is not registered by client metadata");
-    if (q.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43,128}$/.test(q.get("code_challenge") || "")) {
-      return oauthError("invalid_request", "PKCE S256 is required");
+    let signedTransaction;
+    try {
+      signedTransaction = signOAuthTransaction({
+        clientId: client.clientId,
+        redirectUri: normalizedRedirect,
+        state,
+        codeChallenge: q.get("code_challenge"),
+        scopes,
+        resource: config.resource,
+        expiresAt: now() + TX_TTL_MS
+      }, config.transactionSecret);
+    } catch {
+      return oauthError("invalid_request", "authorization request is too large");
     }
-    if (q.get("resource") !== config.resource) return oauthError("invalid_target", "resource must identify this MCP server");
-    let scopes;
-    try { scopes = parseScopes(q.get("scope") || REQUIRED_SCOPE); }
-    catch { return oauthError("invalid_scope", "unsupported scope"); }
-    const txId = randomToken();
-    await collections.tx.doc(sha256(txId)).set({
-      clientId: client.clientId,
-      clientName: client.clientName,
-      redirectUri: normalizedRedirect,
-      state: q.get("state") || "",
-      codeChallenge: q.get("code_challenge"),
-      scopes,
-      resource: config.resource,
-      expiresAt: timestamp(now() + TX_TTL_MS)
-    });
     const response = loginPage(config);
-    response.headers.set("set-cookie", `${TX_COOKIE}=${txId}; HttpOnly; Secure; SameSite=Lax; Path=/oauth; Max-Age=600`);
+    response.headers.set("set-cookie", `${TX_COOKIE}=${signedTransaction}; HttpOnly; Secure; SameSite=Lax; Path=/oauth; Max-Age=600`);
     return response;
   }
 
@@ -218,32 +250,28 @@ export async function createAuthProvider() {
     if (request.method !== "POST") return oauthError("invalid_request", "POST required", 405);
     const origin = request.headers.get("origin");
     if (origin && origin !== config.baseUrl) return oauthError("invalid_request", "invalid origin", 403);
-    const txId = cookieValue(request, TX_COOKIE);
-    if (!txId) return oauthError("invalid_request", "authorization transaction missing");
+    const cookie = cookieValue(request, TX_COOKIE);
+    let tx;
+    try { tx = verifyOAuthTransaction(cookie, config.transactionSecret); }
+    catch { return oauthError("invalid_request", "authorization transaction missing or invalid"); }
+    if (millis(tx.expiresAt) <= now() || tx.resource !== config.resource || typeof tx.clientId !== "string" || typeof tx.redirectUri !== "string" || typeof tx.codeChallenge !== "string" || !Array.isArray(tx.scopes)) {
+      return oauthError("invalid_request", "authorization transaction expired or invalid");
+    }
     let body;
     try { body = await request.json(); } catch { return oauthError("invalid_request", "invalid JSON"); }
     if (typeof body?.idToken !== "string" || body.idToken.length > 16_384) return oauthError("invalid_request", "Firebase ID token missing");
     const decoded = await auth.verifyIdToken(body.idToken, true).catch(() => null);
     if (!decoded || decoded.uid !== config.allowedUid) return oauthError("access_denied", "account is not allowed", 403);
     const code = randomToken();
-    const result = await db.runTransaction(async (transaction) => {
-      const ref = collections.tx.doc(sha256(txId));
-      const snapshot = await transaction.get(ref);
-      const data = snapshot.data();
-      if (!data || millis(data.expiresAt) <= now()) return null;
-      transaction.delete(ref);
-      transaction.create(collections.codes.doc(sha256(code)), {
-        ...data,
-        uid: decoded.uid,
-        expiresAt: timestamp(now() + CODE_TTL_MS),
-        usedAt: null
-      });
-      return data;
+    await collections.codes.doc(sha256(code)).create({
+      ...tx,
+      uid: decoded.uid,
+      expiresAt: timestamp(now() + CODE_TTL_MS),
+      usedAt: null
     });
-    if (!result) return oauthError("invalid_request", "authorization transaction expired");
-    const redirect = new URL(result.redirectUri);
+    const redirect = new URL(tx.redirectUri);
     redirect.searchParams.set("code", code);
-    if (result.state) redirect.searchParams.set("state", result.state);
+    if (tx.state) redirect.searchParams.set("state", tx.state);
     redirect.searchParams.set("iss", config.baseUrl);
     const response = json(200, { redirect: redirect.toString() });
     response.headers.set("set-cookie", `${TX_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/oauth; Max-Age=0`);
@@ -283,11 +311,13 @@ export async function createAuthProvider() {
       if (!data || data.usedAt || millis(data.expiresAt) <= now() || data.clientId !== client.clientId || data.redirectUri !== redirectUri || data.resource !== config.resource || pkceChallenge(verifier) !== data.codeChallenge) {
         return null;
       }
+      const familyExpiresAt = now() + (data.scopes.includes(OPTIONAL_SCOPE) ? REFRESH_TTL_MS : ACCESS_TTL_MS);
       transaction.update(codeRef, { usedAt: timestamp(now()) });
       transaction.create(collections.families.doc(familyId), {
         uid: data.uid,
         clientId: client.clientId,
         createdAt: timestamp(now()),
+        expiresAt: timestamp(familyExpiresAt),
         revokedAt: null
       });
       transaction.create(collections.access.doc(sha256(accessToken)), {
@@ -342,7 +372,9 @@ export async function createAuthProvider() {
       let scopes;
       try { scopes = narrowedRefreshScopes(params.get("scope"), data.scopes); }
       catch { return { status: "scope" }; }
+      const refreshExpiresAt = now() + REFRESH_TTL_MS;
       transaction.update(ref, { usedAt: timestamp(now()) });
+      transaction.update(familyRef, { expiresAt: timestamp(refreshExpiresAt) });
       transaction.create(collections.access.doc(sha256(nextAccess)), {
         uid: data.uid,
         clientId: client.clientId,
@@ -358,7 +390,7 @@ export async function createAuthProvider() {
         scopes,
         familyId: data.familyId,
         generation: (data.generation || 0) + 1,
-        expiresAt: timestamp(now() + REFRESH_TTL_MS),
+        expiresAt: timestamp(refreshExpiresAt),
         usedAt: null
       });
       return { status: "ok", scopes };
@@ -391,14 +423,13 @@ export async function createAuthProvider() {
     return oauthError("unsupported_grant_type", "grant type is not supported");
   }
 
-  const routes = new Set([
+  const metadataRoutes = new Set([
     "/.well-known/oauth-protected-resource",
     "/.well-known/oauth-protected-resource/mcp",
-    "/.well-known/oauth-authorization-server",
-    "/oauth/authorize",
-    "/oauth/firebase/complete",
-    "/oauth/token"
+    "/.well-known/oauth-authorization-server"
   ]);
+  const authRoutes = new Set(["/oauth/authorize", "/oauth/firebase/complete", "/oauth/token"]);
+  const routes = new Set([...metadataRoutes, ...authRoutes]);
 
   return {
     kind: "firebase-oauth-single-user-cimd",
@@ -408,6 +439,9 @@ export async function createAuthProvider() {
       const path = new URL(request.url).pathname;
       if (path === "/.well-known/oauth-protected-resource" || path === "/.well-known/oauth-protected-resource/mcp") return json(200, m.protectedResource);
       if (path === "/.well-known/oauth-authorization-server") return json(200, m.authorizationServer);
+      if (authRoutes.has(path) && !allowAuthRequest()) {
+        return oauthError("temporarily_unavailable", "OAuth request rate limit exceeded", 429, { "retry-after": "60" });
+      }
       if (path === "/oauth/authorize") return startAuthorization(request);
       if (path === "/oauth/firebase/complete") return completeAuthorization(request);
       if (path === "/oauth/token") return token(request);

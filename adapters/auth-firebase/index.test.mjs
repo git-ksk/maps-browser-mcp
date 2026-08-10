@@ -6,6 +6,7 @@ import {
   parseAllowedClientHosts,
   validateClientIdUrl
 } from "./cimd.mjs";
+import { signOAuthTransaction, verifyOAuthTransaction } from "./oauth-state.mjs";
 
 test("PKCE S256 matches RFC 7636 example", () => {
   const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
@@ -42,4 +43,12 @@ test("CIMD SSRF policy rejects private, loopback, link-local, and documentation 
   }
   assert.equal(isPublicIpAddress("8.8.8.8"), true);
   assert.equal(isPublicIpAddress("2606:4700:4700::1111"), true);
+});
+
+test("OAuth browser transaction cookie is integrity protected", () => {
+  const secret = "0123456789abcdefghijklmnopqrstuvwxyz";
+  const value = signOAuthTransaction({ clientId: "https://chatgpt.com/oauth/client.json", expiresAt: 123 }, secret);
+  assert.deepEqual(verifyOAuthTransaction(value, secret), { clientId: "https://chatgpt.com/oauth/client.json", expiresAt: 123 });
+  const tampered = `${value.slice(0, -1)}${value.endsWith("A") ? "B" : "A"}`;
+  assert.throws(() => verifyOAuthTransaction(tampered, secret), /invalid_oauth_transaction/);
 });

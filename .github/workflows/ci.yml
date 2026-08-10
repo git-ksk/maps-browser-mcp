@@ -29,7 +29,7 @@ jobs:
       - run: npm run build
       - name: Install Firebase auth adapter dependencies
         if: matrix.node == 22
-        run: npm install --prefix adapters/auth-firebase --ignore-scripts --package-lock=false
+        run: npm install --prefix adapters/auth-firebase --ignore-scripts
       - name: Audit Firebase auth adapter dependencies
         if: matrix.node == 22
         shell: bash
@@ -42,10 +42,11 @@ jobs:
             node <<'NODE'
           const fs = require("node:fs");
           const report = JSON.parse(fs.readFileSync("adapter-audit.json", "utf8"));
+          if (report.error) console.log(`::error file=adapters/auth-firebase/package.json,line=1,title=Firebase adapter npm audit::${report.error.summary || report.error.message || "npm audit failed"}`);
           for (const [name, vulnerability] of Object.entries(report.vulnerabilities || {})) {
             const via = (vulnerability.via || []).map((item) => typeof item === "string" ? item : `${item.name || "advisory"}:${item.url || item.title || ""}`).join(", ");
             const fix = JSON.stringify(vulnerability.fixAvailable ?? false);
-            console.log(`::error title=Firebase adapter npm audit::${name} severity=${vulnerability.severity}; via=${via}; fixAvailable=${fix}`);
+            console.log(`::error file=adapters/auth-firebase/package.json,line=1,title=Firebase adapter npm audit::${name} severity=${vulnerability.severity}; via=${via}; fixAvailable=${fix}`);
           }
           NODE
             exit "$status"
