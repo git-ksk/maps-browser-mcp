@@ -1,0 +1,19 @@
+{
+  "name": "@maps-browser-mcp/auth-firebase",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional single-user Firebase Auth and Firestore OAuth adapter for maps-browser-mcp.",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": "./index.mjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test index.test.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "14.2.0"
+  },
+  "license": "MIT"
+}
