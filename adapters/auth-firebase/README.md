@@ -20,7 +20,7 @@ The adapter is intentionally scoped to one MCP owner, one dedicated browser prof
 - PKCE `S256`
 - RFC 8707 resource binding to the exact `/mcp` resource
 - Firestore-backed authorization codes, opaque access tokens, refresh tokens, token families, and consumed client assertions
-- signed HttpOnly authorization-transaction cookies, so unauthenticated `/oauth/authorize` requests do not create Firestore records
+- AES-256-GCM encrypted/authenticated HttpOnly authorization-transaction cookies, so unauthenticated `/oauth/authorize` requests do not create Firestore records
 - bounded OAuth endpoint request rate per process
 - one-hour access tokens
 - rotating refresh tokens with token-family revocation on reuse
@@ -40,6 +40,7 @@ MCP_PUBLIC_BASE_URL=https://your-mcp.example.com
 MCP_OAUTH_ALLOWED_CLIENT_HOSTS=chatgpt.com
 
 # Stable 32+ byte random secret, provided from your secret manager.
+# The adapter derives the AES-256-GCM transaction-state key with scrypt.
 MCP_OAUTH_TRANSACTION_SECRET=replace-with-a-long-random-secret
 # Optional; default 60, accepted range 10..600.
 MCP_OAUTH_MAX_REQUESTS_PER_MINUTE=60
@@ -114,7 +115,7 @@ Never replace the exact client-host allowlist with a broad wildcard merely to ma
 
 ## Abuse boundary
 
-Unauthenticated authorization requests are kept in an integrity-protected HttpOnly/Secure/SameSite cookie, not Firestore. Firestore authorization-code creation starts only after the configured Firebase UID successfully authenticates. The three state-changing OAuth endpoints also share a bounded in-process request rate.
+Unauthenticated authorization requests are kept in an AES-256-GCM encrypted/authenticated HttpOnly/Secure/SameSite cookie, not Firestore. Firestore authorization-code creation starts only after the configured Firebase UID successfully authenticates. The three state-changing OAuth endpoints also share a bounded in-process request rate.
 
 For public container deployments, additionally cap platform-level instance count/concurrency to match the single-browser runtime. The in-process limiter is defense in depth, not a substitute for platform-level cost/traffic controls.
 
