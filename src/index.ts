@@ -4,15 +4,13 @@ import { once } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { createHttpAuthProvider, type HttpAuthProvider } from "./auth-provider.js";
 import { buildServer, config, probeBrowserReady, shutdownRuntime } from "./server.js";
 import {
-  bearerAllowed,
   hostAllowed,
   originAllowed,
   parseContentLength
 } from "./http-security.js";
-
-const BEARER_CHALLENGE = 'Bearer realm="maps-browser-mcp"';
 
 class HttpRequestError extends Error {
   constructor(
@@ -45,15 +43,29 @@ function validateProbeMethod(req: IncomingMessage, res: ServerResponse): boolean
   return false;
 }
 
-function challengeBearer(res: ServerResponse): void {
-  res.setHeader("www-authenticate", BEARER_CHALLENGE);
-}
-
-function validateTransportGuard(req: IncomingMessage, res: ServerResponse): boolean {
-  if (bearerAllowed(req.headers.authorization, config.http.bearerToken)) return true;
-  challengeBearer(res);
-  reject(res, 401, "invalid_token");
-  return false;
+async function validateAuthProvider(
+  authProvider: HttpAuthProvider,
+  req: IncomingMessage,
+  res: ServerResponse,
+  requestUrl: URL
+): Promise<boolean> {
+  try {
+    const decision = await authProvider.authorize({
+      method: req.method ?? "GET",
+      url: requestUrl,
+      headers: req.headers
+    });
+    if (decision.allowed) return true;
+    for (const [name, value] of Object.entries(decision.headers ?? {})) {
+      res.setHeader(name, value);
+    }
+    reject(res, decision.status, decision.code);
+    return false;
+  } catch {
+    console.error("[maps-browser-mcp] HTTP auth provider failed");
+    reject(res, 503, "auth_provider_unavailable");
+    return false;
+  }
 }
 
 function writeProbeResponse(req: IncomingMessage, res: ServerResponse, status: number, payload: object): void {
@@ -138,8 +150,18 @@ async function writeWebResponse(response: Response, res: ServerResponse): Promis
   }
 }
 
+function makeAbortController(req: IncomingMessage, res: ServerResponse): AbortController {
+  const abortController = new AbortController();
+  req.once("aborted", () => abortController.abort());
+  res.once("close", () => {
+    if (!res.writableEnded) abortController.abort();
+  });
+  return abortController;
+}
+
 async function startHttp(): Promise<void> {
   const mcpHandler = createMcpHandler(buildServer);
+  const authProvider = await createHttpAuthProvider(config);
   const httpServer = createServer((req, res) => {
     if (!hostAllowed(req.headers.host, config.http.allowedHosts)) {
       reject(res, 403, "host_not_allowed");
@@ -153,15 +175,39 @@ async function startHttp(): Promise<void> {
       return;
     }
 
+    if (authProvider.handlesPath?.(requestUrl.pathname)) {
+      const abortController = makeAbortController(req, res);
+      void (async () => {
+        try {
+          const request = await toWebRequest(req, abortController.signal);
+          const response = await authProvider.handle!(request);
+          await writeWebResponse(response, res);
+        } catch (error) {
+          if (error instanceof HttpRequestError) {
+            if (error.status === 413) res.setHeader("connection", "close");
+            reject(res, error.status, error.code);
+            return;
+          }
+          if (abortController.signal.aborted) return;
+          console.error("[maps-browser-mcp] HTTP auth route failed");
+          reject(res, 500, "auth_route_error");
+        }
+      })();
+      return;
+    }
+
     if (requestUrl.pathname === "/readyz") {
       if (!validateProbeMethod(req, res)) return;
-      if (!validateTransportGuard(req, res)) return;
-      void probeBrowserReady()
-        .then(() => writeProbeResponse(req, res, 200, { ok: true, browser: "ready" }))
-        .catch((error) => {
+      void (async () => {
+        if (!(await validateAuthProvider(authProvider, req, res, requestUrl))) return;
+        try {
+          await probeBrowserReady();
+          writeProbeResponse(req, res, 200, { ok: true, browser: "ready" });
+        } catch (error) {
           console.error("[maps-browser-mcp] Browser readiness probe failed", error);
           writeProbeResponse(req, res, 503, { ok: false, browser: "unavailable" });
-        });
+        }
+      })();
       return;
     }
 
@@ -178,15 +224,10 @@ async function startHttp(): Promise<void> {
       reject(res, 403, "origin_not_allowed");
       return;
     }
-    if (!validateTransportGuard(req, res)) return;
-
-    const abortController = new AbortController();
-    req.once("aborted", () => abortController.abort());
-    res.once("close", () => {
-      if (!res.writableEnded) abortController.abort();
-    });
 
     void (async () => {
+      if (!(await validateAuthProvider(authProvider, req, res, requestUrl))) return;
+      const abortController = makeAbortController(req, res);
       try {
         const request = await toWebRequest(req, abortController.signal);
         const response = await mcpHandler.fetch(request);
@@ -217,11 +258,10 @@ async function startHttp(): Promise<void> {
   console.error(
     `[maps-browser-mcp] Streamable HTTP listening on http://${config.http.host}:${config.http.port}/mcp`
   );
-  console.error(
-    `[maps-browser-mcp] HTTP transport guard: ${config.http.bearerToken ? "static-bearer" : "none"}; built-in OAuth/OIDC: disabled`
-  );
+  console.error(`[maps-browser-mcp] HTTP auth provider: ${authProvider.kind}`);
 
   const shutdown = async () => {
+    await authProvider.close?.().catch(() => undefined);
     await mcpHandler.close().catch(() => undefined);
     await shutdownRuntime().catch(() => undefined);
     httpServer.closeIdleConnections();
