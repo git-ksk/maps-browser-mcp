@@ -27,6 +27,14 @@ jobs:
         run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npm run build
+      - name: Firebase auth adapter test
+        if: matrix.node == 22
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix adapters/auth-firebase --ignore-scripts
+          npm audit --prefix adapters/auth-firebase --audit-level=moderate
+          npm test --prefix adapters/auth-firebase
       - name: stdio MCP smoke test
         if: matrix.node == 22
         run: npm run smoke:stdio
