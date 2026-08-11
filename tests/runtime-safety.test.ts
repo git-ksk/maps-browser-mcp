@@ -3,6 +3,7 @@ import test from "node:test";
 import type { ChromeProcess } from "../src/browser/chrome-process.js";
 import { BrowserRuntimeError, MapsBrowserRuntime } from "../src/browser/runtime.js";
 import type { PolicyEngine } from "../src/policy/policy-engine.js";
+import type { MapsAction } from "../src/types.js";
 
 function makeRuntime() {
   const chrome = {} as ChromeProcess;
@@ -22,7 +23,9 @@ function makeRuntime() {
 
 function assertBoundaryCode(url: string, code: BrowserRuntimeError["code"]): void {
   const runtime = makeRuntime();
-  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  const boundary = runtime as unknown as {
+    assertAllowedCurrentUrl(value: string, intendedAction?: MapsAction): void;
+  };
   assert.throws(
     () => boundary.assertAllowedCurrentUrl(url),
     (error: unknown) => error instanceof BrowserRuntimeError && error.code === code
@@ -45,6 +48,56 @@ test("blank browser state is not misclassified as a challenge", () => {
 
 test("an allowed Maps surface passes the navigation boundary", () => {
   const runtime = makeRuntime();
-  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  const boundary = runtime as unknown as {
+    assertAllowedCurrentUrl(value: string, intendedAction?: MapsAction): void;
+  };
   assert.doesNotThrow(() => boundary.assertAllowedCurrentUrl("https://www.google.com/maps/search/Tokyo"));
+});
+
+test("challenge handoff preserves the canonical Maps action and invalidates stale state", () => {
+  const runtime = makeRuntime();
+  const boundary = runtime as unknown as {
+    assertAllowedCurrentUrl(value: string, intendedAction?: MapsAction): void;
+  };
+  const action: MapsAction = { kind: "search", query: "coffee near Tokyo Station" };
+
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://www.google.com/sorry/index?continue=x", action),
+    (error: unknown) => {
+      if (!(error instanceof BrowserRuntimeError)) return false;
+      assert.equal(error.code, "HUMAN_INTERVENTION_REQUIRED");
+      assert.equal(error.intervention?.reason, "access_challenge");
+      assert.equal(error.intervention?.resumePolicy, "replay_safe");
+      assert.deepEqual(error.intervention?.action, action);
+      return true;
+    }
+  );
+
+  const intervention = runtime.getActiveIntervention();
+  assert.equal(intervention?.status, "awaiting_human");
+  assert.equal(intervention?.epoch, 1);
+  assert.equal(runtime.getResourceEpoch(), 1);
+  assert.equal(runtime.getLastAction(), undefined);
+  assert.equal(runtime.getViewState(), "blank");
+});
+
+test("active intervention blocks agent CDP access before touching the browser", async () => {
+  const runtime = makeRuntime();
+  const boundary = runtime as unknown as {
+    assertAllowedCurrentUrl(value: string, intendedAction?: MapsAction): void;
+  };
+
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/signin/v2/identifier"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  assert.equal(runtime.getActiveIntervention()?.reason, "sign_in");
+
+  await assert.rejects(
+    runtime.getClient(),
+    (error: unknown) =>
+      error instanceof BrowserRuntimeError &&
+      error.code === "HUMAN_INTERVENTION_REQUIRED" &&
+      error.intervention?.status === "awaiting_human"
+  );
 });
