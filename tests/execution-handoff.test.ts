@@ -88,24 +88,28 @@ test("human handoff invalidates old resource state before safe resume", () => {
   assert.doesNotThrow(() => state.assertAgentAuthority());
 });
 
-test("failed verification can explicitly return exclusive control to the human", () => {
+test("failed verification can return exclusive control to human for another round", () => {
   const { state, tick } = makeState();
   const started = state.begin({
     reason: "access_challenge",
     resumePolicy: "replay_safe"
   });
   state.claimHuman(started.id);
-  const completed = state.markHumanComplete(started.id);
-  const epochAfterCompletion = completed.epoch;
+  const firstCompletion = state.markHumanComplete(started.id);
+  assert.equal(firstCompletion.epoch, 2);
 
   tick();
-  const returned = state.returnToHuman(started.id);
-
-  assert.equal(returned.status, "human_active");
-  assert.equal(returned.authority, "human");
-  assert.equal(returned.epoch, epochAfterCompletion);
-  assert.equal(state.getResourceEpoch(), epochAfterCompletion);
+  const reclaimed = state.claimHuman(started.id);
+  assert.equal(reclaimed.status, "human_active");
+  assert.equal(reclaimed.authority, "human");
+  assert.equal(reclaimed.epoch, 2);
   assert.equal(state.getAuthority(), "human");
+
+  tick();
+  const secondCompletion = state.markHumanComplete(started.id);
+  assert.equal(secondCompletion.status, "verifying");
+  assert.equal(secondCompletion.epoch, 3);
+  assert.equal(state.getResourceEpoch(), 3);
 });
 
 test("invalid transition and stale intervention ids fail closed", () => {

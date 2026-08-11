@@ -259,16 +259,19 @@ async function runToolWithHandoff<T>(input: {
     await operationQueue.run(() => runtime.verifyHumanIntervention(state.interventionId));
   } catch (error) {
     const stillActive = runtime.getActiveIntervention();
+    if (
+      error instanceof BrowserRuntimeError &&
+      error.code === "HUMAN_INTERVENTION_REQUIRED" &&
+      stillActive?.id === state.interventionId &&
+      stillActive.status === "verifying"
+    ) {
+      const returned = runtime.claimHumanControl(state.interventionId);
+      return humanInputRequired(returned, owner, input.args);
+    }
     if (stillActive?.id === state.interventionId) {
       runtime.cancelHumanIntervention(state.interventionId);
     }
     handoffOwners.delete(state.interventionId);
-    if (error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED") {
-      return errorResult(new BrowserRuntimeError(
-        "HUMAN_INTERVENTION_REQUIRED",
-        "The manual browser step is still required. Complete it in the dedicated Chrome window, then repeat the intended Maps action."
-      ));
-    }
     return errorResult(error);
   }
 
