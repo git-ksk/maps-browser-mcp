@@ -99,7 +99,12 @@ export class ExecutionHandoffState<TAction, TReason extends string = string> {
   claimHuman(interventionId: string): ExecutionIntervention<TAction, TReason> {
     const active = this.requireActive(interventionId);
     if (active.status === "human_active") return { ...active };
-    this.requireStatus(active, "awaiting_human");
+    if (active.status !== "awaiting_human" && active.status !== "verifying") {
+      throw new ExecutionHandoffError(
+        "INTERVENTION_STATE_CHANGED",
+        `Intervention ${active.id} is ${active.status}; expected awaiting_human or verifying`
+      );
+    }
     active.status = "human_active";
     active.authority = "human";
     active.updatedAt = this.now();
