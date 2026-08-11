@@ -18,6 +18,12 @@ import {
   SignedFileHandoffCheckpointStore
 } from "./handoff-checkpoint.js";
 import {
+  createHandoffOwner,
+  handoffOwnerMatches,
+  HandoffOwnerRegistry,
+  type HandoffOwner
+} from "./handoff-owner.js";
+import {
   HANDOFF_INPUT_KEY,
   HANDOFF_STATE_TTL_SECONDS,
   HUMAN_INTERVENTION_SCHEMA,
@@ -76,13 +82,7 @@ const handoffStateCodec = createRequestStateCodec<HandoffRequestState>({
   ttlSeconds: HANDOFF_STATE_TTL_SECONDS
 });
 
-interface HandoffOwner {
-  toolName: string;
-  argsDigest: string;
-  resumeStrategy: HandoffResumeStrategy;
-}
-
-const handoffOwners = new Map<string, HandoffOwner>();
+const handoffOwners = new HandoffOwnerRegistry();
 
 const queryText = z.string().trim().min(1).max(500);
 const locationText = z.string().trim().min(1).max(300);
@@ -118,7 +118,7 @@ function activePrincipalBinding(): string {
 }
 
 function checkpointHumanHandoff(owner: HandoffOwner): void {
-  v3Handoff?.checkpoint(activePrincipalBinding(), owner.argsDigest);
+  v3Handoff?.checkpoint(owner.principalBinding, owner.argsDigest);
 }
 
 function clearHandoffCheckpoint(): void {
@@ -150,17 +150,12 @@ function staleAfterInterventionResult(toolName: string): CallToolResult {
 }
 
 function ownerFor(toolName: string, args: unknown, resumeStrategy: HandoffResumeStrategy): HandoffOwner {
-  return {
+  return createHandoffOwner({
     toolName,
-    argsDigest: digestToolInvocation(toolName, args),
-    resumeStrategy
-  };
-}
-
-function ownerMatches(left: HandoffOwner, right: HandoffOwner): boolean {
-  return left.toolName === right.toolName &&
-    left.argsDigest === right.argsDigest &&
-    left.resumeStrategy === right.resumeStrategy;
+    args,
+    resumeStrategy,
+    principalBinding: activePrincipalBinding()
+  });
 }
 
 function handoffPrompt(intervention: MapsIntervention): string {
@@ -175,14 +170,12 @@ async function humanInputRequired(
   owner: HandoffOwner,
   args: unknown
 ): Promise<InputRequiredResult | CallToolResult> {
-  const existingOwner = handoffOwners.get(intervention.id);
-  if (existingOwner && !ownerMatches(existingOwner, owner)) {
+  if (!handoffOwners.claim(intervention.id, owner)) {
     return errorResult(new BrowserRuntimeError(
       "HUMAN_INTERVENTION_REQUIRED",
-      "Another MCP operation already owns the active human intervention. Complete or cancel the original operation before starting a different Maps action."
+      "Another MCP principal or operation already owns the active human intervention. Complete or cancel the original operation before starting a different Maps action."
     ));
   }
-  handoffOwners.set(intervention.id, owner);
 
   let active = runtime.getActiveIntervention();
   if (!active || active.id !== intervention.id) {
@@ -210,7 +203,8 @@ async function humanInputRequired(
     args,
     interventionId: active.id,
     epoch: active.epoch,
-    resumeStrategy: owner.resumeStrategy
+    resumeStrategy: owner.resumeStrategy,
+    principalBinding: owner.principalBinding
   }));
 
   return inputRequired({
@@ -277,10 +271,10 @@ async function runToolWithHandoff<T>(input: {
 
   const expectedOwner = ownerFor(input.toolName, input.args, input.resumeStrategy);
   const owner = handoffOwners.get(state.interventionId);
-  if (!owner || !ownerMatches(owner, expectedOwner)) {
+  if (!owner || !handoffOwnerMatches(owner, expectedOwner)) {
     return errorResult(new BrowserRuntimeError(
       "UI_STATE_CHANGED",
-      "The human intervention owner is no longer active. Repeat the intended Maps action."
+      "The human intervention owner is no longer active or belongs to a different principal. Repeat the intended Maps action."
     ));
   }
 
