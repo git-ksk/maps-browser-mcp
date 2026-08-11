@@ -24,6 +24,10 @@ function config(provider: AppConfig["auth"]["provider"], bearerToken?: string): 
       enabled: false,
       ttlMs: 300000
     },
+    handoffCheckpoint: {
+      enabled: false,
+      ttlMs: 900000
+    },
     policy: {
       interactiveAssist: false,
       maxActionsPerMinute: 30,
