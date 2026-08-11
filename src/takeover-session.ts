@@ -1,21 +1,21 @@
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
-export interface TakeoverGrant {
+export interface TakeoverLocator {
   id: string;
-  capability: string;
   interventionId: string;
   epoch: number;
   principalBinding: string;
   expiresAt: number;
 }
 
-interface TakeoverRecord {
-  id: string;
-  interventionId: string;
-  epoch: number;
-  principalBinding: string;
-  expiresAt: number;
+export interface TakeoverGrant extends TakeoverLocator {
+  capability: string;
+  clientBinding: string;
+}
+
+interface TakeoverRecord extends TakeoverLocator {
   revoked: boolean;
+  clientBinding?: string;
 }
 
 export class TakeoverSessionError extends Error {
@@ -42,7 +42,7 @@ export class TakeoverSessionManager {
     }
   }
 
-  ensure(interventionId: string, epoch: number, principalBinding: string): TakeoverGrant {
+  ensure(interventionId: string, epoch: number, principalBinding: string): TakeoverLocator {
     this.pruneExpired();
     for (const record of this.records.values()) {
       if (
@@ -51,7 +51,7 @@ export class TakeoverSessionManager {
         record.epoch === epoch &&
         record.principalBinding === principalBinding
       ) {
-        return this.grant(record);
+        return this.locator(record);
       }
     }
 
@@ -65,18 +65,36 @@ export class TakeoverSessionManager {
       revoked: false
     };
     this.records.set(record.id, record);
+    return this.locator(record);
+  }
+
+  validateLocator(id: string, principalBinding: string): TakeoverLocator {
+    const record = this.requireActive(id);
+    this.assertPrincipal(record, principalBinding);
+    return this.locator(record);
+  }
+
+  claimClient(id: string, principalBinding: string, clientBinding: string): TakeoverGrant {
+    const record = this.requireActive(id);
+    this.assertPrincipal(record, principalBinding);
+    this.assertClientBindingShape(clientBinding);
+    if (record.clientBinding === undefined) {
+      record.clientBinding = clientBinding;
+    } else if (!this.same(record.clientBinding, clientBinding)) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover session is unavailable");
+    }
     return this.grant(record);
   }
 
-  issueCapability(id: string, principalBinding: string): TakeoverGrant {
+  verify(
+    id: string,
+    capability: string,
+    principalBinding: string,
+    clientBinding: string
+  ): Omit<TakeoverGrant, "capability"> {
     const record = this.requireActive(id);
     this.assertPrincipal(record, principalBinding);
-    return this.grant(record);
-  }
-
-  verify(id: string, capability: string, principalBinding: string): Omit<TakeoverGrant, "capability"> {
-    const record = this.requireActive(id);
-    this.assertPrincipal(record, principalBinding);
+    this.assertClient(record, clientBinding);
     const expected = Buffer.from(this.capabilityFor(record), "utf8");
     const supplied = Buffer.from(capability, "utf8");
     if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
@@ -84,11 +102,8 @@ export class TakeoverSessionManager {
     }
 
     return {
-      id: record.id,
-      interventionId: record.interventionId,
-      epoch: record.epoch,
-      principalBinding: record.principalBinding,
-      expiresAt: record.expiresAt
+      ...this.locator(record),
+      clientBinding: record.clientBinding!
     };
   }
 
@@ -116,17 +131,33 @@ export class TakeoverSessionManager {
   }
 
   private assertPrincipal(record: TakeoverRecord, principalBinding: string): void {
-    const expected = Buffer.from(record.principalBinding, "utf8");
-    const supplied = Buffer.from(principalBinding, "utf8");
-    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
+    if (!this.same(record.principalBinding, principalBinding)) {
       throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover session is unavailable");
     }
   }
 
-  private grant(record: TakeoverRecord): TakeoverGrant {
+  private assertClient(record: TakeoverRecord, clientBinding: string): void {
+    this.assertClientBindingShape(clientBinding);
+    if (!record.clientBinding || !this.same(record.clientBinding, clientBinding)) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover session is unavailable");
+    }
+  }
+
+  private assertClientBindingShape(clientBinding: string): void {
+    if (!/^[A-Za-z0-9_-]{24,128}$/.test(clientBinding)) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover session is unavailable");
+    }
+  }
+
+  private same(left: string, right: string): boolean {
+    const expected = Buffer.from(left, "utf8");
+    const supplied = Buffer.from(right, "utf8");
+    return expected.length === supplied.length && timingSafeEqual(expected, supplied);
+  }
+
+  private locator(record: TakeoverRecord): TakeoverLocator {
     return {
       id: record.id,
-      capability: this.capabilityFor(record),
       interventionId: record.interventionId,
       epoch: record.epoch,
       principalBinding: record.principalBinding,
@@ -134,9 +165,23 @@ export class TakeoverSessionManager {
     };
   }
 
+  private grant(record: TakeoverRecord): TakeoverGrant {
+    if (!record.clientBinding) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover client has not claimed the session");
+    }
+    return {
+      ...this.locator(record),
+      capability: this.capabilityFor(record),
+      clientBinding: record.clientBinding
+    };
+  }
+
   private capabilityFor(record: TakeoverRecord): string {
+    if (!record.clientBinding) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover client has not claimed the session");
+    }
     return createHmac("sha256", this.signingKey)
-      .update("maps-browser-mcp/takeover/v2\0")
+      .update("maps-browser-mcp/takeover/v3\0")
       .update(record.id)
       .update("\0")
       .update(record.interventionId)
@@ -144,6 +189,8 @@ export class TakeoverSessionManager {
       .update(String(record.epoch))
       .update("\0")
       .update(record.principalBinding)
+      .update("\0")
+      .update(record.clientBinding)
       .update("\0")
       .update(String(record.expiresAt))
       .digest("base64url");
