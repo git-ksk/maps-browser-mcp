@@ -116,6 +116,15 @@ export class ExecutionHandoffState<TAction, TReason extends string = string> {
     return { ...active };
   }
 
+  returnToHuman(interventionId: string): ExecutionIntervention<TAction, TReason> {
+    const active = this.requireActive(interventionId);
+    this.requireStatus(active, "verifying");
+    active.status = "human_active";
+    active.authority = "human";
+    active.updatedAt = this.now();
+    return { ...active };
+  }
+
   markVerified(interventionId: string): ExecutionIntervention<TAction, TReason> {
     const active = this.requireActive(interventionId);
     this.requireStatus(active, "verifying");
