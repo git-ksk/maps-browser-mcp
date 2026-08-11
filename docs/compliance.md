@@ -6,13 +6,16 @@ This project is designed for constrained, user-directed interaction with Google 
 
 The project is **not** designed as a Google Maps scraper or a Google Maps Platform API replacement. It prefers official Google Maps URLs and uses browser interaction only for the user's active request.
 
+Where a supported Google Maps Platform API or Google-managed Maps MCP already satisfies the application's use case, prefer that supported structured interface. This project's browser path is for bounded workflows that genuinely require the user-visible Maps web surface; it is not an API-avoidance mechanism and does not claim API-equivalent rights to Maps content.
+
 Google Maps End User Additional Terms (last modified January 27, 2026 at the time of this document update) restrict activities including copying Maps content except where otherwise permitted, mass downloading/bulk feeds, and creating or augmenting substitute mapping/navigation/listing datasets. Applicable Google terms and machine-readable access instructions can change and must be re-checked over time.
 
 V3's small visible-state read is intentionally limited to reduce these risks, but Google does not expressly guarantee that every browser-agent read/summary pattern is permitted. Users and maintainers must continue to evaluate applicable terms as they change.
 
 ## Preferred behavior
 
-- Prefer official Google Maps URLs for search, directions, map views, and Street View.
+- Prefer supported structured Google Maps Platform / Google-managed MCP interfaces when they already satisfy the workflow.
+- Prefer official Google Maps URLs for browser-based search, directions, map views, and Street View.
 - Perform actions only in response to a user's active request.
 - Keep browser automation restricted to the Google Maps web surface.
 - Keep visible-state reads small, transient, and bounded.
@@ -35,7 +38,8 @@ The project does not intentionally provide features for:
 - CAPTCHA solving,
 - bot-detection bypass,
 - stealth or browser-fingerprint spoofing,
-- proxy rotation for access-control avoidance.
+- proxy rotation for access-control avoidance,
+- duplicating supported structured Google Maps API/MCP functionality merely to avoid using that interface.
 
 ## Policy enforcement
 
@@ -89,3 +93,5 @@ This split keeps live Maps automation user-triggered while still giving maintain
 ## Project status
 
 Google Maps UI structure, machine-readable access instructions, and applicable service terms can change. Maintainers and users should periodically re-check both behavior and terms before relying on interactive reading in production.
+
+If supported official Maps interfaces expand or an existing browser workflow becomes unnecessary, prefer narrowing the browser surface rather than preserving feature parity for its own sake.
