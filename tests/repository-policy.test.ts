@@ -95,13 +95,24 @@ test("container base image is digest-pinned and monitored", () => {
 });
 
 test("human-intervention detection stays fail-closed and contains no solver integration", () => {
-  const source = read("src/browser/runtime.ts");
-  assert.match(source, /HUMAN_INTERVENTION_REQUIRED/);
-  assert.ok(source.includes("'iframe[src*=\"recaptcha\"]'"));
-  assert.ok(source.includes("'form[action*=\"/sorry/\"]'"));
-  assert.ok(source.includes("'input[name=\"captcha\"]'"));
-  assert.ok(source.includes('url.pathname.startsWith("/sorry/")'));
-  assert.ok(source.includes('url.hostname.includes("recaptcha")'));
+  const runtimeSource = read("src/browser/runtime.ts");
+  const surfaceSource = read("src/browser/intervention-surface.ts");
+
+  assert.match(runtimeSource, /HUMAN_INTERVENTION_REQUIRED/);
+  assert.ok(runtimeSource.includes("'iframe[src*=\"recaptcha\"]'"));
+  assert.ok(runtimeSource.includes("'form[action*=\"/sorry/\"]'"));
+  assert.ok(runtimeSource.includes("'input[name=\"captcha\"]'"));
+  assert.match(runtimeSource, /classifyGoogleInterventionSurface\(value\)/);
+  assert.match(runtimeSource, /isAllowedHumanTakeoverSurface\(value,/);
+
+  assert.ok(surfaceSource.includes('if (url.protocol !== "https:") return undefined;'));
+  assert.ok(surfaceSource.includes('SORRY_HOSTS.has(hostname) && hasPathPrefix(url.pathname, "/sorry")'));
+  assert.ok(surfaceSource.includes('RECAPTCHA_HOSTS.has(hostname) && hasPathPrefix(url.pathname, "/recaptcha")'));
+  assert.ok(surfaceSource.includes('hostname === "accounts.google.com" && isSignInPath(url.pathname)'));
+  assert.ok(surfaceSource.includes('hostname === "consent.google.com" && isConsentPath(url.pathname)'));
+  assert.doesNotMatch(surfaceSource, /hostname\.includes\(/);
+  assert.doesNotMatch(runtimeSource, /hostname\.includes\("recaptcha"\)/);
+  assert.doesNotMatch(runtimeSource, /url\.pathname\.startsWith\("\/sorry\/"\)/);
 
   const packageJson = read("package.json");
   assert.doesNotMatch(packageJson, /recaptcha|captcha-solver|puppeteer-extra-plugin-stealth|playwright-extra|proxy-chain/i);
