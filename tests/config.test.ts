@@ -8,6 +8,8 @@ const KEYS = [
   "PORT",
   "MCP_ALLOW_NONLOOPBACK",
   "MCP_BEARER_TOKEN",
+  "MCP_AUTH_PROVIDER",
+  "MCP_AUTH_PROVIDER_MODULE",
   "MCP_ALLOWED_HOSTS",
   "MCP_ALLOWED_ORIGINS",
   "MAPS_CDP_PORT",
@@ -63,6 +65,31 @@ test("validates the generic PORT fallback", async () => {
   });
 });
 
+test("defaults to no auth locally and preserves bearer compatibility", async () => {
+  await withEnv({}, () => {
+    assert.equal(loadConfig().auth.provider, "none");
+  });
+  await withEnv({ MCP_BEARER_TOKEN: "0123456789abcdefghijklmn" }, () => {
+    assert.equal(loadConfig().auth.provider, "static-bearer");
+  });
+});
+
+test("validates module auth configuration", async () => {
+  await withEnv({ MCP_AUTH_PROVIDER: "module" }, () => {
+    assert.throws(() => loadConfig(), /requires MCP_AUTH_PROVIDER_MODULE/);
+  });
+  await withEnv({ MCP_AUTH_PROVIDER_MODULE: "./auth.mjs" }, () => {
+    assert.throws(() => loadConfig(), /requires MCP_AUTH_PROVIDER=module/);
+  });
+  await withEnv({
+    MCP_AUTH_PROVIDER: "module",
+    MCP_AUTH_PROVIDER_MODULE: "./auth.mjs",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
+  }, () => {
+    assert.throws(() => loadConfig(), /cannot be combined/);
+  });
+});
+
 test("refuses non-loopback binding without explicit opt-in", async () => {
   await withEnv({
     MCP_HTTP_HOST: "0.0.0.0",
@@ -74,17 +101,32 @@ test("refuses non-loopback binding without explicit opt-in", async () => {
 
 test("refuses unauthenticated non-loopback binding even after opt-in", async () => {
   await withEnv({ MCP_HTTP_HOST: "0.0.0.0", MCP_ALLOW_NONLOOPBACK: "true" }, () => {
-    assert.throws(() => loadConfig(), /requires MCP_BEARER_TOKEN/);
+    assert.throws(() => loadConfig(), /requires an HTTP auth provider/);
   });
 });
 
-test("allows non-loopback binding only with explicit opt-in and a static bearer transport guard", async () => {
+test("allows non-loopback binding with explicit opt-in and static bearer", async () => {
   await withEnv({
     MCP_HTTP_HOST: "0.0.0.0",
     MCP_ALLOW_NONLOOPBACK: "true",
     MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
   }, () => {
-    assert.equal(loadConfig().http.host, "0.0.0.0");
+    const config = loadConfig();
+    assert.equal(config.http.host, "0.0.0.0");
+    assert.equal(config.auth.provider, "static-bearer");
+  });
+});
+
+test("allows non-loopback binding with an explicit module auth provider", async () => {
+  await withEnv({
+    MCP_HTTP_HOST: "0.0.0.0",
+    MCP_ALLOW_NONLOOPBACK: "true",
+    MCP_AUTH_PROVIDER: "module",
+    MCP_AUTH_PROVIDER_MODULE: "./auth.mjs"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.auth.provider, "module");
+    assert.equal(config.auth.module, "./auth.mjs");
   });
 });
 
@@ -144,7 +186,7 @@ test("remote takeover is disabled by default", async () => {
   });
 });
 
-test("remote takeover requires loopback Node bind and an HTTPS public origin", async () => {
+test("remote takeover requires loopback Node bind, HTTPS origin and authenticated principal provider", async () => {
   await withEnv({ MAPS_REMOTE_TAKEOVER: "true" }, () => {
     assert.throws(() => loadConfig(), /requires MAPS_TAKEOVER_PUBLIC_BASE_URL/);
   });
@@ -154,6 +196,13 @@ test("remote takeover requires loopback Node bind and an HTTPS public origin", a
     MAPS_TAKEOVER_PUBLIC_BASE_URL: "http://takeover.example"
   }, () => {
     assert.throws(() => loadConfig(), /must use HTTPS/);
+  });
+
+  await withEnv({
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MCP_AUTH_PROVIDER/);
   });
 
   await withEnv({
@@ -167,8 +216,10 @@ test("remote takeover requires loopback Node bind and an HTTPS public origin", a
   });
 });
 
-test("remote takeover accepts authenticated-gateway origin and bounded TTL on loopback", async () => {
+test("remote takeover accepts authenticated principal provider and bounded TTL on loopback", async () => {
   await withEnv({
+    MCP_AUTH_PROVIDER: "module",
+    MCP_AUTH_PROVIDER_MODULE: "./auth.mjs",
     MAPS_REMOTE_TAKEOVER: "true",
     MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
     MAPS_TAKEOVER_TTL_SECONDS: "180"
@@ -178,9 +229,12 @@ test("remote takeover accepts authenticated-gateway origin and bounded TTL on lo
     assert.equal(config.takeover.publicBaseUrl, "https://takeover.example");
     assert.equal(config.takeover.ttlMs, 180_000);
     assert.equal(config.http.host, "127.0.0.1");
+    assert.equal(config.auth.provider, "module");
   });
 
   await withEnv({
+    MCP_AUTH_PROVIDER: "module",
+    MCP_AUTH_PROVIDER_MODULE: "./auth.mjs",
     MAPS_REMOTE_TAKEOVER: "true",
     MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
     MAPS_TAKEOVER_TTL_SECONDS: "601"

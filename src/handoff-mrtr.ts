@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ElicitRequestFormParams } from "@modelcontextprotocol/server";
+import { currentRequestPrincipal, principalBinding } from "./request-principal.js";
 
 export const HANDOFF_INPUT_KEY = "human_intervention";
 export const HANDOFF_STATE_TTL_SECONDS = 10 * 60;
@@ -7,13 +8,14 @@ export const HANDOFF_STATE_TTL_SECONDS = 10 * 60;
 export type HandoffResumeStrategy = "retry_original" | "require_fresh_semantic_action";
 
 export interface HandoffRequestState {
-  version: 1;
+  version: 2;
   phase: "awaiting_human";
   toolName: string;
   argsDigest: string;
   interventionId: string;
   epoch: number;
   resumeStrategy: HandoffResumeStrategy;
+  principalBinding: string;
 }
 
 export const HUMAN_INTERVENTION_SCHEMA: ElicitRequestFormParams["requestedSchema"] = {
@@ -40,6 +42,11 @@ function canonicalJson(value: unknown): string {
   return `{${entries.join(",")}}`;
 }
 
+function activePrincipalBinding(): string {
+  const principal = currentRequestPrincipal();
+  return principal ? principalBinding(principal) : "local-stdio";
+}
+
 export function digestToolInvocation(toolName: string, args: unknown): string {
   return createHash("sha256")
     .update(toolName)
@@ -54,27 +61,31 @@ export function createHandoffRequestState(input: {
   interventionId: string;
   epoch: number;
   resumeStrategy: HandoffResumeStrategy;
+  principalBinding?: string;
 }): HandoffRequestState {
   return {
-    version: 1,
+    version: 2,
     phase: "awaiting_human",
     toolName: input.toolName,
     argsDigest: digestToolInvocation(input.toolName, input.args),
     interventionId: input.interventionId,
     epoch: input.epoch,
-    resumeStrategy: input.resumeStrategy
+    resumeStrategy: input.resumeStrategy,
+    principalBinding: input.principalBinding ?? activePrincipalBinding()
   };
 }
 
 export function handoffStateMatchesInvocation(
   state: HandoffRequestState,
   toolName: string,
-  args: unknown
+  args: unknown,
+  expectedPrincipalBinding: string = activePrincipalBinding()
 ): boolean {
-  return state.version === 1 &&
+  return state.version === 2 &&
     state.phase === "awaiting_human" &&
     state.toolName === toolName &&
-    state.argsDigest === digestToolInvocation(toolName, args);
+    state.argsDigest === digestToolInvocation(toolName, args) &&
+    state.principalBinding === expectedPrincipalBinding;
 }
 
 export function interventionPrompt(reason: string): string {
