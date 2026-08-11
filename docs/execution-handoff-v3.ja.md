@@ -12,7 +12,7 @@ Execution Handoff V3では、Human interventionをMaps専用Takeover機能から
 | Handoff V2 | 実装済み | private CDP + short-lived capabilityによるbounded remote/mobile browser takeover |
 | Handoff V2.1 | 実装済み | authenticated MCP principalをMRTR state / takeover session / capabilityへbind |
 | Handoff V2.2 | 手動検証待ち | authenticated HTTPS gateway経由のphone E2E |
-| **Handoff V3 core** | 実装済み | generic adapter contract、durable control-plane checkpoint、exact-action approval分離 |
+| **Handoff V3** | 実装済み・durabilityはopt-in | generic adapter contract、live Maps durable control-plane checkpoint、exact-action approval分離、bounded audit metadata |
 
 ## V3 architecture
 
@@ -25,8 +25,9 @@ Execution Handoff V3
     |-- authority / resource epoch
     |-- durable control-plane checkpoint
     |-- exact-action approval envelope
+    |-- secret-safe audit metadata
     |
-    +---- adapter: browser.maps   (real)
+    +---- adapter: browser.maps   (real + live checkpoint integration)
     +---- adapter: desktop.mock   (deterministic contract test)
     +---- adapter: terminal.mock  (deterministic contract test)
 ```
@@ -48,15 +49,31 @@ V3はsigned checkpointを永続化できますが、checkpointは**browser sessi
 
 raw検索語、出発地/目的地、browser text、DOM/network data、credential、cookie、CAPTCHA/2FA response、approval receipt、raw action argumentsは保存しません。
 
+Live Maps handoffではHuman intervention中だけcheckpointを書き込みます。verified resume、cancel、stale intervention、recover不能なverification failureでは削除します。一方、graceful process shutdownではactive checkpointを意図的に消さず、restart後にrecovery metadataが残るようにします。
+
 Recovery結果は必ず次になります。
 
 ```text
 recovery = reissue_and_revalidate
 ```
 
-古いAgent/Human authorityを復元せず、中断actionを自動replayしません。元actionを同じauthenticated principalから再提示し、現在のresource stateで再評価する必要があります。
+古いAgent/Human authorityを復元せず、中断actionを自動replayしません。Restart後、同じauthenticated principalが元のMaps tool callを再発行し、そのfresh validated argumentsから作るaction digestが一致した場合だけcheckpointをconsumeします。その後のMaps actionは**現在のvalidated inputから最初から**実行します。古いMRTR requestState、DOM/semantic state、remote capability、browser authorityはdiskから復元しません。
 
-したがってV3が提供するのは**durable recovery metadata**であり、process restart後のtransparent continuationではありません。現在のMRTR request-state signing keyとlive browser intervention自体はprocess-localです。
+Checkpointのintegrity検証に失敗した場合や期限切れの場合は破棄し、authorizationには使いません。その後のfresh user-directed tool invocationは通常どおり実行できます。
+
+### Opt-in設定
+
+Durable recoveryはデフォルトOFFです。次の2値を必ずセットで設定します。
+
+```text
+MAPS_HANDOFF_CHECKPOINT_FILE=/absolute/private/path/handoff-checkpoint.json
+MAPS_HANDOFF_CHECKPOINT_KEY=<32 random bytes encoded as canonical base64url>
+MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS=900
+```
+
+File pathはabsolute必須です。Signing keyはprocess restartを跨いで同一値を安全に保持し、commit/logへ出してはいけません。Checkpoint storeはfileをprivate permissionで書き込みます。
+
+したがってV3が提供するのは**safe durable recovery metadata**であり、process restart後のtransparent continuationではありません。現在のlive MRTR request-state signing keyとbrowser intervention自体はprocess-localです。
 
 ## ApprovalとTakeoverを完全に分離
 
@@ -109,7 +126,8 @@ MFA完了 != メッセージ送信承認
 4. `Done` はremote inputをrevokeするだけで、MCP actionをapproveしない
 5. Continue後にbrowserをverifyし、安全にresumeするか、新しいHuman roundへ戻る
 6. stale epoch / capability / request stateを拒否する
-7. account、private location、token、browser profile、credential等を含むscreenshot/logをpublic issueへ添付しない
+7. opt-in checkpointがcontrolled process restartを跨いでも残るが、同じprincipal + 同じ再発行tool-argument digestだけがrecovery markerをconsumeできる
+8. account、private location、token、browser profile、checkpoint key、credential等を含むscreenshot/logをpublic issueへ添付しない
 
 この検証のためにCAPTCHAを意図的に発生させたり、回避したりしません。
 
