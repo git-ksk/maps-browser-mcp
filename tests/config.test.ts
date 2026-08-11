@@ -19,8 +19,13 @@ const KEYS = [
   "MAPS_HEADLESS",
   "MAPS_REMOTE_TAKEOVER",
   "MAPS_TAKEOVER_PUBLIC_BASE_URL",
-  "MAPS_TAKEOVER_TTL_SECONDS"
+  "MAPS_TAKEOVER_TTL_SECONDS",
+  "MAPS_HANDOFF_CHECKPOINT_FILE",
+  "MAPS_HANDOFF_CHECKPOINT_KEY",
+  "MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS"
 ] as const;
+
+const CHECKPOINT_KEY = Buffer.alloc(32, 6).toString("base64url");
 
 async function withEnv(values: Partial<Record<(typeof KEYS)[number], string | undefined>>, fn: () => void | Promise<void>) {
   const before = new Map<string, string | undefined>();
@@ -246,5 +251,56 @@ test("remote takeover accepts authenticated principal provider and bounded TTL o
 test("takeover public origin cannot be configured accidentally while feature is off", async () => {
   await withEnv({ MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example" }, () => {
     assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
+  });
+});
+
+test("durable handoff checkpoint is disabled by default", async () => {
+  await withEnv({}, () => {
+    const config = loadConfig();
+    assert.equal(config.handoffCheckpoint.enabled, false);
+    assert.equal(config.handoffCheckpoint.ttlMs, 900_000);
+  });
+});
+
+test("durable handoff checkpoint requires an absolute file and stable 32-byte key together", async () => {
+  await withEnv({ MAPS_HANDOFF_CHECKPOINT_FILE: "/tmp/maps-handoff.json" }, () => {
+    assert.throws(() => loadConfig(), /must be configured together/);
+  });
+  await withEnv({ MAPS_HANDOFF_CHECKPOINT_KEY: CHECKPOINT_KEY }, () => {
+    assert.throws(() => loadConfig(), /must be configured together/);
+  });
+  await withEnv({
+    MAPS_HANDOFF_CHECKPOINT_FILE: "relative.json",
+    MAPS_HANDOFF_CHECKPOINT_KEY: CHECKPOINT_KEY
+  }, () => {
+    assert.throws(() => loadConfig(), /must be an absolute path/);
+  });
+  await withEnv({
+    MAPS_HANDOFF_CHECKPOINT_FILE: "/tmp/maps-handoff.json",
+    MAPS_HANDOFF_CHECKPOINT_KEY: "not-a-32-byte-key"
+  }, () => {
+    assert.throws(() => loadConfig(), /exactly 32 random bytes/);
+  });
+});
+
+test("durable handoff checkpoint accepts a stable key and bounded TTL", async () => {
+  await withEnv({
+    MAPS_HANDOFF_CHECKPOINT_FILE: "/tmp/maps-handoff.json",
+    MAPS_HANDOFF_CHECKPOINT_KEY: CHECKPOINT_KEY,
+    MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS: "1200"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.handoffCheckpoint.enabled, true);
+    assert.equal(config.handoffCheckpoint.filePath, "/tmp/maps-handoff.json");
+    assert.equal(config.handoffCheckpoint.signingKey?.equals(Buffer.alloc(32, 6)), true);
+    assert.equal(config.handoffCheckpoint.ttlMs, 1_200_000);
+  });
+
+  await withEnv({
+    MAPS_HANDOFF_CHECKPOINT_FILE: "/tmp/maps-handoff.json",
+    MAPS_HANDOFF_CHECKPOINT_KEY: CHECKPOINT_KEY,
+    MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS: "86401"
+  }, () => {
+    assert.throws(() => loadConfig(), /between 60 and 86400/);
   });
 });
