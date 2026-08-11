@@ -64,7 +64,7 @@ async function bootstrap(
   return body.capability;
 }
 
-test("takeover link is a locator only and page creates a session-scoped remote client binding", async () => {
+test("takeover link is a locator only and page creates a memory-only remote client binding", async () => {
   const { broker, url, sessionId } = fixture();
   assert.equal(url.search, "");
   assert.equal(url.hash, "");
@@ -77,8 +77,9 @@ test("takeover link is a locator only and page creates a session-scoped remote c
   const html = await response.text();
   assert.doesNotMatch(html, /Takeover [A-Za-z0-9_-]{32,}/);
   assert.match(html, /takeover\/api\/bootstrap/);
-  assert.match(html, /sessionStorage/);
+  assert.doesNotMatch(html, /sessionStorage|localStorage/);
   assert.match(html, /crypto\.getRandomValues/);
+  assert.match(html, /const clientBinding=randomClientBinding\(\)/);
   assert.match(html, /x-takeover-client/);
 
   const crossSiteBootstrap = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
@@ -111,15 +112,15 @@ test("same principal cannot claim one takeover from two remote clients", async (
   const { broker, sessionId } = fixture();
   const capability = await bootstrap(broker, sessionId, PRINCIPAL_A, CLIENT_A);
 
-  const sameClientReload = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
+  const retryBySameClient = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
     headers: {
       "sec-fetch-site": "same-origin",
       "x-takeover-client": CLIENT_A
     }
   }), PRINCIPAL_A);
-  assert.equal(sameClientReload.status, 200);
-  const reloaded = await sameClientReload.json() as { capability?: string };
-  assert.equal(reloaded.capability, capability);
+  assert.equal(retryBySameClient.status, 200);
+  const retried = await retryBySameClient.json() as { capability?: string };
+  assert.equal(retried.capability, capability);
 
   const secondClient = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
     headers: {
