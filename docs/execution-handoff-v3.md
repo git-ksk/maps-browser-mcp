@@ -38,11 +38,11 @@ The core never exposes CDP or another adapter-native protocol. A future desktop,
 
 Authenticated identity and remote-control concurrency are separate boundaries. The same authenticated principal may own the Human intervention, but one intervention/resource epoch permits only **one active remote takeover client**.
 
-The authenticated takeover page creates a random client binding with Web Crypto and keeps it in `sessionStorage`. The first same-origin bootstrap atomically claims the remote-client lease. A normal reload in the same page context can reuse that binding, while another device/tab with a different binding cannot claim the same active takeover session even when it belongs to the same authenticated principal.
+The authenticated takeover page creates a random client binding with Web Crypto and keeps it only in page memory. The first same-origin bootstrap atomically claims the remote-client lease. Reloading the page or opening the same locator in another device/tab creates a different binding and therefore cannot reclaim the active takeover session, even for the same authenticated principal. If the active page is lost, return to MCP and start a fresh Human round rather than transferring the lease implicitly.
 
 The short-lived takeover capability is HMAC-bound to the session locator, intervention id, resource epoch, principal binding, client binding, and expiry. Frame/input/done requests must present both the capability and the matching client binding. A resource-epoch change creates a new takeover session and therefore a fresh client lease.
 
-V3 intentionally does not provide a hidden client-transfer operation. To move control to another device, finish/cancel the current remote control and use a fresh Human round. The client binding is a concurrency lease, not user authentication; the authenticated principal remains the primary identity boundary.
+V3 intentionally does not provide a hidden client-transfer operation. The client binding is a concurrency lease, not user authentication; the authenticated principal remains the primary identity boundary.
 
 ## Durable recovery is deliberately conservative
 
@@ -133,7 +133,7 @@ The manual run should verify a user-directed workflow only:
 1. the same authenticated principal starts the MCP action and opens the takeover page;
 2. another/unauthenticated principal cannot open or bootstrap the takeover session;
 3. the phone can view the bounded frame and send permitted input while Human owns authority;
-4. a second remote client for the same principal cannot claim/send input for the same intervention epoch;
+4. a second remote client for the same principal cannot claim/send input for the same intervention epoch, and reload does not silently transfer the lease;
 5. `Done` revokes remote input but does not approve the MCP action;
 6. Continue verifies the browser and either resumes safely or returns to a new Human round;
 7. stale epoch/capability/request state is rejected;
