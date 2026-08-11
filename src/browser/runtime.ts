@@ -1,4 +1,11 @@
 import CDP from "chrome-remote-interface";
+import {
+  ExecutionHandoffError,
+  ExecutionHandoffState,
+  type ExecutionIntervention,
+  type ResumeDecision,
+  type ResumePolicy
+} from "../execution-handoff.js";
 import type { MapsAction, MapsViewState } from "../types.js";
 import { PolicyEngine, PolicyError } from "../policy/policy-engine.js";
 import { ChromeProcess } from "./chrome-process.js";
@@ -10,6 +17,8 @@ function sleep(ms: number): Promise<void> {
 type CdpClient = Awaited<ReturnType<typeof CDP>>;
 type CandidateKind = "place" | "route";
 type MapsPathKind = "search" | "place" | "directions" | "map" | "root" | "other";
+export type MapsInterventionReason = "access_challenge" | "sign_in" | "consent" | "external_surface";
+export type MapsIntervention = ExecutionIntervention<MapsAction, MapsInterventionReason>;
 
 function actionToView(action: MapsAction): MapsViewState {
   switch (action.kind) {
@@ -36,6 +45,10 @@ function mapsPathKind(value: string): MapsPathKind {
   } catch {
     return "other";
   }
+}
+
+function resumePolicyForMapsAction(action: MapsAction | undefined): ResumePolicy {
+  return action ? "replay_safe" : "never_replay";
 }
 
 function candidateExpression(kind: CandidateKind, clickIndex?: number, expectedLabel?: string): string {
@@ -125,7 +138,8 @@ export class BrowserRuntimeError extends Error {
       | "HUMAN_INTERVENTION_REQUIRED"
       | "UI_ELEMENT_NOT_FOUND"
       | "UI_STATE_CHANGED",
-    message: string
+    message: string,
+    public readonly intervention?: MapsIntervention
   ) {
     super(message);
     this.name = "BrowserRuntimeError";
@@ -138,6 +152,7 @@ export class MapsBrowserRuntime {
   private targetId?: string;
   private lastAction?: MapsAction;
   private viewState: MapsViewState = "blank";
+  private readonly handoff = new ExecutionHandoffState<MapsAction, MapsInterventionReason>();
 
   constructor(
     private readonly chrome: ChromeProcess,
@@ -152,10 +167,52 @@ export class MapsBrowserRuntime {
     return this.viewState;
   }
 
+  getResourceEpoch(): number {
+    return this.handoff.getResourceEpoch();
+  }
+
+  getActiveIntervention(): MapsIntervention | undefined {
+    return this.handoff.getActive();
+  }
+
+  claimHumanControl(interventionId: string): MapsIntervention {
+    return this.handoff.claimHuman(interventionId);
+  }
+
+  markHumanControlComplete(interventionId: string): MapsIntervention {
+    return this.handoff.markHumanComplete(interventionId);
+  }
+
+  async verifyHumanIntervention(interventionId: string): Promise<MapsIntervention> {
+    const active = this.handoff.getActive();
+    if (!active || active.id !== interventionId) {
+      throw new ExecutionHandoffError("INTERVENTION_NOT_FOUND", "The intervention is no longer active");
+    }
+    if (active.status !== "verifying") {
+      throw new ExecutionHandoffError(
+        "INTERVENTION_STATE_CHANGED",
+        `Intervention ${active.id} is ${active.status}; expected verifying`
+      );
+    }
+
+    const client = await this.getClientUnchecked();
+    const url = await this.currentUrlUnchecked(client);
+    this.assertAllowedCurrentUrl(url, active.action);
+    await this.assertNoInlineChallenge(active.action, client);
+    return this.handoff.markVerified(interventionId);
+  }
+
+  resumeAfterHumanIntervention(interventionId: string): ResumeDecision<MapsAction> {
+    return this.handoff.resumeAgent(interventionId);
+  }
+
+  cancelHumanIntervention(interventionId: string): void {
+    this.handoff.cancel(interventionId);
+  }
+
   async getClient(): Promise<CdpClient> {
-    await this.ensureConnected();
-    if (!this.client) throw new BrowserRuntimeError("BROWSER_UNAVAILABLE", "CDP client is unavailable");
-    return this.client;
+    this.assertAgentAuthority();
+    return this.getClientUnchecked();
   }
 
   async navigate(url: string, action: MapsAction): Promise<{ url: string }> {
@@ -166,8 +223,9 @@ export class MapsBrowserRuntime {
     await Promise.race([loaded, sleep(8_000)]);
 
     const finalUrl = await this.currentUrl();
-    this.assertAllowedCurrentUrl(finalUrl);
-    await this.assertNoInlineChallenge();
+    this.assertAllowedCurrentUrl(finalUrl, action);
+    await this.assertNoInlineChallenge(action);
+    this.handoff.advanceResourceEpoch();
     this.lastAction = action;
     this.viewState = actionToView(action);
     return { url: finalUrl };
@@ -175,8 +233,7 @@ export class MapsBrowserRuntime {
 
   async currentUrl(): Promise<string> {
     const client = await this.getClient();
-    const result = await client.Runtime.evaluate({ expression: "location.href", returnByValue: true });
-    return String(result.result.value ?? "");
+    return this.currentUrlUnchecked(client);
   }
 
   async assertMapsSurface(): Promise<string> {
@@ -251,6 +308,7 @@ export class MapsBrowserRuntime {
         `Google Maps did not enter a place view after the selection (observed ${observedKind}). Run maps_search again.`
       );
     }
+    this.handoff.advanceResourceEpoch();
     this.viewState = "place";
     return label;
   }
@@ -274,6 +332,7 @@ export class MapsBrowserRuntime {
         "Google Maps left the directions view after the route selection. Run maps_directions again."
       );
     }
+    this.handoff.advanceResourceEpoch();
     this.viewState = "route";
     return label;
   }
@@ -283,7 +342,13 @@ export class MapsBrowserRuntime {
       await this.resetClient();
     } finally {
       this.port = undefined;
-      this.invalidateSemanticState();
+      const active = this.handoff.getActive();
+      if (active) {
+        this.handoff.cancel(active.id);
+        this.invalidateSemanticState(false);
+      } else {
+        this.invalidateSemanticState();
+      }
       await this.chrome.close();
     }
   }
@@ -334,20 +399,34 @@ export class MapsBrowserRuntime {
     return undefined;
   }
 
-  private async assertNoInlineChallenge(): Promise<void> {
-    const client = await this.getClient();
-    const result = await client.Runtime.evaluate({
+  private async assertNoInlineChallenge(
+    intendedAction?: MapsAction,
+    client?: CdpClient
+  ): Promise<void> {
+    const activeClient = client ?? await this.getClient();
+    const result = await activeClient.Runtime.evaluate({
       expression: INLINE_CHALLENGE_EXPRESSION,
       returnByValue: true,
       awaitPromise: true
     });
     if (result.result.value === true) {
-      this.invalidateSemanticState();
-      throw new BrowserRuntimeError(
-        "HUMAN_INTERVENTION_REQUIRED",
-        "Google Maps displayed an access challenge inside the page. Automatic bypass is intentionally unsupported. Complete the manual step, then repeat the intended Maps action."
+      this.requireHumanIntervention(
+        "access_challenge",
+        "Google Maps displayed an access challenge inside the page. Automatic bypass is intentionally unsupported.",
+        intendedAction
       );
     }
+  }
+
+  private async getClientUnchecked(): Promise<CdpClient> {
+    await this.ensureConnected();
+    if (!this.client) throw new BrowserRuntimeError("BROWSER_UNAVAILABLE", "CDP client is unavailable");
+    return this.client;
+  }
+
+  private async currentUrlUnchecked(client: CdpClient): Promise<string> {
+    const result = await client.Runtime.evaluate({ expression: "location.href", returnByValue: true });
+    return String(result.result.value ?? "");
   }
 
   private async ensureConnected(): Promise<void> {
@@ -400,21 +479,52 @@ export class MapsBrowserRuntime {
     if (client) await client.close().catch(() => undefined);
   }
 
-  private invalidateSemanticState(): void {
+  private invalidateSemanticState(advanceEpoch = true): void {
     this.lastAction = undefined;
     this.viewState = "blank";
+    if (advanceEpoch) this.handoff.advanceResourceEpoch();
   }
 
-  private assertAllowedCurrentUrl(value: string): void {
+  private assertAgentAuthority(): void {
+    const active = this.handoff.getActive();
+    if (!active) return;
+    throw new BrowserRuntimeError(
+      "HUMAN_INTERVENTION_REQUIRED",
+      "Browser control is suspended until the active human intervention is completed, verified, and resumed.",
+      active
+    );
+  }
+
+  private requireHumanIntervention(
+    reason: MapsInterventionReason,
+    message: string,
+    intendedAction?: MapsAction
+  ): never {
+    const action = intendedAction ?? this.lastAction;
+    const input: {
+      reason: MapsInterventionReason;
+      resumePolicy: ResumePolicy;
+      action?: MapsAction;
+    } = {
+      reason,
+      resumePolicy: resumePolicyForMapsAction(action)
+    };
+    if (action !== undefined) input.action = action;
+    const intervention = this.handoff.begin(input);
+    this.invalidateSemanticState(false);
+    throw new BrowserRuntimeError("HUMAN_INTERVENTION_REQUIRED", message, intervention);
+  }
+
+  private assertAllowedCurrentUrl(value: string, intendedAction?: MapsAction): void {
     if (!value || value === "about:blank") {
       this.invalidateSemanticState();
       throw new BrowserRuntimeError("MAPS_NOT_OPEN", "Google Maps is not open in the dedicated browser tab");
     }
     if (this.isChallengeUrl(value)) {
-      this.invalidateSemanticState();
-      throw new BrowserRuntimeError(
-        "HUMAN_INTERVENTION_REQUIRED",
-        "Google presented an access challenge. Automatic bypass is intentionally unsupported. Repeat the intended Maps action after completing the manual step."
+      this.requireHumanIntervention(
+        "access_challenge",
+        "Google presented an access challenge. Automatic bypass is intentionally unsupported.",
+        intendedAction
       );
     }
     if (!this.policy.isAllowedMapsUrl(value)) {
@@ -424,10 +534,15 @@ export class MapsBrowserRuntime {
       } catch {
         // Keep generic text.
       }
-      this.invalidateSemanticState();
-      throw new BrowserRuntimeError(
-        "HUMAN_INTERVENTION_REQUIRED",
-        `Browser left the Google Maps surface (${hostname}). Complete any consent or sign-in step manually, then repeat the intended Maps action.`
+      const reason: MapsInterventionReason = hostname === "accounts.google.com"
+        ? "sign_in"
+        : hostname === "consent.google.com"
+          ? "consent"
+          : "external_surface";
+      this.requireHumanIntervention(
+        reason,
+        `Browser left the Google Maps surface (${hostname}). Complete the required manual step without sharing credentials with the agent.`,
+        intendedAction
       );
     }
   }
