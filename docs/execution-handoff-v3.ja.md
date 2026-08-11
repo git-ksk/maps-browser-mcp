@@ -38,11 +38,11 @@ CoreはCDPや他adapter固有protocolを公開しません。将来Desktop / Ter
 
 Authenticated identityとremote-control concurrencyは別の境界として扱います。同じauthenticated principalがHuman interventionを所有していても、1つのintervention / resource epochで操作できる**active remote takeover clientは1つだけ**です。
 
-Authenticated Takeover pageはWeb Cryptoでrandom client bindingを生成し、`sessionStorage`へ保持します。最初のsame-origin bootstrapがremote-client leaseをatomicにclaimします。同じpage contextの通常reloadでは同じbindingを再利用できますが、別device/tabが別bindingで同じactive takeover sessionをclaimすることは、同じauthenticated principalでもできません。
+Authenticated Takeover pageはWeb Cryptoでrandom client bindingを生成し、page memoryだけに保持します。最初のsame-origin bootstrapがremote-client leaseをatomicにclaimします。Pageをreloadした場合や、同じlocatorを別device/tabで開いた場合は別bindingになるため、同じauthenticated principalでもactive takeover sessionを再claimできません。Active pageを失った場合は暗黙transferせず、MCPへ戻ってfresh Human roundを開始します。
 
 Short-lived takeover capabilityはsession locator、intervention id、resource epoch、principal binding、client binding、expiryへHMAC bindします。Frame/input/done requestにはcapabilityとmatching client bindingの両方が必要です。Resource epochが変わると新しいtakeover sessionになり、client leaseも新しくなります。
 
-V3では裏側で勝手にclientをtransferする操作は提供しません。別deviceへ移す場合は現在のremote controlを終了/cancelし、fresh Human roundを使います。Client bindingはconcurrency leaseであってuser authenticationではなく、primary identity boundaryはauthenticated principalのままです。
+V3では裏側で勝手にclientをtransferする操作は提供しません。Client bindingはconcurrency leaseであってuser authenticationではなく、primary identity boundaryはauthenticated principalのままです。
 
 ## Durable recoveryは意図的に保守的
 
@@ -133,7 +133,7 @@ MFA完了 != メッセージ送信承認
 1. MCP action開始者とTakeover page利用者が同じauthenticated principalである
 2. 別principal / unauthenticated requestではpage/bootstrapへ入れない
 3. Human authority中だけphoneからbounded frame確認と許可inputができる
-4. 同じprincipalでも2つ目のremote clientは同じintervention epochをclaim/inputできない
+4. 同じprincipalでも2つ目のremote clientは同じintervention epochをclaim/inputできず、reloadでもleaseが暗黙transferされない
 5. `Done` はremote inputをrevokeするだけで、MCP actionをapproveしない
 6. Continue後にbrowserをverifyし、安全にresumeするか、新しいHuman roundへ戻る
 7. stale epoch / capability / request stateを拒否する
