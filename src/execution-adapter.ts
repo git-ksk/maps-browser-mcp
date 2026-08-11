@@ -1,18 +1,29 @@
-import type { ExecutionAuthority } from "./execution-handoff.js";
-
-/**
- * Generic control-plane contract between the MCP handoff flow and a resource adapter.
- * Browser, desktop, terminal, or cloud-console adapters can implement this without
- * exposing their native control protocol to the MCP client.
- */
 export interface ExecutionHandoffAdapter<TIntervention, TResumeDecision> {
-  readonly adapterKind: string;
   getResourceEpoch(): number;
-  getExecutionAuthority(): ExecutionAuthority;
   getActiveIntervention(): TIntervention | undefined;
   claimHumanControl(interventionId: string): TIntervention;
   markHumanControlComplete(interventionId: string): TIntervention;
   verifyHumanIntervention(interventionId: string): Promise<TIntervention>;
   resumeAfterHumanIntervention(interventionId: string): TResumeDecision;
   cancelHumanIntervention(interventionId: string): void;
+}
+
+export interface RegisteredExecutionAdapter<TIntervention, TResumeDecision> {
+  kind: string;
+  control: ExecutionHandoffAdapter<TIntervention, TResumeDecision>;
+}
+
+/**
+ * Name a concrete execution surface without leaking its native control protocol.
+ * Browser, desktop, terminal, and cloud-console adapters can share this contract.
+ */
+export function defineExecutionAdapter<TIntervention, TResumeDecision>(
+  kind: string,
+  control: ExecutionHandoffAdapter<TIntervention, TResumeDecision>
+): RegisteredExecutionAdapter<TIntervention, TResumeDecision> {
+  const normalized = kind.trim();
+  if (!normalized || normalized.length > 80) {
+    throw new Error("execution adapter kind must contain 1-80 characters");
+  }
+  return { kind: normalized, control };
 }
