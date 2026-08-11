@@ -34,6 +34,16 @@ Execution Handoff V3
 
 The core never exposes CDP or another adapter-native protocol. A future desktop, terminal, cloud-console, or device adapter implements the same control-plane contract while keeping its native execution channel behind the adapter.
 
+## Exclusive remote client lease
+
+Authenticated identity and remote-control concurrency are separate boundaries. The same authenticated principal may own the Human intervention, but one intervention/resource epoch permits only **one active remote takeover client**.
+
+The authenticated takeover page creates a random client binding with Web Crypto and keeps it in `sessionStorage`. The first same-origin bootstrap atomically claims the remote-client lease. A normal reload in the same page context can reuse that binding, while another device/tab with a different binding cannot claim the same active takeover session even when it belongs to the same authenticated principal.
+
+The short-lived takeover capability is HMAC-bound to the session locator, intervention id, resource epoch, principal binding, client binding, and expiry. Frame/input/done requests must present both the capability and the matching client binding. A resource-epoch change creates a new takeover session and therefore a fresh client lease.
+
+V3 intentionally does not provide a hidden client-transfer operation. To move control to another device, finish/cancel the current remote control and use a fresh Human round. The client binding is a concurrency lease, not user authentication; the authenticated principal remains the primary identity boundary.
+
 ## Durable recovery is deliberately conservative
 
 V3 can persist a signed checkpoint, but the checkpoint is **not a serialized browser or Agent session**. It contains only bounded control-plane metadata:
@@ -123,11 +133,12 @@ The manual run should verify a user-directed workflow only:
 1. the same authenticated principal starts the MCP action and opens the takeover page;
 2. another/unauthenticated principal cannot open or bootstrap the takeover session;
 3. the phone can view the bounded frame and send permitted input while Human owns authority;
-4. `Done` revokes remote input but does not approve the MCP action;
-5. Continue verifies the browser and either resumes safely or returns to a new Human round;
-6. stale epoch/capability/request state is rejected;
-7. an opt-in checkpoint survives a controlled process restart but only the same principal + same reissued tool-argument digest can consume the recovery marker;
-8. no screenshot/log containing accounts, private locations, tokens, browser profiles, checkpoint keys, or credentials is attached to a public issue.
+4. a second remote client for the same principal cannot claim/send input for the same intervention epoch;
+5. `Done` revokes remote input but does not approve the MCP action;
+6. Continue verifies the browser and either resumes safely or returns to a new Human round;
+7. stale epoch/capability/request state is rejected;
+8. an opt-in checkpoint survives a controlled process restart but only the same principal + same reissued tool-argument digest can consume the recovery marker;
+9. no screenshot/log containing accounts, private locations, tokens, browser profiles, checkpoint keys, or credentials is attached to a public issue.
 
 Do not deliberately trigger or bypass CAPTCHA during this verification.
 
