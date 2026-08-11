@@ -6,9 +6,11 @@
 
 現在は **V1 MCP MRTR handoff** に加えて、opt-inの **V2 Remote / Mobile Human Takeover Broker** を実装しています。
 
-Google Maps操作中にCAPTCHA / access challenge、sign-in、consent、その他のmanual surfaceが出た場合、ServerはMCP `input_required` を返します。通常は専用ChromeでHumanが直接操作します。V2 Remote Takeoverを明示的に有効化した場合は、同じpromptにスマホ向けの短命Takeover URLも追加されます。
+Google Maps操作中にCAPTCHA / access challenge、sign-in、consent、その他のmanual surfaceが出た場合、ServerはMCP `input_required` を返します。通常は専用ChromeでHumanが直接操作します。V2 Remote Takeoverを明示的に有効化した場合は、同じpromptにスマホ向けTakeover session URLも追加されます。
 
-MCP側ではpassword、2FA code、CAPTCHA answer、cookie等を入力させません。スマホからのtext inputはTakeover Brokerからlocal Chrome/CDPへ直接中継され、MCP tool argumentやLLM-visible contentには入りません。ただしlocal Broker process自体は中継のため入力をmemory上で扱うため、外側のHTTPS gatewayとBrokerを動かすhostはtrusted computing boundaryに含まれます。Brokerはinput payloadをlogへ出しません。
+MCP側ではpassword、2FA code、CAPTCHA answer、cookie等を入力させません。MCP/LLMへ表示するTakeover URLにcapability secretは含めず、random session locatorだけを載せます。認証済みTakeover pageが読み込まれた後、same-origin scriptがshort-lived capabilityをbootstrapし、page memory内だけでBroker API用に保持します。
+
+スマホからのtext inputはTakeover Brokerからlocal Chrome/CDPへ直接中継され、MCP tool argumentやLLM-visible contentには入りません。ただしlocal Broker process自体は中継のため入力をmemory上で扱うため、外側のHTTPS gatewayとBrokerを動かすhostはtrusted computing boundaryに含まれます。Brokerはinput payloadをlogへ出しません。
 
 Remote操作を終えたらMCPへ戻ってContinueを選択します。Serverはverification前にremote capabilityをrevokeし、browser状態を検証してからAgentへ実行権を戻します。
 
@@ -77,7 +79,7 @@ HandoffはMCP 2026-07-28のmulti-round-trip `input_required` を使います。C
 
 Resource epochはintervention開始時、Human control完了後、navigationやsemantic page transition時に進みます。DOM ref、candidate index、snapshot、takeover capability、将来のaction approval等は生成時epochへbindし、epoch変更後はstaleとして拒否します。
 
-Humanが完了しただけではresumeしません。許可されたGoogle Maps surfaceへ戻っていることと、既知のinline challenge indicatorが消えていることをServerで検証します。Challengeが残っていればHumanへauthorityを返し、新しいepochへbindしたcapabilityで次のMRTR roundを開始します。
+Humanが完了しただけではresumeしません。許可されたGoogle Maps surfaceへ戻っていることと、既知のinline challenge indicatorが消えていることをServerで検証します。Challengeが残っていればHumanへauthorityを返し、新しいepochへbindしたTakeover sessionで次のMRTR roundを開始します。
 
 ## Tool Resume Strategy
 
@@ -116,15 +118,21 @@ MAPS_TAKEOVER_TTL_SECONDS=300
 
 `MAPS_TAKEOVER_PUBLIC_BASE_URL` はoriginだけを指定します。credential、path、query、fragmentは禁止です。Loopback開発以外はHTTPS必須です。また、V2を有効にした状態でNodeをnon-loopback bindしようとすると設定時点でfail-closeします。
 
-外部公開は別のauthenticated HTTPS gateway / tunnel / reverse proxyで行い、**`/takeover/*` をMCP workflowと同じsingle-user access policyで保護してください。** Takeover capabilityはuser authenticationの代替ではなく、その内側で使うscopedな第2要素です。現V2はprincipal bindingをgateway deploymentへ依存しており、Node内でMCP principalとgateway principalを直接比較するところまでは未実装です。これはauth-provider統合後のV2.1対象です。
+外部公開は別のauthenticated HTTPS gateway / tunnel / reverse proxyで行い、**`/takeover/*` をMCP workflowと同じsingle-user access policyで保護してください。** MCPへ表示されるTakeover session URLはlocatorにすぎず、user authenticationの代替ではありません。現V2はprincipal bindingをgateway deploymentへ依存しており、Node内でMCP principalとgateway principalを直接比較するところまでは未実装です。これはauth-provider統合後のV2.1対象です。
 
-生成URLは以下です。
+MCP/LLMへ表示するURLは以下です。
 
 ```text
-https://maps-mcp.example.com/takeover/<random-session-id>#cap=<short-lived-capability>
+https://maps-mcp.example.com/takeover/<random-session-id>
 ```
 
-CapabilityはURL fragmentへ置くため、browserのinitial HTTP requestには送信されません。Takeover pageは読込直後に`history.replaceState`でfragmentをvisible URLから消し、その後はsame-origin Broker APIにだけ `Authorization: Takeover ...` headerとして送ります。Responseは`Cache-Control: no-store`、`Referrer-Policy: no-referrer`です。
+Path、query、fragmentのどこにもtakeover capabilityは含めません。外側のgateway authenticationを通ってpageが読み込まれた後、same-origin scriptが次を呼びます。
+
+```text
+GET /takeover/api/bootstrap/<random-session-id>
+```
+
+Bootstrap endpointはbrowserが付与する `Sec-Fetch-Site: same-origin` のrequestだけを受け付けます。そこでshort-lived capabilityをpageへ返し、page memory内で保持して、その後のsame-origin Broker APIにだけ `Authorization: Takeover ...` headerとして送ります。CORSは公開しません。Responseは`Cache-Control: no-store`、`Referrer-Policy: no-referrer`です。
 
 Capabilityはprocess-localな256-bit random keyからHMAC生成し、以下へbindします。
 
@@ -166,9 +174,9 @@ V2でも以下を維持します。
 
 - CDPはlocal dedicated browser runtimeだけで使い、Human client/public networkへ公開しない
 - HumanとAgentのcontrolは相互排他
-- Takeover経路のDOM、Network、Screenshot、credential、2FA、CAPTCHA responseをAgent/LLMへ返さない
-- Takeover pageはauthenticated HTTPS gatewayでworkflow開始者と同じsingle userへ限定し、capability URL単体をauthentication boundaryにしない
-- Capabilityはshort-lived・1 intervention/resource epoch限定・revoke可能で、application logへ出さない
+- Takeover経路のDOM、Network、Screenshot、credential、2FA、CAPTCHA response、takeover capabilityをAgent/LLMへ返さない
+- Takeover pageはauthenticated HTTPS gatewayでworkflow開始者と同じsingle userへ限定し、session locator単体をauthentication boundaryにしない
+- Capabilityはshort-lived・1 intervention/resource epoch限定・revoke可能で、application logやMCP contentへ出さない
 - arbitrary navigation primitiveを持たせず、localhost/private network/link-local metadata/`file:`等へのSSRF pivotを作らない
 - Human authority中かつ許可済みGoogle intervention surface上だけinputを受け付ける
 - CAPTCHA solver、anti-bot evasion、stealth/fingerprint spoofing、proxy rotationへ変質させない
@@ -183,7 +191,7 @@ Remote takeover時のtrusted pathはphone、authenticated HTTPS gateway、local 
 
 ## CI Boundary
 
-通常CIはHuman takeoverを待たず、CAPTCHAやsign-in challengeを意図的に発生させません。Authority state machine、request-state binding、takeover capabilityのrotation/expiry/revoke、Broker HTTP boundary、fail-closed configをdeterministic testで確認します。Manual Live Maps E2Eで自然発生したchallengeもCIが突破する対象にはしません。
+通常CIはHuman takeoverを待たず、CAPTCHAやsign-in challengeを意図的に発生させません。Authority state machine、request-state binding、takeover capabilityのrotation/expiry/revoke、capability bootstrap、Broker HTTP boundary、fail-closed configをdeterministic testで確認します。Manual Live Maps E2Eで自然発生したchallengeもCIが突破する対象にはしません。
 
 ## 別OSSへの切り出し条件
 
