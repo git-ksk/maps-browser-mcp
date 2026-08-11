@@ -4,14 +4,19 @@ This document describes the internal foundation for handing browser execution au
 
 ## Status
 
-The current implementation is **V0 infrastructure only**. It does not expose a remote takeover URL, live-view UI, credential form, or new MCP tool. Existing challenge behavior remains fail-closed: CAPTCHA, sign-in, consent, or an unexpected non-Maps surface still stops normal agent control.
+The current implementation is **V1 local human handoff**. When Google Maps presents a CAPTCHA/access challenge, sign-in, consent, or another manual surface during an MCP operation, the server can return MCP `input_required` and ask the user to complete the sensitive step directly in the dedicated Chrome window.
 
-V0 adds four primitives that can later support a standards-aligned human-in-the-loop flow:
+The elicitation never asks for passwords, 2FA codes, CAPTCHA answers, cookies, or other credentials. After the user chooses Continue, the server verifies the browser before returning execution authority to the agent.
+
+V1 does **not** expose a remote takeover URL, live-view UI, credential form, or public CDP endpoint. Authenticated mobile/live-view takeover is a separate future layer.
+
+The implementation is built on these primitives:
 
 - exclusive execution authority,
-- durable intervention metadata inside the browser runtime,
+- intervention metadata inside the browser runtime,
 - a resource epoch that invalidates stale semantic state,
-- an explicit resume policy for the canonical action.
+- an explicit resume policy for the canonical action,
+- HMAC-protected MCP `requestState` bound to the originating tool invocation.
 
 ## State machine
 
@@ -22,11 +27,11 @@ agent owns browser
       v
 awaiting_human   authority=none
       |
-      | explicit human claim
+      | MCP input_required + explicit human claim
       v
 human_active     authority=human
       |
-      | human reports completion
+      | user chooses Continue
       v
 verifying        authority=none, epoch++
       |
@@ -41,17 +46,44 @@ agent owns browser again
 
 There is never an `agent + human` authority state. While an intervention is active, normal agent CDP access is refused before the runtime touches the browser.
 
+## MCP multi-round-trip binding
+
+The handoff uses the MCP 2026-07-28 multi-round-trip `input_required` flow. The client retries the original tool call with the elicitation response and the opaque `requestState` returned by the server.
+
+`requestState` is HMAC-SHA256 protected with a random per-process 256-bit secret and expires after 10 minutes. The signed payload carries no search query, credentials, or page data. It binds the retry to:
+
+- the originating tool name,
+- a SHA-256 digest of canonicalized validated tool arguments,
+- the active intervention id,
+- the resource epoch,
+- the resume strategy.
+
+The runtime also records one owner per active intervention. A different or concurrently retried tool cannot adopt an intervention created by another tool invocation.
+
+A per-process key is intentional for the current single-process runtime: if the process restarts, both the browser intervention state and its request-state verification context are invalid and the user must repeat the Maps action.
+
 ## Canonical action and resource epoch
 
-When a challenge interrupts a known Maps action, the runtime stores the canonical `MapsAction` before clearing semantic browser state. Current Maps navigation actions are side-effect-free, so their resume policy is `replay_safe`.
+When a challenge interrupts a known Maps navigation action, the runtime stores the canonical `MapsAction` before clearing semantic browser state. Current Maps navigation actions are side-effect-free, so their resume policy is `replay_safe`.
 
 If no trustworthy canonical action exists, the intervention is `never_replay`.
 
-The resource epoch advances whenever an intervention starts and again after human control completes. Navigation and semantic page transitions also advance it. Future adapters must bind any reusable DOM reference, candidate index, snapshot, or action approval to the epoch that produced it and reject stale values after the epoch changes.
+The resource epoch advances whenever an intervention starts and again after human control completes. Navigation and semantic page transitions also advance it. Reusable DOM references, candidate indexes, snapshots, and future action approvals must be bound to the epoch that produced them and rejected after the epoch changes.
 
 Human completion is not sufficient by itself. Before the agent can resume, the server verifies that the browser is back on an allowed Google Maps surface and that the known inline challenge indicators are absent.
 
-## Resume policies
+## Tool resume strategy
+
+The interrupted MCP tool and the canonical browser action are separate concepts. V1 therefore uses two tool-level strategies:
+
+| Strategy | Current tools | Behavior after verified human intervention |
+| --- | --- | --- |
+| `retry_original` | `maps_search`, `maps_directions`, `maps_show`, `maps_streetview` | Re-run the same validated, side-effect-free navigation tool. |
+| `require_fresh_semantic_action` | selection, travel-mode change, bounded reads | Refuse to continue from stale semantic state and require a fresh search/directions action. |
+
+This prevents a CAPTCHA completion from implicitly authorizing a click against an old dynamic result index.
+
+## Generic resume policies
 
 The generic handoff core defines four policies:
 
@@ -61,8 +93,6 @@ The generic handoff core defines four policies:
 | `revalidate` | Re-read current state and decide again before execution. |
 | `confirm_before_execute` | Require a fresh user approval bound to the final action arguments. |
 | `never_replay` | Do not automatically repeat the interrupted action. |
-
-Only `replay_safe` and `never_replay` are currently selected by the Maps adapter. The additional policies exist so the core can later be extracted without assuming every adapter is read-only.
 
 A human solving a challenge or completing sign-in is **not** approval for a later irreversible action. If this core is reused for purchasing, deletion, sending, booking, cloud administration, or similar side effects, takeover completion and action approval must remain separate events.
 
@@ -78,19 +108,19 @@ Future takeover transports must preserve these constraints:
 - Navigation during takeover must not turn the browser into an SSRF pivot toward localhost, private networks, link-local metadata services, `file:` URLs, or other privileged surfaces.
 - Human takeover must never become CAPTCHA solving, anti-bot evasion, stealth/fingerprint spoofing, or proxy rotation.
 
-## MCP integration direction
+## Remote takeover direction
 
-The core intentionally does not depend on one MCP interaction model yet. A later adapter can map short interventions to the current MCP multi-round-trip input flow and use the Tasks extension for longer, reconnectable interventions when client/server support is available.
+MRTR now provides the protocol pause/resume layer for local handoff. A future remote/mobile takeover layer should sit behind that state machine rather than replace it.
 
-The browser/runtime state remains the source of truth. MCP session identifiers must not be treated as the security principal or as the execution-authority lease by themselves.
+The next layer needs authenticated identity binding, a short-lived scoped capability, a live-view/input broker that does not expose CDP, network egress restrictions, secret-safe observation controls, and explicit takeover revocation. URL-mode elicitation should only be added once that protected takeover endpoint exists; a transferable pre-authenticated URL is not an acceptable shortcut.
 
 ## CI boundary
 
-Normal CI must never wait for human takeover and must not intentionally trigger CAPTCHA or sign-in challenges. Deterministic tests cover the authority/state machine and fail-closed boundaries. The manual Live Maps E2E remains a fixed, low-volume compatibility check; a naturally occurring challenge makes that run inconclusive rather than something CI should bypass.
+Normal CI never waits for human takeover and does not intentionally trigger CAPTCHA or sign-in challenges. Deterministic tests cover the authority state machine, request-state binding helpers, and fail-closed boundaries. The manual Live Maps E2E remains a fixed, low-volume compatibility check; a naturally occurring challenge is not something CI should bypass.
 
 ## Extraction criteria
 
-This code should stay inside `maps-browser-mcp` until it has proven useful in the Maps adapter. A separate OSS should be considered only after at least one additional adapter demonstrates that the following pieces are genuinely generic:
+This code stays inside `maps-browser-mcp` until it has proven useful in the Maps adapter. A separate OSS should be considered only after at least one additional adapter demonstrates that the following pieces are genuinely generic:
 
 - authority lease/state machine,
 - intervention identity binding,
@@ -99,6 +129,6 @@ This code should stay inside `maps-browser-mcp` until it has proven useful in th
 - resume policy,
 - action-approval binding,
 - audit events,
-- MCP MRTR/Tasks bridges.
+- MCP MRTR bridge.
 
 The intended future abstraction is an **execution handoff runtime**, not another browser-specific CAPTCHA/takeover library.
