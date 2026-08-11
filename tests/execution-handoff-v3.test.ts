@@ -11,6 +11,9 @@ import { SignedFileHandoffCheckpointStore } from "../src/handoff-checkpoint.js";
 type Intervention = CheckpointableIntervention;
 type Decision = { epoch: number; resumePolicy: ResumePolicy };
 
+const PRINCIPAL_A = "principal-binding-a-1234567890";
+const PRINCIPAL_B = "principal-binding-b-1234567890";
+
 class FixtureAdapter implements ExecutionHandoffAdapter<Intervention, Decision> {
   active: Intervention | undefined = {
     id: "handoff-1",
@@ -40,12 +43,12 @@ test("v3 recovery is principal-bound and always requires reissue plus revalidati
       { checkpointStore: store, checkpointTtlMs: 60_000, now: () => 13_000 }
     );
 
-    runtime.checkpoint("principal-a", "action-digest-only");
-    const recovered = runtime.recover("principal-a");
+    runtime.checkpoint(PRINCIPAL_A, "action-digest-only");
+    const recovered = runtime.recover(PRINCIPAL_A);
     assert.ok(recovered);
     assert.equal(recovered.recovery, "reissue_and_revalidate");
     assert.equal(recovered.actionDigest, "action-digest-only");
-    assert.equal(runtime.recover("principal-b"), undefined);
+    assert.equal(runtime.recover(PRINCIPAL_B), undefined);
 
     const raw = fs.readFileSync(file, "utf8");
     assert.doesNotMatch(raw, /query|destination|password|cookie|captcha/i);
@@ -60,9 +63,9 @@ test("v3 approval is invalidated by resource epoch changes", () => {
   const request = runtime.requestApproval({
     actionName: "delete",
     args: { resourceId: "r1" },
-    principalBinding: "principal-a"
+    principalBinding: PRINCIPAL_A
   });
-  const receipt = runtime.grantApproval(request.id, "principal-a");
+  const receipt = runtime.grantApproval(request.id, PRINCIPAL_A);
 
   adapter.active = { ...adapter.active!, epoch: 5 };
   assert.throws(() => runtime.consumeApproval({
@@ -70,7 +73,7 @@ test("v3 approval is invalidated by resource epoch changes", () => {
     receipt,
     actionName: "delete",
     args: { resourceId: "r1" },
-    principalBinding: "principal-a"
+    principalBinding: PRINCIPAL_A
   }));
 });
 
@@ -87,10 +90,10 @@ test("v3 checkpoint clears once no intervention remains", () => {
         now: () => 13_000
       }
     );
-    runtime.checkpoint("principal-a");
+    runtime.checkpoint(PRINCIPAL_A);
     assert.equal(fs.existsSync(file), true);
     adapter.active = undefined;
-    runtime.checkpoint("principal-a");
+    runtime.checkpoint(PRINCIPAL_A);
     assert.equal(fs.existsSync(file), false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
