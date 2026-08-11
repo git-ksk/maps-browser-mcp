@@ -12,6 +12,11 @@ import {
 import * as z from "zod/v4";
 import { loadConfig } from "./config.js";
 import { ExecutionHandoffError } from "./execution-handoff.js";
+import { ExecutionHandoffRuntimeV3 } from "./execution-handoff-v3.js";
+import {
+  HandoffCheckpointError,
+  SignedFileHandoffCheckpointStore
+} from "./handoff-checkpoint.js";
 import {
   HANDOFF_INPUT_KEY,
   HANDOFF_STATE_TTL_SECONDS,
@@ -23,8 +28,10 @@ import {
   type HandoffRequestState,
   type HandoffResumeStrategy
 } from "./handoff-mrtr.js";
+import { createMapsExecutionAdapter } from "./maps-execution-adapter.js";
 import { MapsUrlCompiler } from "./maps/url-compiler.js";
 import { PolicyEngine, PolicyError } from "./policy/policy-engine.js";
+import { currentRequestPrincipal, principalBinding } from "./request-principal.js";
 import { ChromeProcess } from "./browser/chrome-process.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
@@ -53,6 +60,16 @@ const operationQueue = new OperationQueue(config.policy.maxPendingActions, {
   timeoutMs: config.policy.operationTimeoutMs,
   onTimeout: () => runtime.close()
 });
+
+const v3Handoff = config.handoffCheckpoint.enabled
+  ? new ExecutionHandoffRuntimeV3(createMapsExecutionAdapter(runtime), {
+      checkpointStore: new SignedFileHandoffCheckpointStore(
+        config.handoffCheckpoint.filePath!,
+        config.handoffCheckpoint.signingKey!
+      ),
+      checkpointTtlMs: config.handoffCheckpoint.ttlMs
+    })
+  : undefined;
 
 const handoffStateCodec = createRequestStateCodec<HandoffRequestState>({
   key: randomBytes(32).toString("base64url"),
@@ -93,6 +110,33 @@ function errorResult(error: unknown): CallToolResult {
     content: [{ type: "text" as const, text: JSON.stringify({ error: code, message }) }],
     isError: true
   };
+}
+
+function activePrincipalBinding(): string {
+  const principal = currentRequestPrincipal();
+  return principal ? principalBinding(principal) : "local-stdio";
+}
+
+function checkpointHumanHandoff(owner: HandoffOwner): void {
+  v3Handoff?.checkpoint(activePrincipalBinding(), owner.argsDigest);
+}
+
+function clearHandoffCheckpoint(): void {
+  v3Handoff?.clearCheckpoint(activePrincipalBinding());
+}
+
+function consumeMatchingRecovery(toolName: string, args: unknown): void {
+  if (!v3Handoff || runtime.getActiveIntervention()) return;
+  try {
+    const recovery = v3Handoff.recover(activePrincipalBinding());
+    if (recovery?.actionDigest === digestToolInvocation(toolName, args)) {
+      v3Handoff.clearCheckpoint(activePrincipalBinding());
+    }
+  } catch (error) {
+    if (!(error instanceof HandoffCheckpointError)) throw error;
+    console.error(`[maps-browser-mcp] ignoring unusable handoff recovery checkpoint: ${error.code}`);
+    v3Handoff.clearCheckpoint(activePrincipalBinding());
+  }
 }
 
 function staleAfterInterventionResult(toolName: string): CallToolResult {
@@ -144,6 +188,7 @@ async function humanInputRequired(
   if (!active || active.id !== intervention.id) {
     handoffOwners.delete(intervention.id);
     takeoverBroker.revokeForIntervention(intervention.id);
+    clearHandoffCheckpoint();
     return errorResult(new BrowserRuntimeError(
       "UI_STATE_CHANGED",
       "The human intervention is no longer active. Repeat the intended Maps action."
@@ -159,6 +204,7 @@ async function humanInputRequired(
     ));
   }
 
+  checkpointHumanHandoff(owner);
   const requestState = await handoffStateCodec.mint(createHandoffRequestState({
     toolName: owner.toolName,
     args,
@@ -183,6 +229,7 @@ function cancelIntervention(interventionId: string): CallToolResult {
   const active = runtime.getActiveIntervention();
   if (active?.id === interventionId) runtime.cancelHumanIntervention(interventionId);
   handoffOwners.delete(interventionId);
+  clearHandoffCheckpoint();
   return jsonResult({ cancelled: true, reason: "human_intervention_cancelled" });
 }
 
@@ -217,6 +264,7 @@ async function runToolWithHandoff<T>(input: {
 }): Promise<CallToolResult | InputRequiredResult> {
   const state = input.ctx.mcpReq.requestState<HandoffRequestState>();
   if (!state) {
+    consumeMatchingRecovery(input.toolName, input.args);
     return executeToolTask(input.toolName, input.args, input.resumeStrategy, input.task);
   }
 
@@ -240,6 +288,7 @@ async function runToolWithHandoff<T>(input: {
   if (!active || active.id !== state.interventionId || active.epoch !== state.epoch) {
     handoffOwners.delete(state.interventionId);
     takeoverBroker.revokeForIntervention(state.interventionId);
+    clearHandoffCheckpoint();
     return errorResult(new BrowserRuntimeError(
       "UI_STATE_CHANGED",
       "The browser changed while waiting for human intervention. Repeat the intended Maps action."
@@ -285,12 +334,14 @@ async function runToolWithHandoff<T>(input: {
       runtime.cancelHumanIntervention(state.interventionId);
     }
     handoffOwners.delete(state.interventionId);
+    clearHandoffCheckpoint();
     return errorResult(error);
   }
 
   const decision = runtime.resumeAfterHumanIntervention(state.interventionId);
   takeoverBroker.revokeForIntervention(state.interventionId);
   handoffOwners.delete(state.interventionId);
+  clearHandoffCheckpoint();
   if (decision.resumePolicy !== "replay_safe" || input.resumeStrategy === "require_fresh_semantic_action") {
     return staleAfterInterventionResult(input.toolName);
   }

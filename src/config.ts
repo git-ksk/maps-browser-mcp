@@ -58,6 +58,19 @@ function envAuthProvider(bearerToken: string | undefined): "none" | "static-bear
   throw new Error("MCP_AUTH_PROVIDER must be one of: none, static-bearer, module");
 }
 
+function envCheckpointKey(name: string): Buffer | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  if (!/^[A-Za-z0-9_-]+$/.test(raw)) {
+    throw new Error(`${name} must be base64url without padding`);
+  }
+  const key = Buffer.from(raw, "base64url");
+  if (key.byteLength !== 32 || key.toString("base64url") !== raw) {
+    throw new Error(`${name} must encode exactly 32 random bytes as canonical base64url`);
+  }
+  return key;
+}
+
 export function isLoopbackBind(host: string): boolean {
   const normalized = normalizeHostname(host);
   return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
@@ -101,6 +114,12 @@ export interface AppConfig {
   takeover: {
     enabled: boolean;
     publicBaseUrl?: string;
+    ttlMs: number;
+  };
+  handoffCheckpoint: {
+    enabled: boolean;
+    filePath?: string;
+    signingKey?: Buffer;
     ttlMs: number;
   };
   policy: {
@@ -183,6 +202,16 @@ export function loadConfig(): AppConfig {
   }
   const takeoverTtlMs = envInt("MAPS_TAKEOVER_TTL_SECONDS", 300, 60, 600) * 1_000;
 
+  const checkpointPathRaw = process.env.MAPS_HANDOFF_CHECKPOINT_FILE?.trim() || undefined;
+  const checkpointKey = envCheckpointKey("MAPS_HANDOFF_CHECKPOINT_KEY");
+  if ((checkpointPathRaw && !checkpointKey) || (!checkpointPathRaw && checkpointKey)) {
+    throw new Error("MAPS_HANDOFF_CHECKPOINT_FILE and MAPS_HANDOFF_CHECKPOINT_KEY must be configured together");
+  }
+  if (checkpointPathRaw && !path.isAbsolute(checkpointPathRaw)) {
+    throw new Error("MAPS_HANDOFF_CHECKPOINT_FILE must be an absolute path");
+  }
+  const checkpointTtlMs = envInt("MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS", 900, 60, 86_400) * 1_000;
+
   const httpPort = process.env.MCP_HTTP_PORT === undefined
     ? envInt("PORT", 8787, 1, 65535)
     : envInt("MCP_HTTP_PORT", 8787, 1, 65535);
@@ -214,6 +243,12 @@ export function loadConfig(): AppConfig {
       enabled: remoteTakeover,
       publicBaseUrl,
       ttlMs: takeoverTtlMs
+    },
+    handoffCheckpoint: {
+      enabled: Boolean(checkpointPathRaw && checkpointKey),
+      filePath: checkpointPathRaw,
+      signingKey: checkpointKey,
+      ttlMs: checkpointTtlMs
     },
     policy: {
       interactiveAssist: envBool("INTERACTIVE_ASSIST_MODE", false),

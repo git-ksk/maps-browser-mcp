@@ -79,18 +79,25 @@ export class ExecutionHandoffRuntimeV3<
       return;
     }
     const now = this.now();
-    store.write({
-      version: 1,
-      adapterKind: this.adapter.kind,
-      interventionId: active.id,
-      status: active.status,
-      epoch: active.epoch,
-      resumePolicy: active.resumePolicy,
-      principalBinding,
-      actionDigest,
-      updatedAt: active.updatedAt,
-      expiresAt: now + this.checkpointTtlMs
-    });
+    try {
+      store.write({
+        version: 1,
+        adapterKind: this.adapter.kind,
+        interventionId: active.id,
+        status: active.status,
+        epoch: active.epoch,
+        resumePolicy: active.resumePolicy,
+        principalBinding,
+        actionDigest,
+        updatedAt: active.updatedAt,
+        expiresAt: now + this.checkpointTtlMs
+      });
+    } catch (error) {
+      // A configured durable handoff must not continue in a state that the process
+      // failed to checkpoint. Release Human authority before surfacing the failure.
+      this.adapter.control.cancelHumanIntervention(active.id);
+      throw error;
+    }
     this.audit.record({
       type: "checkpoint_written",
       adapterKind: this.adapter.kind,
