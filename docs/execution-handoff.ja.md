@@ -1,17 +1,22 @@
 # Execution Handoff（日本語）
 
-この文書は、CAPTCHAを自動突破せずに、browserの実行権をAgentからHumanへ渡し、安全にAgentへ戻すための内部基盤を説明します。
+この文書は、CAPTCHAを自動突破せずにbrowserの実行権をAgentからHumanへ渡し、安全にAgentへ戻す仕組みを説明します。
 
 ## Status
 
-現在の実装は **V0 infrastructureのみ** です。Remote takeover URL、Live View UI、credential form、新しいMCP toolはまだ公開しません。既存のchallenge境界はfail-closedのままで、CAPTCHA、sign-in、consent、想定外のnon-Maps surfaceでは通常のAgent操作を停止します。
+現在は **V1 local human handoff** です。Google Maps操作中にCAPTCHA / access challenge、sign-in、consent、その他のmanual surfaceが出た場合、ServerはMCP `input_required` を返し、専用Chrome上でHumanに操作してもらえます。
 
-V0では将来のHuman-in-the-loop flow向けに、次の4つを先に導入します。
+MCP側ではpassword、2FA code、CAPTCHA answer、cookie等を入力させません。HumanがContinueを選んだ後、Serverがbrowser状態を検証してからAgentへ実行権を戻します。
+
+V1ではRemote takeover URL、Live View UI、credential form、public CDP endpointは公開しません。スマホ等からのauthenticated remote takeoverは次のlayerとして分離します。
+
+現在の基盤は以下です。
 
 - 排他的なexecution authority
 - browser runtime内のintervention metadata
 - stale semantic stateを失効させるresource epoch
-- canonical actionごとの明示Resume Policy
+- canonical actionごとのResume Policy
+- originating tool invocationへbindしたHMAC保護済みMCP `requestState`
 
 ## State Machine
 
@@ -22,11 +27,11 @@ Agent owns browser
       v
 awaiting_human   authority=none
       |
-      | Humanが明示的にclaim
+      | MCP input_required + Human claim
       v
 human_active     authority=human
       |
-      | Humanが完了を通知
+      | HumanがContinue
       v
 verifying        authority=none, epoch++
       |
@@ -39,58 +44,83 @@ ready_to_resume  authority=none
 Agent owns browser again
 ```
 
-`agent + human` が同時にbrowser authorityを持つ状態は作りません。Interventionがactiveな間、通常のAgent CDP accessはbrowserへ触る前に拒否します。
+`agent + human` が同時にauthorityを持つ状態は作りません。Interventionがactiveな間は通常のAgent CDP accessをbrowserへ触る前に拒否します。
+
+## MCP Multi-Round-Trip Binding
+
+HandoffはMCP 2026-07-28のmulti-round-trip `input_required` を使います。ClientはHuman responseとServerから返されたopaque `requestState` を付け、元のtool callをretryします。
+
+`requestState` はprocessごとに生成する256-bit random keyでHMAC-SHA256保護し、有効期限は10分です。Signed payloadには検索語、credential、page dataを入れず、次だけをbindします。
+
+- originating tool name
+- canonical化したvalidated tool argumentsのSHA-256 digest
+- intervention id
+- resource epoch
+- resume strategy
+
+さらにactive interventionごとにownerを1つだけ保持します。別toolや並行callが、他のtool invocationから発生したhandoffを引き継ぐことはできません。
+
+現在はsingle-process runtimeなのでkeyもprocess-localです。Process restart時はbrowser intervention state自体も失われるため、古い`requestState`は使わずMaps actionをやり直します。
 
 ## Canonical ActionとResource Epoch
 
-既知のMaps action中にchallengeが発生した場合、runtimeはsemantic browser stateを消す前にcanonical `MapsAction` を保存します。現在のMaps navigation actionはside effectを持たないため、Resume Policyは `replay_safe` です。
+既知のMaps navigation action中にchallengeが発生した場合、runtimeはsemantic stateを消す前にcanonical `MapsAction` を保存します。現在のMaps navigation actionはside effectを持たないため `replay_safe` です。
 
 信頼できるcanonical actionが存在しない場合は `never_replay` にします。
 
-Resource epochはintervention開始時とHuman control完了後に進みます。Navigationやsemantic page transitionでも進みます。将来のadapterではDOM ref、candidate index、snapshot、action approvalなど再利用可能な値を生成時epochへbindし、epoch変更後はstaleとして拒否する必要があります。
+Resource epochはintervention開始時、Human control完了後、navigationやsemantic page transition時に進みます。DOM ref、candidate index、snapshot、将来のaction approval等は生成時epochへbindし、epoch変更後はstaleとして拒否する前提です。
 
-Humanが「完了」としただけではAgentへ戻しません。Serverがbrowserが許可されたGoogle Maps surfaceへ戻っていることと、既知のinline challenge indicatorが消えていることを検証してからresume可能にします。
+Humanが完了しただけではresumeしません。許可されたGoogle Maps surfaceへ戻っていることと、既知のinline challenge indicatorが消えていることをServerで検証します。
 
-## Resume Policies
+## Tool Resume Strategy
 
-Generic handoff coreは4種類のpolicyを定義します。
+中断されたMCP toolとcanonical browser actionは別概念なので、V1ではtool側に2種類のresume strategyを持たせます。
+
+| Strategy | 対象 | Human intervention検証後 |
+| --- | --- | --- |
+| `retry_original` | `maps_search`, `maps_directions`, `maps_show`, `maps_streetview` | 同じvalidated・side-effect-free navigation toolを再実行 |
+| `require_fresh_semantic_action` | result/route選択、travel-mode変更、bounded read | stale stateを継続せず、fresh search/directionsを要求 |
+
+これにより、CAPTCHAを解いたことを理由に古いdynamic result indexをそのままclickする事故を防ぎます。
+
+## Generic Resume Policies
+
+Generic handoff coreは以下を定義します。
 
 | Policy | 意味 |
 | --- | --- |
-| `replay_safe` | Verification後、canonical actionを再構築してreplay可能。 |
-| `revalidate` | 現在stateを再取得し、再判断してから実行。 |
-| `confirm_before_execute` | 最終action argumentsへbindしたfresh user approvalを要求。 |
-| `never_replay` | 中断されたactionを自動再実行しない。 |
+| `replay_safe` | Verification後、canonical actionを再構築してreplay可能 |
+| `revalidate` | 現在stateを再取得して再判断してから実行 |
+| `confirm_before_execute` | 最終action argumentsへbindしたfresh user approvalを要求 |
+| `never_replay` | 中断actionを自動再実行しない |
 
-現在Maps adapterが選ぶのは `replay_safe` と `never_replay` だけです。残りは将来coreを切り出す際、read-only以外のadapterでも安全に扱えるよう先に型として定義しています。
-
-HumanがCAPTCHAを解いたことやsign-inを完了したことは、その後の不可逆actionへのapprovalではありません。購入、削除、送信、予約、Cloud管理などへ再利用する場合、takeover completionとaction approvalは必ず別eventとして扱います。
+HumanがCAPTCHAを解いたことやsign-inしたことは、その後の不可逆actionへのapprovalではありません。購入、削除、送信、予約、Cloud管理等へ再利用する場合、takeover completionとaction approvalは必ず分離します。
 
 ## Security Boundary
 
-将来のtakeover transportは次を維持する必要があります。
+将来のtakeover transportでも以下を維持します。
 
-- CDPはloopback-onlyを維持し、Human clientやpublic networkへ公開しない。
-- HumanとAgentのcontrolは相互排他。
-- Human所有中、AgentへDOM、Network、Screenshot、credential、2FA、CAPTCHA responseを返さない。
-- Takeover endpointはworkflowを開始した同じuser/principalを再認証する。転送可能なBearer URLだけでは不十分。
-- Takeover capabilityは短時間、1 intervention / 1 browser resourceへ限定し、revoke可能かつsecretを残さないauditを行う。
-- Takeover中のnavigationでlocalhost、private network、link-local metadata service、`file:` URL等へのSSRF pivotを作らない。
-- Human takeoverをCAPTCHA solver、anti-bot evasion、stealth/fingerprint spoofing、proxy rotationへ変質させない。
+- CDPはloopback-onlyで、Human client/public networkへ公開しない
+- HumanとAgentのcontrolは相互排他
+- Human所有中にAgentへDOM、Network、Screenshot、credential、2FA、CAPTCHA responseを返さない
+- Takeover endpointではworkflow開始者と同じuser/principalを再認証する。転送可能なBearer URLだけに依存しない
+- Capabilityは短時間・1 intervention / 1 browser resource限定・revoke可能にする
+- localhost/private network/link-local metadata/`file:`等へのSSRF pivotを作らない
+- CAPTCHA solver、anti-bot evasion、stealth/fingerprint spoofing、proxy rotationへ変質させない
 
-## MCP Integration Direction
+## Remote Takeover Direction
 
-Coreは現時点で特定のMCP interaction modelへ固定しません。将来adapterでは短時間のinterventionをcurrent MCP multi-round-trip input flowへmappingし、長時間・再接続可能なinterventionはclient/server対応状況に応じてTasks extensionへmappingできます。
+MRTRによってlocal handoffのprotocol pause/resume layerはできました。Remote/mobile takeoverはこのstate machineの上へ載せます。
 
-Browser/runtime stateをsource of truthとし、MCP session IDだけをsecurity principalやexecution-authority leaseとして扱いません。
+次のlayerではidentity binding、short-lived scoped capability、CDPを公開しないLive View/Input Broker、network egress restriction、secret-safe observation、明示的revokeが必要です。Protected takeover endpointが完成する前にURL-mode elicitationを追加せず、pre-authenticated transferable URLを近道として使いません。
 
 ## CI Boundary
 
-通常CIはHuman takeoverを待たず、CAPTCHAやsign-in challengeを意図的に発生させません。Authority/state machineとfail-closed境界はdeterministic testで確認します。Manual Live Maps E2Eは固定・低ボリュームの互換性確認のままとし、自然発生したchallengeはCIで突破する対象ではなくinconclusiveとして扱います。
+通常CIはHuman takeoverを待たず、CAPTCHAやsign-in challengeを意図的に発生させません。Authority state machine、request-state binding helper、fail-closed境界はdeterministic testで確認します。Manual Live Maps E2Eで自然発生したchallengeもCIが突破する対象にはしません。
 
 ## 別OSSへの切り出し条件
 
-このcodeは、まず `maps-browser-mcp` 内でMaps adapterに対して有効性を実証します。次の要素が本当にgenericだと、少なくとももう1つのadapterで確認できてから別OSS化を検討します。
+まず `maps-browser-mcp` で実証し、少なくとももう1つのadapterで以下が本当にgenericだと確認できてから別OSS化を検討します。
 
 - authority lease / state machine
 - intervention identity binding
@@ -99,6 +129,6 @@ Browser/runtime stateをsource of truthとし、MCP session IDだけをsecurity 
 - resume policy
 - action-approval binding
 - audit event
-- MCP MRTR / Tasks bridge
+- MCP MRTR bridge
 
 将来の抽象化対象はBrowser専用CAPTCHA/takeover libraryではなく、**execution handoff runtime** です。
