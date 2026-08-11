@@ -30,6 +30,7 @@ import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "
 import { SemanticController } from "./browser/semantic-controller.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
+import { TakeoverBroker } from "./takeover-broker.js";
 import { TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.1.1";
@@ -42,6 +43,7 @@ const policy = new PolicyEngine({
 });
 const chrome = new ChromeProcess(config.browser);
 const runtime = new MapsBrowserRuntime(chrome, policy);
+const takeoverBroker = new TakeoverBroker(runtime, config.takeover);
 const controller = new SemanticController(runtime, compiler);
 const reader = new VisibleStateReader(runtime, {
   maxNodes: config.policy.maxAxNodes,
@@ -117,6 +119,13 @@ function ownerMatches(left: HandoffOwner, right: HandoffOwner): boolean {
     left.resumeStrategy === right.resumeStrategy;
 }
 
+function handoffPrompt(intervention: MapsIntervention): string {
+  const base = interventionPrompt(intervention.reason);
+  const takeoverUrl = takeoverBroker.createLink(intervention);
+  if (!takeoverUrl) return base;
+  return `${base}\n\nRemote human takeover is available through the configured authenticated HTTPS gateway:\n${takeoverUrl}\n\nOpen that URL on your phone, complete the manual browser interaction, close remote control with Done, then return here and choose Continue. The capability is short-lived, bound to this intervention and resource epoch, and must not be forwarded.`;
+}
+
 async function humanInputRequired(
   intervention: MapsIntervention,
   owner: HandoffOwner,
@@ -134,6 +143,7 @@ async function humanInputRequired(
   let active = runtime.getActiveIntervention();
   if (!active || active.id !== intervention.id) {
     handoffOwners.delete(intervention.id);
+    takeoverBroker.revokeForIntervention(intervention.id);
     return errorResult(new BrowserRuntimeError(
       "UI_STATE_CHANGED",
       "The human intervention is no longer active. Repeat the intended Maps action."
@@ -161,7 +171,7 @@ async function humanInputRequired(
     requestState,
     inputRequests: {
       [HANDOFF_INPUT_KEY]: inputRequired.elicit({
-        message: interventionPrompt(active.reason),
+        message: handoffPrompt(active),
         requestedSchema: HUMAN_INTERVENTION_SCHEMA
       })
     }
@@ -169,6 +179,7 @@ async function humanInputRequired(
 }
 
 function cancelIntervention(interventionId: string): CallToolResult {
+  takeoverBroker.revokeForIntervention(interventionId);
   const active = runtime.getActiveIntervention();
   if (active?.id === interventionId) runtime.cancelHumanIntervention(interventionId);
   handoffOwners.delete(interventionId);
@@ -228,6 +239,7 @@ async function runToolWithHandoff<T>(input: {
   const active = runtime.getActiveIntervention();
   if (!active || active.id !== state.interventionId || active.epoch !== state.epoch) {
     handoffOwners.delete(state.interventionId);
+    takeoverBroker.revokeForIntervention(state.interventionId);
     return errorResult(new BrowserRuntimeError(
       "UI_STATE_CHANGED",
       "The browser changed while waiting for human intervention. Repeat the intended Maps action."
@@ -254,6 +266,7 @@ async function runToolWithHandoff<T>(input: {
     return cancelIntervention(state.interventionId);
   }
 
+  takeoverBroker.revokeForIntervention(state.interventionId);
   try {
     runtime.markHumanControlComplete(state.interventionId);
     await operationQueue.run(() => runtime.verifyHumanIntervention(state.interventionId));
@@ -276,6 +289,7 @@ async function runToolWithHandoff<T>(input: {
   }
 
   const decision = runtime.resumeAfterHumanIntervention(state.interventionId);
+  takeoverBroker.revokeForIntervention(state.interventionId);
   handoffOwners.delete(state.interventionId);
   if (decision.resumePolicy !== "replay_safe" || input.resumeStrategy === "require_fresh_semantic_action") {
     return staleAfterInterventionResult(input.toolName);
@@ -476,6 +490,14 @@ export function buildServer(): McpServer {
   return server;
 }
 
+export function isTakeoverHttpPath(pathname: string): boolean {
+  return takeoverBroker.isEnabled() && takeoverBroker.isPath(pathname);
+}
+
+export async function handleTakeoverHttpRequest(request: Request): Promise<Response> {
+  return takeoverBroker.handle(request);
+}
+
 export async function probeBrowserReady(): Promise<void> {
   await operationQueue.run(async () => {
     const client = await runtime.getClient();
@@ -484,6 +506,8 @@ export async function probeBrowserReady(): Promise<void> {
 }
 
 export async function shutdownRuntime(): Promise<void> {
+  const active = runtime.getActiveIntervention();
+  if (active) takeoverBroker.revokeForIntervention(active.id);
   await operationQueue.drain();
   await runtime.close();
 }
