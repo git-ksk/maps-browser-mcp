@@ -20,6 +20,17 @@ type MapsPathKind = "search" | "place" | "directions" | "map" | "root" | "other"
 export type MapsInterventionReason = "access_challenge" | "sign_in" | "consent" | "external_surface";
 export type MapsIntervention = ExecutionIntervention<MapsAction, MapsInterventionReason>;
 
+const HUMAN_TAKEOVER_KEYS = new Set([
+  "Enter",
+  "Tab",
+  "Escape",
+  "Backspace",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight"
+]);
+
 function actionToView(action: MapsAction): MapsViewState {
   switch (action.kind) {
     case "search":
@@ -208,6 +219,80 @@ export class MapsBrowserRuntime {
 
   cancelHumanIntervention(interventionId: string): void {
     this.handoff.cancel(interventionId);
+  }
+
+  async captureHumanTakeoverFrame(interventionId: string, epoch: number): Promise<{
+    data: string;
+    width: number;
+    height: number;
+    hostname: string;
+  }> {
+    const { client, url } = await this.getHumanTakeoverClient(interventionId, epoch);
+    const viewport = await this.viewportSize(client);
+    const screenshot = await client.Page.captureScreenshot({
+      format: "jpeg",
+      quality: 68,
+      fromSurface: true,
+      captureBeyondViewport: false
+    });
+    return {
+      data: screenshot.data,
+      width: viewport.width,
+      height: viewport.height,
+      hostname: new URL(url).hostname
+    };
+  }
+
+  async tapHumanTakeover(interventionId: string, epoch: number, x: number, y: number): Promise<void> {
+    const { client } = await this.getHumanTakeoverClient(interventionId, epoch);
+    const viewport = await this.viewportSize(client);
+    const safeX = Math.max(0, Math.min(viewport.width, x));
+    const safeY = Math.max(0, Math.min(viewport.height, y));
+    await client.Input.dispatchMouseEvent({
+      type: "mousePressed",
+      x: safeX,
+      y: safeY,
+      button: "left",
+      buttons: 1,
+      clickCount: 1
+    });
+    await client.Input.dispatchMouseEvent({
+      type: "mouseReleased",
+      x: safeX,
+      y: safeY,
+      button: "left",
+      buttons: 0,
+      clickCount: 1
+    });
+  }
+
+  async scrollHumanTakeover(interventionId: string, epoch: number, deltaY: number): Promise<void> {
+    const { client } = await this.getHumanTakeoverClient(interventionId, epoch);
+    const viewport = await this.viewportSize(client);
+    await client.Input.dispatchMouseEvent({
+      type: "mouseWheel",
+      x: viewport.width / 2,
+      y: viewport.height / 2,
+      deltaX: 0,
+      deltaY
+    });
+  }
+
+  async insertHumanTakeoverText(interventionId: string, epoch: number, text: string): Promise<void> {
+    const { client } = await this.getHumanTakeoverClient(interventionId, epoch);
+    if (!text || text.length > 2_048) {
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "Remote takeover text input is outside the allowed bounds");
+    }
+    await client.Input.insertText({ text });
+  }
+
+  async pressHumanTakeoverKey(interventionId: string, epoch: number, key: string): Promise<void> {
+    if (!HUMAN_TAKEOVER_KEYS.has(key)) {
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "Remote takeover key is not allowed");
+    }
+    const { client } = await this.getHumanTakeoverClient(interventionId, epoch);
+    await client.Input.dispatchKeyEvent({ type: "keyDown", key });
+    await client.Input.dispatchKeyEvent({ type: "keyUp", key });
   }
 
   async getClient(): Promise<CdpClient> {
@@ -418,6 +503,31 @@ export class MapsBrowserRuntime {
     }
   }
 
+  private async getHumanTakeoverClient(interventionId: string, epoch: number): Promise<{
+    client: CdpClient;
+    url: string;
+  }> {
+    const active = this.handoff.getActive();
+    if (!active || active.id !== interventionId || active.epoch !== epoch || active.status !== "human_active") {
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "Remote takeover no longer matches the active human intervention");
+    }
+    const client = await this.getClientUnchecked();
+    const url = await this.currentUrlUnchecked(client);
+    this.assertHumanTakeoverSurface(url);
+    return { client, url };
+  }
+
+  private async viewportSize(client: CdpClient): Promise<{ width: number; height: number }> {
+    const result = await client.Runtime.evaluate({
+      expression: "({width: Math.max(1, innerWidth), height: Math.max(1, innerHeight)})",
+      returnByValue: true
+    });
+    const value = result.result.value as { width?: unknown; height?: unknown } | undefined;
+    const width = Math.max(1, Math.min(10_000, Number(value?.width) || 1));
+    const height = Math.max(1, Math.min(10_000, Number(value?.height) || 1));
+    return { width, height };
+  }
+
   private async getClientUnchecked(): Promise<CdpClient> {
     await this.ensureConnected();
     if (!this.client) throw new BrowserRuntimeError("BROWSER_UNAVAILABLE", "CDP client is unavailable");
@@ -513,6 +623,21 @@ export class MapsBrowserRuntime {
     const intervention = this.handoff.begin(input);
     this.invalidateSemanticState(false);
     throw new BrowserRuntimeError("HUMAN_INTERVENTION_REQUIRED", message, intervention);
+  }
+
+  private assertHumanTakeoverSurface(value: string): void {
+    if (this.policy.isAllowedMapsUrl(value) || this.isChallengeUrl(value)) return;
+    let hostname = "";
+    try {
+      hostname = new URL(value).hostname.toLowerCase();
+    } catch {
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "Remote takeover reached an invalid browser URL");
+    }
+    if (hostname === "accounts.google.com" || hostname === "consent.google.com") return;
+    throw new BrowserRuntimeError(
+      "UI_STATE_CHANGED",
+      `Remote takeover stopped because the browser left the allowed Google intervention surfaces (${hostname || "unknown"})`
+    );
   }
 
   private assertAllowedCurrentUrl(value: string, intendedAction?: MapsAction): void {

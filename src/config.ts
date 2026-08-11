@@ -56,6 +56,20 @@ export function isLoopbackBind(host: string): boolean {
   return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
 }
 
+function takeoverBaseUrl(name: string): string | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const url = new URL(raw);
+  if (url.username || url.password || url.search || url.hash || (url.pathname !== "/" && url.pathname !== "")) {
+    throw new Error(`${name} must be an origin URL without credentials, path, query, or fragment`);
+  }
+  const loopback = isLoopbackBind(url.hostname);
+  if (url.protocol !== "https:" && !(loopback && url.protocol === "http:")) {
+    throw new Error(`${name} must use HTTPS except for loopback development`);
+  }
+  return url.origin;
+}
+
 export interface AppConfig {
   http: {
     host: string;
@@ -72,6 +86,11 @@ export interface AppConfig {
     allowExternalCdp: boolean;
     headless: boolean;
     allowUnsandboxedChromium: boolean;
+  };
+  takeover: {
+    enabled: boolean;
+    publicBaseUrl?: string;
+    ttlMs: number;
   };
   policy: {
     interactiveAssist: boolean;
@@ -116,6 +135,21 @@ export function loadConfig(): AppConfig {
     }
   }
 
+  const remoteTakeover = envBool("MAPS_REMOTE_TAKEOVER", false);
+  const publicBaseUrl = takeoverBaseUrl("MAPS_TAKEOVER_PUBLIC_BASE_URL");
+  if (publicBaseUrl && !remoteTakeover) {
+    throw new Error("MAPS_TAKEOVER_PUBLIC_BASE_URL requires MAPS_REMOTE_TAKEOVER=true");
+  }
+  if (remoteTakeover) {
+    if (!isLoopbackBind(host)) {
+      throw new Error("MAPS_REMOTE_TAKEOVER requires a loopback MCP_HTTP_HOST. Put an authenticated HTTPS gateway in front instead of exposing the Node broker directly.");
+    }
+    if (!publicBaseUrl) {
+      throw new Error("MAPS_REMOTE_TAKEOVER=true requires MAPS_TAKEOVER_PUBLIC_BASE_URL");
+    }
+  }
+  const takeoverTtlMs = envInt("MAPS_TAKEOVER_TTL_SECONDS", 300, 60, 600) * 1_000;
+
   const httpPort = process.env.MCP_HTTP_PORT === undefined
     ? envInt("PORT", 8787, 1, 65535)
     : envInt("MCP_HTTP_PORT", 8787, 1, 65535);
@@ -138,6 +172,11 @@ export function loadConfig(): AppConfig {
       allowExternalCdp,
       headless: envBool("MAPS_HEADLESS", false),
       allowUnsandboxedChromium: envBool("MAPS_ALLOW_UNSANDBOXED_CHROMIUM", false)
+    },
+    takeover: {
+      enabled: remoteTakeover,
+      publicBaseUrl,
+      ttlMs: takeoverTtlMs
     },
     policy: {
       interactiveAssist: envBool("INTERACTIVE_ASSIST_MODE", false),
