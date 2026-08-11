@@ -88,6 +88,26 @@ test("human handoff invalidates old resource state before safe resume", () => {
   assert.doesNotThrow(() => state.assertAgentAuthority());
 });
 
+test("failed verification can explicitly return exclusive control to the human", () => {
+  const { state, tick } = makeState();
+  const started = state.begin({
+    reason: "access_challenge",
+    resumePolicy: "replay_safe"
+  });
+  state.claimHuman(started.id);
+  const completed = state.markHumanComplete(started.id);
+  const epochAfterCompletion = completed.epoch;
+
+  tick();
+  const returned = state.returnToHuman(started.id);
+
+  assert.equal(returned.status, "human_active");
+  assert.equal(returned.authority, "human");
+  assert.equal(returned.epoch, epochAfterCompletion);
+  assert.equal(state.getResourceEpoch(), epochAfterCompletion);
+  assert.equal(state.getAuthority(), "human");
+});
+
 test("invalid transition and stale intervention ids fail closed", () => {
   const { state } = makeState();
   const started = state.begin({
@@ -104,6 +124,11 @@ test("invalid transition and stale intervention ids fail closed", () => {
     () => state.claimHuman("wrong-id"),
     (error: unknown) =>
       error instanceof ExecutionHandoffError && error.code === "INTERVENTION_NOT_FOUND"
+  );
+  assert.throws(
+    () => state.returnToHuman(started.id),
+    (error: unknown) =>
+      error instanceof ExecutionHandoffError && error.code === "INTERVENTION_STATE_CHANGED"
   );
 });
 
