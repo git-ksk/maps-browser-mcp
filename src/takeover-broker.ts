@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
+import type { AuthPrincipal } from "./auth-provider.js";
 import type { MapsIntervention } from "./browser/runtime.js";
+import { principalBinding } from "./request-principal.js";
 import { TakeoverSessionError, TakeoverSessionManager } from "./takeover-session.js";
 
 export interface TakeoverBrowserAdapter {
@@ -101,9 +103,12 @@ export class TakeoverBroker {
     return pathname.startsWith("/takeover/");
   }
 
-  createLink(intervention: Pick<MapsIntervention, "id" | "epoch">): string | undefined {
+  createLink(
+    intervention: Pick<MapsIntervention, "id" | "epoch">,
+    principal: AuthPrincipal
+  ): string | undefined {
     if (!this.config.enabled || !this.config.publicBaseUrl) return undefined;
-    const grant = this.sessions.ensure(intervention.id, intervention.epoch);
+    const grant = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding(principal));
     return new URL(`/takeover/${encodeURIComponent(grant.id)}`, this.config.publicBaseUrl).toString();
   }
 
@@ -111,12 +116,19 @@ export class TakeoverBroker {
     this.sessions.revokeForIntervention(interventionId);
   }
 
-  async handle(request: Request): Promise<Response> {
+  async handle(request: Request, principal: AuthPrincipal): Promise<Response> {
     if (!this.config.enabled) return json(404, { error: "not_found" });
+    const boundPrincipal = principalBinding(principal);
     const url = new URL(request.url);
     const pageMatch = /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
     if (pageMatch) {
       if (request.method !== "GET" && request.method !== "HEAD") return json(405, { error: "method_not_allowed" });
+      try {
+        this.sessions.issueCapability(pageMatch[1]!, boundPrincipal);
+      } catch (error) {
+        if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
+        throw error;
+      }
       const nonce = randomBytes(18).toString("base64url");
       const headers = new Headers(privateHeaders("text/html; charset=utf-8"));
       headers.set(
@@ -137,7 +149,7 @@ export class TakeoverBroker {
         return json(403, { error: "bootstrap_not_same_origin" });
       }
       try {
-        const grant = this.sessions.issueCapability(id);
+        const grant = this.sessions.issueCapability(id, boundPrincipal);
         return json(200, { capability: grant.capability, expiresAt: grant.expiresAt });
       } catch (error) {
         if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
@@ -150,7 +162,7 @@ export class TakeoverBroker {
 
     let grant: ReturnType<TakeoverSessionManager["verify"]>;
     try {
-      grant = this.sessions.verify(id, capability);
+      grant = this.sessions.verify(id, capability, boundPrincipal);
     } catch (error) {
       if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
       throw error;
