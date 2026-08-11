@@ -12,7 +12,7 @@ Execution Handoff V3 moves the human-intervention work from a Maps-specific take
 | Handoff V2 | implemented | bounded remote/mobile browser takeover with private CDP and short-lived capability |
 | Handoff V2.1 | implemented | authenticated MCP principal is bound to MRTR state, takeover session and capability |
 | Handoff V2.2 | manual verification pending | end-to-end phone verification through a configured authenticated HTTPS gateway |
-| **Handoff V3 core** | implemented | generic adapter contract, durable control-plane checkpoint, exact-action approval separation |
+| **Handoff V3** | implemented, opt-in durability | generic adapter contract, live Maps durable control-plane checkpoint, exact-action approval separation, bounded audit metadata |
 
 ## V3 architecture
 
@@ -25,8 +25,9 @@ Execution Handoff V3
     |-- authority / resource epoch
     |-- durable control-plane checkpoint
     |-- exact-action approval envelope
+    |-- secret-safe audit metadata
     |
-    +---- adapter: browser.maps   (real)
+    +---- adapter: browser.maps   (real + live checkpoint integration)
     +---- adapter: desktop.mock   (deterministic contract test)
     +---- adapter: terminal.mock  (deterministic contract test)
 ```
@@ -48,15 +49,31 @@ V3 can persist a signed checkpoint, but the checkpoint is **not a serialized bro
 
 It must not contain raw search terms, origins/destinations, browser text, DOM/network data, credentials, cookies, CAPTCHA/2FA responses, approval receipts, or raw action arguments.
 
+The live Maps handoff writes the checkpoint only while a Human intervention is active. Verified resume, cancellation, stale intervention state, and non-recoverable verification failure clear it. Graceful process shutdown deliberately does **not** clear an active checkpoint so recovery metadata can survive a restart.
+
 A recovered checkpoint always produces:
 
 ```text
 recovery = reissue_and_revalidate
 ```
 
-It never restores stale Agent/Human authority and never silently replays the interrupted action. The original action must be reissued under the same authenticated principal and evaluated against current resource state.
+It never restores stale Agent/Human authority and never silently replays the interrupted action. After restart, the same authenticated principal can reissue the original Maps tool call. If the fresh validated tool arguments produce the same action digest, the checkpoint is consumed and the Maps action runs again from those current validated inputs. Old MRTR request state, DOM/semantic state, remote capability, and browser authority are never restored from disk.
 
-This means V3 provides **durable recovery metadata**, not transparent process-restart continuation. The current MRTR request-state signing key and live browser intervention remain process-local.
+If checkpoint integrity validation fails or the record expired, it is discarded and is not used as authorization. A fresh user-directed tool invocation can still execute normally.
+
+### Opt-in configuration
+
+Durable recovery is disabled by default. Configure both values together:
+
+```text
+MAPS_HANDOFF_CHECKPOINT_FILE=/absolute/private/path/handoff-checkpoint.json
+MAPS_HANDOFF_CHECKPOINT_KEY=<32 random bytes encoded as canonical base64url>
+MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS=900
+```
+
+The file path must be absolute. The signing key must remain stable across process restarts and must not be committed or logged. The checkpoint file is written with private filesystem permissions by the checkpoint store.
+
+This means V3 provides **safe durable recovery metadata**, not transparent process-restart continuation. The current live MRTR request-state signing key and browser intervention remain process-local.
 
 ## Approval is separate from takeover
 
@@ -109,7 +126,8 @@ The manual run should verify a user-directed workflow only:
 4. `Done` revokes remote input but does not approve the MCP action;
 5. Continue verifies the browser and either resumes safely or returns to a new Human round;
 6. stale epoch/capability/request state is rejected;
-7. no screenshot/log containing accounts, private locations, tokens, browser profiles, or credentials is attached to a public issue.
+7. an opt-in checkpoint survives a controlled process restart but only the same principal + same reissued tool-argument digest can consume the recovery marker;
+8. no screenshot/log containing accounts, private locations, tokens, browser profiles, checkpoint keys, or credentials is attached to a public issue.
 
 Do not deliberately trigger or bypass CAPTCHA during this verification.
 
