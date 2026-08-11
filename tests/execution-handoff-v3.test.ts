@@ -99,3 +99,29 @@ test("v3 checkpoint clears once no intervention remains", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("configured durability releases Human authority if checkpoint persistence fails", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "maps-handoff-v3-fail-"));
+  const blocker = path.join(dir, "not-a-directory");
+  fs.writeFileSync(blocker, "block");
+  try {
+    const adapter = new FixtureAdapter();
+    const runtime = new ExecutionHandoffRuntimeV3(
+      defineExecutionAdapter("browser.maps", adapter),
+      {
+        checkpointStore: new SignedFileHandoffCheckpointStore(
+          path.join(blocker, "checkpoint.json"),
+          Buffer.alloc(32, 8),
+          () => 13_000
+        ),
+        checkpointTtlMs: 60_000,
+        now: () => 13_000
+      }
+    );
+
+    assert.throws(() => runtime.checkpoint(PRINCIPAL_A, "action-digest-only"));
+    assert.equal(adapter.getActiveIntervention(), undefined);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
