@@ -4,7 +4,14 @@ import { once } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { buildServer, config, probeBrowserReady, shutdownRuntime } from "./server.js";
+import {
+  buildServer,
+  config,
+  handleTakeoverHttpRequest,
+  isTakeoverHttpPath,
+  probeBrowserReady,
+  shutdownRuntime
+} from "./server.js";
 import {
   bearerAllowed,
   hostAllowed,
@@ -138,6 +145,15 @@ async function writeWebResponse(response: Response, res: ServerResponse): Promis
   }
 }
 
+function makeAbortController(req: IncomingMessage, res: ServerResponse): AbortController {
+  const abortController = new AbortController();
+  req.once("aborted", () => abortController.abort());
+  res.once("close", () => {
+    if (!res.writableEnded) abortController.abort();
+  });
+  return abortController;
+}
+
 async function startHttp(): Promise<void> {
   const mcpHandler = createMcpHandler(buildServer);
   const httpServer = createServer((req, res) => {
@@ -150,6 +166,27 @@ async function startHttp(): Promise<void> {
     if (requestUrl.pathname === "/healthz") {
       if (!validateProbeMethod(req, res)) return;
       writeProbeResponse(req, res, 200, { ok: true });
+      return;
+    }
+
+    if (isTakeoverHttpPath(requestUrl.pathname)) {
+      const abortController = makeAbortController(req, res);
+      void (async () => {
+        try {
+          const request = await toWebRequest(req, abortController.signal);
+          const response = await handleTakeoverHttpRequest(request);
+          await writeWebResponse(response, res);
+        } catch (error) {
+          if (error instanceof HttpRequestError) {
+            if (error.status === 413) res.setHeader("connection", "close");
+            reject(res, error.status, error.code);
+            return;
+          }
+          if (abortController.signal.aborted) return;
+          console.error("[maps-browser-mcp] takeover broker HTTP error");
+          reject(res, 500, "takeover_broker_error");
+        }
+      })();
       return;
     }
 
@@ -180,12 +217,7 @@ async function startHttp(): Promise<void> {
     }
     if (!validateTransportGuard(req, res)) return;
 
-    const abortController = new AbortController();
-    req.once("aborted", () => abortController.abort());
-    res.once("close", () => {
-      if (!res.writableEnded) abortController.abort();
-    });
-
+    const abortController = makeAbortController(req, res);
     void (async () => {
       try {
         const request = await toWebRequest(req, abortController.signal);
@@ -219,6 +251,9 @@ async function startHttp(): Promise<void> {
   );
   console.error(
     `[maps-browser-mcp] HTTP transport guard: ${config.http.bearerToken ? "static-bearer" : "none"}; built-in OAuth/OIDC: disabled`
+  );
+  console.error(
+    `[maps-browser-mcp] Remote human takeover: ${config.takeover.enabled ? "enabled behind configured authenticated HTTPS gateway" : "disabled"}`
   );
 
   const shutdown = async () => {
