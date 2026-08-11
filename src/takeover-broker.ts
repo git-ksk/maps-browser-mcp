@@ -133,8 +133,8 @@ export class TakeoverBroker {
 
     const apiMatch = /^\/takeover\/api\/(frame|input|done)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
     if (!apiMatch) return json(404, { error: "not_found" });
-    const operation = apiMatch[1];
-    const id = apiMatch[2];
+    const operation = apiMatch[1]!;
+    const id = apiMatch[2]!;
     const capability = this.readCapability(request.headers.get("authorization"));
     if (!capability) return json(404, { error: "takeover_unavailable" });
 
