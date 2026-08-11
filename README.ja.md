@@ -2,7 +2,7 @@
 
 [English](README.md) | [日本語](README.ja.md) | [日本語ドキュメント](docs/README.ja.md)
 
-Google Maps Platform APIに依存せず、専用Chrome / Chromiumセッションを通してGoogle Mapsを操作する軽量MCPサーバーです。
+Google Mapsのuser-visible Web UIを、専用Chrome / Chromiumセッションから限定的に操作する、制約重視・ExperimentalなMCP browser controllerです。
 
 > **ステータス:** V1〜V3実装済み。Google Mapsの実UIに依存するsemantic interactionと限定Visible-State Readerは、UI変更の影響を受けるためExperimentalです。
 
@@ -17,6 +17,18 @@ Google Maps Platform APIに依存せず、専用Chrome / Chromiumセッション
 - UI状態が曖昧ならfail closed
 - 画面読み取りは明示Opt-in・bounded・デフォルトOFF
 - スクレイピング、CAPTCHA回避、stealth、内部Maps API収集は実装しない
+
+### このprojectの位置づけ
+
+supported Google Maps Platform APIやGoogle-managed Maps MCPでworkflowを満たせる場合は、その公式structured interfaceを優先します。`maps-browser-mcp` は、実際にuser-visibleなMaps Web surfaceを必要とするbounded workflow向けであり、browser pathをAPI利用回避の仕組みとして扱いません。
+
+| Surface | 向いている用途 | このprojectの違い |
+| --- | --- | --- |
+| Google Maps Platform / Google-managed Maps MCP | supportedなstructured Maps / grounding / place / route等のdata・operation | workflowを満たすならこちらを優先。このprojectはboundedなuser-visible Maps browser sessionを操作する |
+| General-purpose browser MCP | 幅広いWeb navigation・任意browser automation | Maps-specific actionだけを公開し、control surfaceを大幅に小さく保つ |
+| Scraper / dataset harvester | bulk collection・persistent extraction | 明示的に対象外。visible-state readはbounded / transient / opt-in |
+
+詳細は **[Project positioning 日本語版](docs/positioning.ja.md)** と **[Compliance / Safety 日本語版](docs/compliance.ja.md)** を参照してください。
 
 ## 5分クイックスタート
 
@@ -271,7 +283,7 @@ Google Maps内部API intercept、XHR/fetch収集、stealth plugin、fingerprint�
 
 明らかなbulk collection要求はPolicy Engineで拒否します。V3には独立したrolling hourly read budgetがあります。navigation先はGoogle Maps HTTPS web surfaceに限定し、visibleなinline access challengeも検出して操作を停止します。
 
-V3はリスクを抑えた設計ですが、すべてのbrowser-agent用途についてGoogleから許可を保証されたものではありません。利用者は適用される規約・法令を確認してください。詳細は **[Compliance / Safety 日本語版](docs/compliance.ja.md)** を参照してください。
+V3はリスクを抑えた設計ですが、すべてのbrowser-agent用途についてGoogleから許可を保証されたものではありません。利用者は適用される規約・法令を確認してください。supported structured Google Maps interfaceでworkflowを満たせる場合はbrowser automationよりそちらを優先します。詳細は **[Compliance / Safety 日本語版](docs/compliance.ja.md)** を参照してください。
 
 ## プライバシー
 
@@ -324,6 +336,7 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 | [Troubleshooting](docs/troubleshooting.ja.md) | error code別の安全な復旧手順 |
 | [ChatGPT](docs/chatgpt.ja.md) | ChatGPT/App接続境界とtool refresh |
 | [Architecture](docs/architecture.ja.md) | runtime、CDP、state、queue/watchdog |
+| [Project positioning](docs/positioning.ja.md) | 競合category、公式interface優先、product direction |
 | [Compliance / Safety](docs/compliance.ja.md) | 利用目的・非目的・規約境界 |
 | [Manual Live E2E](docs/manual-e2e.ja.md) | 実Google Maps user-triggered互換性確認 |
 | [Release Checklist](docs/release.ja.md) | release前CI、Live check、security、tag手順 |

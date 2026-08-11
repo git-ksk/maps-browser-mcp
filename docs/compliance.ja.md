@@ -8,13 +8,16 @@
 
 このprojectはGoogle Maps scraperやGoogle Maps Platform API代替として設計していません。可能な限りGoogle公式Maps URLを使い、browser interactionはユーザーの現在の依頼に必要な範囲へ限定します。
 
+supported Google Maps Platform APIやGoogle-managed Maps MCPでapplicationのuse caseを満たせる場合は、その公式structured interfaceを優先します。このprojectのbrowser pathは、実際にuser-visibleなMaps Web surfaceを必要とするbounded workflow向けです。API利用を避けるための仕組みではなく、Google Maps contentにAPIと同等の権利があるとも主張しません。
+
 この文書更新時点で、Google Maps End User Additional Termsは2026年1月27日更新版で、別途許可される場合を除くMaps contentのcopy、mass download / bulk feed、代替mapping / navigation / listing datasetの作成・拡張などを制限しています。適用されるGoogle規約やmachine-readable access instructionは変わり得るため、定期的な再確認が必要です。
 
 V3の小さなVisible-State Readerはリスクを減らすため意図的にboundedですが、Googleがすべてのbrowser-agent read / summary patternを明示的に許可しているわけではありません。利用者・maintainerは規約変更時に再評価してください。
 
 ## 推奨される動作
 
-- search / directions / map view / Street ViewはGoogle公式Maps URLを優先
+- workflowを満たせる場合はsupported structured Google Maps Platform / Google-managed MCP interfaceを優先
+- browser-based search / directions / map view / Street ViewではGoogle公式Maps URLを優先
 - ユーザーのactive requestに応じてのみ操作
 - Browser automationをGoogle Maps web surfaceへ限定
 - Visible-state readは小さく、一時的、boundedに保つ
@@ -38,6 +41,7 @@ V3の小さなVisible-State Readerはリスクを減らすため意図的にboun
 - bot detection bypass
 - stealth / browser fingerprint spoofing
 - access-control回避を目的としたproxy rotation
+- 単に公式interfaceを使わないためだけのsupported structured Google Maps API / MCP functionality複製
 
 ## Policy Enforcement
 
@@ -101,3 +105,5 @@ Access challengeが出た場合は回避せず停止します。
 ## Project Status
 
 Google Maps UI構造、machine-readable access instruction、service termsは変更される可能性があります。Interactive readingをproduction用途で使う前に、maintainer / userはbehaviorとtermsを定期的に再確認してください。
+
+supported official Maps interfaceが拡張されたりbrowser workflowが不要になった場合は、feature parityを維持するためだけにbrowser surfaceを残すのではなく、scopeを狭めることを優先します。
