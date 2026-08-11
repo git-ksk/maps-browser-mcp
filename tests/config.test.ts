@@ -14,7 +14,10 @@ const KEYS = [
   "MAPS_ALLOW_EXTERNAL_CDP",
   "MAPS_ALLOW_UNSANDBOXED_CHROMIUM",
   "MAPS_OPERATION_TIMEOUT_MS",
-  "MAPS_HEADLESS"
+  "MAPS_HEADLESS",
+  "MAPS_REMOTE_TAKEOVER",
+  "MAPS_TAKEOVER_PUBLIC_BASE_URL",
+  "MAPS_TAKEOVER_TTL_SECONDS"
 ] as const;
 
 async function withEnv(values: Partial<Record<(typeof KEYS)[number], string | undefined>>, fn: () => void | Promise<void>) {
@@ -130,5 +133,64 @@ test("validates operation watchdog bounds", async () => {
 test("rejects malformed boolean environment values", async () => {
   await withEnv({ MAPS_HEADLESS: "maybe" }, () => {
     assert.throws(() => loadConfig(), /must be a boolean/);
+  });
+});
+
+test("remote takeover is disabled by default", async () => {
+  await withEnv({}, () => {
+    const config = loadConfig();
+    assert.equal(config.takeover.enabled, false);
+    assert.equal(config.takeover.ttlMs, 300_000);
+  });
+});
+
+test("remote takeover requires loopback Node bind and an HTTPS public origin", async () => {
+  await withEnv({ MAPS_REMOTE_TAKEOVER: "true" }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_TAKEOVER_PUBLIC_BASE_URL/);
+  });
+
+  await withEnv({
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "http://takeover.example"
+  }, () => {
+    assert.throws(() => loadConfig(), /must use HTTPS/);
+  });
+
+  await withEnv({
+    MCP_HTTP_HOST: "0.0.0.0",
+    MCP_ALLOW_NONLOOPBACK: "true",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires a loopback MCP_HTTP_HOST/);
+  });
+});
+
+test("remote takeover accepts authenticated-gateway origin and bounded TTL on loopback", async () => {
+  await withEnv({
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MAPS_TAKEOVER_TTL_SECONDS: "180"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.takeover.enabled, true);
+    assert.equal(config.takeover.publicBaseUrl, "https://takeover.example");
+    assert.equal(config.takeover.ttlMs, 180_000);
+    assert.equal(config.http.host, "127.0.0.1");
+  });
+
+  await withEnv({
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MAPS_TAKEOVER_TTL_SECONDS: "601"
+  }, () => {
+    assert.throws(() => loadConfig(), /between 60 and 600/);
+  });
+});
+
+test("takeover public origin cannot be configured accidentally while feature is off", async () => {
+  await withEnv({ MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example" }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
   });
 });
