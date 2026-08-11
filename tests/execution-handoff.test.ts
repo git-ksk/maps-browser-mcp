@@ -24,12 +24,6 @@ function makeState() {
 
 test("begin suspends agent authority and preserves canonical action", () => {
   const { state } = makeState();
-  const action: Action = { kind: "search"; query: string } as never;
-  void action;
-});
-
-test("begin suspends agent authority and preserves canonical action", () => {
-  const { state } = makeState();
   const action: Action = { kind: "search", query: "coffee near Tokyo Station" };
 
   const started = state.begin({
