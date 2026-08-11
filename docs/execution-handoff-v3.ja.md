@@ -1,0 +1,127 @@
+# Execution Handoff V3（日本語）
+
+> ここでいうV3は **Execution Handoff subsystemのversion** です。repository内で既に使っているMaps V1〜V3のfeature labelとは別軸です。
+
+Execution Handoff V3では、Human interventionをMaps専用Takeover機能から、再利用可能なcontrol-plane runtimeへ一段抽象化します。Mapsは最初のreal adapterとして維持します。
+
+## 現在のlayer
+
+| Layer | Status | 目的 |
+| --- | --- | --- |
+| Handoff V1 | 実装済み | MCP MRTR `input_required`、Agent/Human排他authority、resource epoch、安全なresume |
+| Handoff V2 | 実装済み | private CDP + short-lived capabilityによるbounded remote/mobile browser takeover |
+| Handoff V2.1 | 実装済み | authenticated MCP principalをMRTR state / takeover session / capabilityへbind |
+| Handoff V2.2 | 手動検証待ち | authenticated HTTPS gateway経由のphone E2E |
+| **Handoff V3 core** | 実装済み | generic adapter contract、durable control-plane checkpoint、exact-action approval分離 |
+
+## V3 architecture
+
+```text
+MCP / Agent
+    |
+    v
+Execution Handoff V3
+    |-- principal binding
+    |-- authority / resource epoch
+    |-- durable control-plane checkpoint
+    |-- exact-action approval envelope
+    |
+    +---- adapter: browser.maps   (real)
+    +---- adapter: desktop.mock   (deterministic contract test)
+    +---- adapter: terminal.mock  (deterministic contract test)
+```
+
+CoreはCDPや他adapter固有protocolを公開しません。将来Desktop / Terminal / Cloud Console / Device adapterを追加する場合も、native execution channelはadapterの内側に閉じたまま同じcontrol-plane contractを実装します。
+
+## Durable recoveryは意図的に保守的
+
+V3はsigned checkpointを永続化できますが、checkpointは**browser sessionやAgent sessionのserializeではありません**。保存対象はboundedなcontrol-plane metadataだけです。
+
+- adapter kind
+- intervention id
+- intervention status
+- resource epoch
+- resume policy
+- principal binding
+- optional action digest
+- timestamp / expiry
+
+raw検索語、出発地/目的地、browser text、DOM/network data、credential、cookie、CAPTCHA/2FA response、approval receipt、raw action argumentsは保存しません。
+
+Recovery結果は必ず次になります。
+
+```text
+recovery = reissue_and_revalidate
+```
+
+古いAgent/Human authorityを復元せず、中断actionを自動replayしません。元actionを同じauthenticated principalから再提示し、現在のresource stateで再評価する必要があります。
+
+したがってV3が提供するのは**durable recovery metadata**であり、process restart後のtransparent continuationではありません。現在のMRTR request-state signing keyとlive browser intervention自体はprocess-localです。
+
+## ApprovalとTakeoverを完全に分離
+
+Human Takeoverは「Humanが一時的にexecution inputを所有する」ことだけを意味します。その後のside effectを承認したことにはなりません。
+
+将来不可逆actionを持つadapter向けに、V3はexplicit approval envelopeを提供します。Approvalは次へbindされます。
+
+- canonicalな最終action name + arguments
+- current resource epoch
+- authenticated principal binding
+- expiry
+- single use
+
+Action arguments、principal、resource epochのいずれかが変わればapprovalは無効です。Approval receiptはHMACで保護し、1回だけconsumeできます。
+
+つまり:
+
+```text
+CAPTCHA完了 != 購入承認
+sign-in完了 != 削除承認
+MFA完了 != メッセージ送信承認
+```
+
+現在のMaps navigation actionはside-effect-freeなので、現時点ではapproval managerを使用しません。
+
+## Adapter切り出し基準
+
+`browser.maps` が最初のreal adapterです。TypeScript contractがMaps固有でないことを確認するためnon-browser mock adapterもdeterministic testで動かしますが、mockだけでは2つ目のproduction adapterが成熟した証明にはしません。
+
+別OSSへの切り出しはまだ行いません。DesktopやTerminal等の2つ目のreal adapterで次が再利用できることを確認してから検討します。
+
+- adapter contract
+- authority / epoch model
+- principal binding
+- checkpoint recovery semantics
+- completion verification
+- approval envelope
+- audit/control-plane metadata
+- MCP MRTR bridge
+
+## V2.2 phone E2E
+
+残るlive verificationには、実際のauthenticated HTTPS gateway、専用Chrome session、phoneが必要です。通常CIだけでは証明できません。
+
+手動検証ではuser-directed workflowだけを使い、次を確認します。
+
+1. MCP action開始者とTakeover page利用者が同じauthenticated principalである
+2. 別principal / unauthenticated requestではpage/bootstrapへ入れない
+3. Human authority中だけphoneからbounded frame確認と許可inputができる
+4. `Done` はremote inputをrevokeするだけで、MCP actionをapproveしない
+5. Continue後にbrowserをverifyし、安全にresumeするか、新しいHuman roundへ戻る
+6. stale epoch / capability / request stateを拒否する
+7. account、private location、token、browser profile、credential等を含むscreenshot/logをpublic issueへ添付しない
+
+この検証のためにCAPTCHAを意図的に発生させたり、回避したりしません。
+
+## Non-goals
+
+V3でも以下は実装しません。
+
+- CAPTCHA solver / anti-bot bypass
+- stealth / fingerprint spoofing / proxy rotation
+- public CDP
+- Takeover UIからのarbitrary browser navigation
+- DOM / network / cookie export
+- irreversible actionのautomatic approval
+- multi-tenant hosting
+- process restart後のtransparent replay
