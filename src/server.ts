@@ -7,7 +7,7 @@ import {
   McpServer,
   type CallToolResult,
   type InputRequiredResult,
-  type McpRequestContext
+  type ServerContext
 } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { loadConfig } from "./config.js";
@@ -201,7 +201,7 @@ async function runToolWithHandoff<T>(input: {
   toolName: string;
   args: unknown;
   resumeStrategy: HandoffResumeStrategy;
-  ctx: McpRequestContext;
+  ctx: ServerContext;
   task: () => Promise<T>;
 }): Promise<CallToolResult | InputRequiredResult> {
   const state = input.ctx.mcpReq.requestState<HandoffRequestState>();
