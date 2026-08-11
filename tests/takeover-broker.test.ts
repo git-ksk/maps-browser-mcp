@@ -35,17 +35,25 @@ function fixture() {
   const link = broker.createLink({ id: "intervention-a", epoch: 7 });
   assert.ok(link);
   const url = new URL(link);
-  const capability = new URLSearchParams(url.hash.slice(1)).get("cap");
-  assert.ok(capability);
   const sessionId = url.pathname.split("/").at(-1);
   assert.ok(sessionId);
-  return { broker, calls, url, capability, sessionId };
+  return { broker, calls, url, sessionId };
 }
 
-test("takeover link keeps capability in fragment and page is hardened", async () => {
-  const { broker, url } = fixture();
+async function bootstrap(broker: TakeoverBroker, sessionId: string): Promise<string> {
+  const response = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
+    headers: { "sec-fetch-site": "same-origin" }
+  }));
+  assert.equal(response.status, 200);
+  const body = await response.json() as { capability?: string };
+  assert.ok(body.capability);
+  return body.capability;
+}
+
+test("takeover link is a locator only and page is hardened", async () => {
+  const { broker, url, sessionId } = fixture();
   assert.equal(url.search, "");
-  assert.match(url.hash, /^#cap=/);
+  assert.equal(url.hash, "");
 
   const response = await broker.handle(new Request(`http://localhost${url.pathname}`));
   assert.equal(response.status, 200);
@@ -53,12 +61,18 @@ test("takeover link keeps capability in fragment and page is hardened", async ()
   assert.equal(response.headers.get("referrer-policy"), "no-referrer");
   assert.match(response.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
   const html = await response.text();
-  assert.doesNotMatch(html, /cap=[A-Za-z0-9_-]{32,}/);
-  assert.match(html, /history\.replaceState/);
+  assert.doesNotMatch(html, /Takeover [A-Za-z0-9_-]{32,}/);
+  assert.match(html, /takeover\/api\/bootstrap/);
+
+  const crossSiteBootstrap = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
+    headers: { "sec-fetch-site": "cross-site" }
+  }));
+  assert.equal(crossSiteBootstrap.status, 403);
 });
 
-test("frame and bounded inputs require capability and same-origin mutation", async () => {
-  const { broker, calls, capability, sessionId } = fixture();
+test("frame and bounded inputs require bootstrapped capability and same-origin mutation", async () => {
+  const { broker, calls, sessionId } = fixture();
+  const capability = await bootstrap(broker, sessionId);
   const auth = { authorization: `Takeover ${capability}` };
 
   const denied = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`));
@@ -87,7 +101,8 @@ test("frame and bounded inputs require capability and same-origin mutation", asy
 });
 
 test("done revokes remote capability without pretending to approve the MCP action", async () => {
-  const { broker, capability, sessionId } = fixture();
+  const { broker, sessionId } = fixture();
+  const capability = await bootstrap(broker, sessionId);
   const auth = { authorization: `Takeover ${capability}`, origin: "https://takeover.example" };
   const done = await broker.handle(new Request(`http://localhost/takeover/api/done/${sessionId}`, {
     method: "POST",
