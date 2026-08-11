@@ -2,7 +2,7 @@
 
 [English](README.md) | [日本語](README.ja.md)
 
-A lightweight MCP server for interacting with Google Maps through a dedicated Chrome/Chromium session, without relying on the Google Maps Platform API.
+A constrained, experimental MCP browser controller for user-directed interaction with Google Maps through a dedicated Chrome/Chromium session.
 
 > **Status:** V1–V3 are implemented. Google Maps UI-dependent interaction and bounded visible-state reading remain experimental because the live Maps UI can change.
 
@@ -17,6 +17,18 @@ General-purpose browser MCPs are powerful, but they expose a much larger control
 - fail closed when the page/state is ambiguous,
 - make visible-state reading explicit, bounded, and disabled by default,
 - do not implement scraping, CAPTCHA bypass, stealth, or internal Maps API harvesting.
+
+### Where this project fits
+
+If a supported Google Maps Platform API or Google-managed Maps MCP already satisfies the workflow, prefer that supported structured interface. `maps-browser-mcp` exists for bounded workflows that genuinely require the user-visible Maps web surface; the browser path is not an API-avoidance mechanism.
+
+| Surface | Best fit | This project intentionally differs by |
+| --- | --- | --- |
+| Google Maps Platform / Google-managed Maps MCP | supported structured Maps, grounding, place, route, or related data where available | prefer these when they satisfy the workflow; this project controls a bounded user-visible Maps browser session |
+| General-purpose browser MCPs | broad web navigation and arbitrary browser automation | exposes Maps-specific actions and a substantially smaller capability surface |
+| Scrapers / dataset harvesters | bulk collection and persistent extraction | explicitly out of scope; visible-state reading is bounded, transient, and opt-in |
+
+See **[Project positioning](docs/positioning.md)** and **[Compliance boundaries](docs/compliance.md)** for the detailed category and safety boundary.
 
 ## 5-minute quick start
 
@@ -269,7 +281,7 @@ It intentionally does not implement Google Maps internal API interception, XHR/f
 
 Obvious bulk-collection requests are rejected by the policy layer. V3 has a separate rolling hourly read budget. Navigation remains restricted to the Google Maps HTTPS web surface. Visible inline access challenges are detected and stop the operation.
 
-V3 is deliberately conservative, but this project does not claim that every browser-agent usage is guaranteed permitted by Google. Users are responsible for applicable service terms and laws. See **[Compliance boundaries](docs/compliance.md)**.
+V3 is deliberately conservative, but this project does not claim that every browser-agent usage is guaranteed permitted by Google. Users are responsible for applicable service terms and laws. Where supported structured Google Maps interfaces already satisfy the workflow, prefer those interfaces over browser automation. See **[Compliance boundaries](docs/compliance.md)**.
 
 ## Privacy
 
@@ -321,6 +333,7 @@ See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and err
 | [Troubleshooting](docs/troubleshooting.md) | Error codes and safe recovery procedures |
 | [ChatGPT](docs/chatgpt.md) | Remote ChatGPT/App connection boundary and tool refresh |
 | [Architecture](docs/architecture.md) | Runtime, CDP, state, queue/watchdog design |
+| [Project positioning](docs/positioning.md) | Competitive category, official-interface preference, and product direction |
 | [Compliance](docs/compliance.md) | Intended-use and non-goal boundaries |
 | [Manual live E2E](docs/manual-e2e.md) | User-triggered Google Maps compatibility verification |
 | [Release checklist](docs/release.md) | Pre-release CI, live check, security and tagging procedure |
