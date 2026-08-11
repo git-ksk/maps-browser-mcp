@@ -61,7 +61,7 @@ function pageHtml(nonce: string): string {
 <input id="text" autocomplete="off" autocapitalize="none" placeholder="Type into focused browser field"><button id="send">Send</button>
 <button id="done" class="wide">Done — return to MCP and choose Continue</button>
 </div>
-<small>This page controls only the current dedicated Chrome tab. One remote page owns the takeover lease at a time. It does not expose CDP, an address bar, cookies, DOM, or network data. Passwords, 2FA codes and CAPTCHA responses stay in the browser interaction and are not sent through MCP.</small>
+<small>This page controls only the current dedicated Chrome tab. One remote page owns the takeover lease at a time. Reloading or opening the same URL elsewhere cannot reclaim an active lease; return to MCP for a fresh Human round instead. It does not expose CDP, an address bar, cookies, DOM, or network data. Passwords, 2FA codes and CAPTCHA responses stay in the browser interaction and are not sent through MCP.</small>
 </main>
 <script nonce="${nonce}">
 const sessionId=location.pathname.split('/').filter(Boolean).at(-1)||'';
@@ -71,9 +71,7 @@ const screen=document.querySelector('#screen');
 let cap='';let viewport={width:1,height:1};let stopped=false;let objectUrl='';
 function status(text){statusEl.textContent=text}
 function randomClientBinding(){const bytes=new Uint8Array(24);crypto.getRandomValues(bytes);let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
-const clientStorageKey='maps-takeover-client:'+sessionId;
-let clientBinding=sessionStorage.getItem(clientStorageKey)||'';
-if(!/^[A-Za-z0-9_-]{24,128}$/.test(clientBinding)){clientBinding=randomClientBinding();sessionStorage.setItem(clientStorageKey,clientBinding)}
+const clientBinding=randomClientBinding();
 async function bootstrap(){const response=await fetch('/takeover/api/bootstrap/'+encodeURIComponent(sessionId),{cache:'no-store',headers:{'x-takeover-client':clientBinding}});if(!response.ok)throw new Error('bootstrap unavailable');const data=await response.json();if(!data.capability)throw new Error('missing capability');cap=data.capability}
 async function api(path,options={}){const headers={...(options.headers||{}),'authorization':'Takeover '+cap,'x-takeover-client':clientBinding};const response=await fetch('/takeover/api/'+path+'/'+encodeURIComponent(sessionId),{...options,headers,cache:'no-store'});if(!response.ok)throw new Error('takeover unavailable');return response}
 async function refresh(){if(stopped)return;try{const r=await api('frame');viewport={width:Number(r.headers.get('x-takeover-width'))||1,height:Number(r.headers.get('x-takeover-height'))||1};const host=r.headers.get('x-takeover-host')||'Google';const blob=await r.blob();const next=URL.createObjectURL(blob);frame.onload=()=>{if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=next};frame.src=next;status(host+' · live');}catch{status('Session unavailable, expired, or already active elsewhere');stopped=true;return}setTimeout(refresh,700)}
