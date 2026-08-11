@@ -34,6 +34,16 @@ Execution Handoff V3
 
 CoreはCDPや他adapter固有protocolを公開しません。将来Desktop / Terminal / Cloud Console / Device adapterを追加する場合も、native execution channelはadapterの内側に閉じたまま同じcontrol-plane contractを実装します。
 
+## 排他的Remote Client Lease
+
+Authenticated identityとremote-control concurrencyは別の境界として扱います。同じauthenticated principalがHuman interventionを所有していても、1つのintervention / resource epochで操作できる**active remote takeover clientは1つだけ**です。
+
+Authenticated Takeover pageはWeb Cryptoでrandom client bindingを生成し、page memoryだけに保持します。最初のsame-origin bootstrapがremote-client leaseをatomicにclaimします。Pageをreloadした場合や、同じlocatorを別device/tabで開いた場合は別bindingになるため、同じauthenticated principalでもactive takeover sessionを再claimできません。Active pageを失った場合は暗黙transferせず、MCPへ戻ってfresh Human roundを開始します。
+
+Short-lived takeover capabilityはsession locator、intervention id、resource epoch、principal binding、client binding、expiryへHMAC bindします。Frame/input/done requestにはcapabilityとmatching client bindingの両方が必要です。Resource epochが変わると新しいtakeover sessionになり、client leaseも新しくなります。
+
+V3では裏側で勝手にclientをtransferする操作は提供しません。Client bindingはconcurrency leaseであってuser authenticationではなく、primary identity boundaryはauthenticated principalのままです。
+
 ## Durable recoveryは意図的に保守的
 
 V3はsigned checkpointを永続化できますが、checkpointは**browser sessionやAgent sessionのserializeではありません**。保存対象はboundedなcontrol-plane metadataだけです。
@@ -123,11 +133,12 @@ MFA完了 != メッセージ送信承認
 1. MCP action開始者とTakeover page利用者が同じauthenticated principalである
 2. 別principal / unauthenticated requestではpage/bootstrapへ入れない
 3. Human authority中だけphoneからbounded frame確認と許可inputができる
-4. `Done` はremote inputをrevokeするだけで、MCP actionをapproveしない
-5. Continue後にbrowserをverifyし、安全にresumeするか、新しいHuman roundへ戻る
-6. stale epoch / capability / request stateを拒否する
-7. opt-in checkpointがcontrolled process restartを跨いでも残るが、同じprincipal + 同じ再発行tool-argument digestだけがrecovery markerをconsumeできる
-8. account、private location、token、browser profile、checkpoint key、credential等を含むscreenshot/logをpublic issueへ添付しない
+4. 同じprincipalでも2つ目のremote clientは同じintervention epochをclaim/inputできず、reloadでもleaseが暗黙transferされない
+5. `Done` はremote inputをrevokeするだけで、MCP actionをapproveしない
+6. Continue後にbrowserをverifyし、安全にresumeするか、新しいHuman roundへ戻る
+7. stale epoch / capability / request stateを拒否する
+8. opt-in checkpointがcontrolled process restartを跨いでも残るが、同じprincipal + 同じ再発行tool-argument digestだけがrecovery markerをconsumeできる
+9. account、private location、token、browser profile、checkpoint key、credential等を含むscreenshot/logをpublic issueへ添付しない
 
 この検証のためにCAPTCHAを意図的に発生させたり、回避したりしません。
 

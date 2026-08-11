@@ -61,7 +61,7 @@ function pageHtml(nonce: string): string {
 <input id="text" autocomplete="off" autocapitalize="none" placeholder="Type into focused browser field"><button id="send">Send</button>
 <button id="done" class="wide">Done — return to MCP and choose Continue</button>
 </div>
-<small>This page controls only the current dedicated Chrome tab. It does not expose CDP, an address bar, cookies, DOM, or network data. Passwords, 2FA codes and CAPTCHA responses stay in the browser interaction and are not sent through MCP.</small>
+<small>This page controls only the current dedicated Chrome tab. One remote page owns the takeover lease at a time. Reloading or opening the same URL elsewhere cannot reclaim an active lease; return to MCP for a fresh Human round instead. It does not expose CDP, an address bar, cookies, DOM, or network data. Passwords, 2FA codes and CAPTCHA responses stay in the browser interaction and are not sent through MCP.</small>
 </main>
 <script nonce="${nonce}">
 const sessionId=location.pathname.split('/').filter(Boolean).at(-1)||'';
@@ -70,16 +70,18 @@ const frame=document.querySelector('#frame');
 const screen=document.querySelector('#screen');
 let cap='';let viewport={width:1,height:1};let stopped=false;let objectUrl='';
 function status(text){statusEl.textContent=text}
-async function bootstrap(){const response=await fetch('/takeover/api/bootstrap/'+encodeURIComponent(sessionId),{cache:'no-store'});if(!response.ok)throw new Error('bootstrap unavailable');const data=await response.json();if(!data.capability)throw new Error('missing capability');cap=data.capability}
-async function api(path,options={}){const headers={...(options.headers||{}),'authorization':'Takeover '+cap};const response=await fetch('/takeover/api/'+path+'/'+encodeURIComponent(sessionId),{...options,headers,cache:'no-store'});if(!response.ok)throw new Error('takeover unavailable');return response}
-async function refresh(){if(stopped)return;try{const r=await api('frame');viewport={width:Number(r.headers.get('x-takeover-width'))||1,height:Number(r.headers.get('x-takeover-height'))||1};const host=r.headers.get('x-takeover-host')||'Google';const blob=await r.blob();const next=URL.createObjectURL(blob);frame.onload=()=>{if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=next};frame.src=next;status(host+' · live');}catch{status('Session unavailable or expired');stopped=true;return}setTimeout(refresh,700)}
-async function input(body){try{await api('input',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});setTimeout(refresh,100)}catch{status('Input rejected');stopped=true}}
+function randomClientBinding(){const bytes=new Uint8Array(24);crypto.getRandomValues(bytes);let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+const clientBinding=randomClientBinding();
+async function bootstrap(){const response=await fetch('/takeover/api/bootstrap/'+encodeURIComponent(sessionId),{cache:'no-store',headers:{'x-takeover-client':clientBinding}});if(!response.ok)throw new Error('bootstrap unavailable');const data=await response.json();if(!data.capability)throw new Error('missing capability');cap=data.capability}
+async function api(path,options={}){const headers={...(options.headers||{}),'authorization':'Takeover '+cap,'x-takeover-client':clientBinding};const response=await fetch('/takeover/api/'+path+'/'+encodeURIComponent(sessionId),{...options,headers,cache:'no-store'});if(!response.ok)throw new Error('takeover unavailable');return response}
+async function refresh(){if(stopped)return;try{const r=await api('frame');viewport={width:Number(r.headers.get('x-takeover-width'))||1,height:Number(r.headers.get('x-takeover-height'))||1};const host=r.headers.get('x-takeover-host')||'Google';const blob=await r.blob();const next=URL.createObjectURL(blob);frame.onload=()=>{if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=next};frame.src=next;status(host+' · live');}catch{status('Session unavailable, expired, or already active elsewhere');stopped=true;return}setTimeout(refresh,700)}
+async function input(body){try{await api('input',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});setTimeout(refresh,100)}catch{status('Input rejected or session active elsewhere');stopped=true}}
 screen.addEventListener('click',(event)=>{const r=frame.getBoundingClientRect();if(!r.width||!r.height)return;const x=Math.max(0,Math.min(viewport.width,(event.clientX-r.left)*viewport.width/r.width));const y=Math.max(0,Math.min(viewport.height,(event.clientY-r.top)*viewport.height/r.height));void input({kind:'tap',x,y})});
 document.querySelectorAll('[data-scroll]').forEach((el)=>el.addEventListener('click',()=>void input({kind:'scroll',deltaY:Number(el.dataset.scroll)})));
 document.querySelectorAll('[data-key]').forEach((el)=>el.addEventListener('click',()=>void input({kind:'key',key:el.dataset.key})));
 document.querySelector('#send').addEventListener('click',()=>{const field=document.querySelector('#text');const text=field.value;if(text){field.value='';void input({kind:'text',text})}});
 document.querySelector('#done').addEventListener('click',async()=>{try{await api('done',{method:'POST'});status('Remote control closed. Return to MCP and choose Continue.');stopped=true}catch{status('Session already closed')}});
-void bootstrap().then(refresh).catch(()=>{status('Session unavailable or expired');stopped=true});
+void bootstrap().then(refresh).catch(()=>{status('Session unavailable, expired, or already active elsewhere');stopped=true});
 </script></body></html>`;
 }
 
@@ -108,8 +110,8 @@ export class TakeoverBroker {
     principal: AuthPrincipal | undefined = currentRequestPrincipal()
   ): string | undefined {
     if (!this.config.enabled || !this.config.publicBaseUrl || !principal) return undefined;
-    const grant = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding(principal));
-    return new URL(`/takeover/${encodeURIComponent(grant.id)}`, this.config.publicBaseUrl).toString();
+    const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding(principal));
+    return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();
   }
 
   revokeForIntervention(interventionId: string): void {
@@ -127,7 +129,7 @@ export class TakeoverBroker {
     if (pageMatch) {
       if (request.method !== "GET" && request.method !== "HEAD") return json(405, { error: "method_not_allowed" });
       try {
-        this.sessions.issueCapability(pageMatch[1]!, boundPrincipal);
+        this.sessions.validateLocator(pageMatch[1]!, boundPrincipal);
       } catch (error) {
         if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
         throw error;
@@ -145,6 +147,8 @@ export class TakeoverBroker {
     if (!apiMatch) return json(404, { error: "not_found" });
     const operation = apiMatch[1]!;
     const id = apiMatch[2]!;
+    const clientBinding = this.readClientBinding(request.headers.get("x-takeover-client"));
+    if (!clientBinding) return json(404, { error: "takeover_unavailable" });
 
     if (operation === "bootstrap") {
       if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
@@ -152,7 +156,7 @@ export class TakeoverBroker {
         return json(403, { error: "bootstrap_not_same_origin" });
       }
       try {
-        const grant = this.sessions.issueCapability(id, boundPrincipal);
+        const grant = this.sessions.claimClient(id, boundPrincipal, clientBinding);
         return json(200, { capability: grant.capability, expiresAt: grant.expiresAt });
       } catch (error) {
         if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
@@ -165,7 +169,7 @@ export class TakeoverBroker {
 
     let grant: ReturnType<TakeoverSessionManager["verify"]>;
     try {
-      grant = this.sessions.verify(id, capability, boundPrincipal);
+      grant = this.sessions.verify(id, capability, boundPrincipal, clientBinding);
     } catch (error) {
       if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
       throw error;
@@ -216,6 +220,11 @@ export class TakeoverBroker {
 
   private readCapability(value: string | null): string | undefined {
     const match = /^Takeover ([A-Za-z0-9_-]{32,128})$/.exec(value ?? "");
+    return match?.[1];
+  }
+
+  private readClientBinding(value: string | null): string | undefined {
+    const match = /^([A-Za-z0-9_-]{24,128})$/.exec(value ?? "");
     return match?.[1];
   }
 

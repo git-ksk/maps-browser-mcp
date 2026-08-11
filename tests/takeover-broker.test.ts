@@ -5,6 +5,8 @@ import { TakeoverBroker, type TakeoverBrowserAdapter } from "../src/takeover-bro
 
 const PRINCIPAL_A: AuthPrincipal = { subject: "user-a", email: "a@example.test" };
 const PRINCIPAL_B: AuthPrincipal = { subject: "user-b", email: "b@example.test" };
+const CLIENT_A = "client-binding-a-1234567890";
+const CLIENT_B = "client-binding-b-1234567890";
 
 function fixture() {
   const calls: unknown[] = [];
@@ -47,10 +49,14 @@ function fixture() {
 async function bootstrap(
   broker: TakeoverBroker,
   sessionId: string,
-  principal: AuthPrincipal = PRINCIPAL_A
+  principal: AuthPrincipal = PRINCIPAL_A,
+  clientBinding: string = CLIENT_A
 ): Promise<string> {
   const response = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
-    headers: { "sec-fetch-site": "same-origin" }
+    headers: {
+      "sec-fetch-site": "same-origin",
+      "x-takeover-client": clientBinding
+    }
   }), principal);
   assert.equal(response.status, 200);
   const body = await response.json() as { capability?: string };
@@ -58,7 +64,7 @@ async function bootstrap(
   return body.capability;
 }
 
-test("takeover link is a locator only and page is hardened", async () => {
+test("takeover link is a locator only and page creates a memory-only remote client binding", async () => {
   const { broker, url, sessionId } = fixture();
   assert.equal(url.search, "");
   assert.equal(url.hash, "");
@@ -71,9 +77,16 @@ test("takeover link is a locator only and page is hardened", async () => {
   const html = await response.text();
   assert.doesNotMatch(html, /Takeover [A-Za-z0-9_-]{32,}/);
   assert.match(html, /takeover\/api\/bootstrap/);
+  assert.doesNotMatch(html, /sessionStorage|localStorage/);
+  assert.match(html, /crypto\.getRandomValues/);
+  assert.match(html, /const clientBinding=randomClientBinding\(\)/);
+  assert.match(html, /x-takeover-client/);
 
   const crossSiteBootstrap = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
-    headers: { "sec-fetch-site": "cross-site" }
+    headers: {
+      "sec-fetch-site": "cross-site",
+      "x-takeover-client": CLIENT_A
+    }
   }), PRINCIPAL_A);
   assert.equal(crossSiteBootstrap.status, 403);
 });
@@ -84,7 +97,10 @@ test("different or missing principal cannot open or bootstrap another takeover",
   assert.equal(wrongPage.status, 404);
 
   const wrongBootstrap = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
-    headers: { "sec-fetch-site": "same-origin" }
+    headers: {
+      "sec-fetch-site": "same-origin",
+      "x-takeover-client": CLIENT_A
+    }
   }), PRINCIPAL_B);
   assert.equal(wrongBootstrap.status, 404);
 
@@ -92,16 +108,52 @@ test("different or missing principal cannot open or bootstrap another takeover",
   assert.equal(missing.status, 404);
 });
 
-test("frame and bounded inputs require matching principal, capability and same-origin mutation", async () => {
+test("same principal cannot claim one takeover from two remote clients", async () => {
+  const { broker, sessionId } = fixture();
+  const capability = await bootstrap(broker, sessionId, PRINCIPAL_A, CLIENT_A);
+
+  const retryBySameClient = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
+    headers: {
+      "sec-fetch-site": "same-origin",
+      "x-takeover-client": CLIENT_A
+    }
+  }), PRINCIPAL_A);
+  assert.equal(retryBySameClient.status, 200);
+  const retried = await retryBySameClient.json() as { capability?: string };
+  assert.equal(retried.capability, capability);
+
+  const secondClient = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
+    headers: {
+      "sec-fetch-site": "same-origin",
+      "x-takeover-client": CLIENT_B
+    }
+  }), PRINCIPAL_A);
+  assert.equal(secondClient.status, 404);
+});
+
+test("frame and bounded inputs require matching principal, client lease, capability and origin", async () => {
   const { broker, calls, sessionId } = fixture();
   const capability = await bootstrap(broker, sessionId);
-  const auth = { authorization: `Takeover ${capability}` };
+  const auth = {
+    authorization: `Takeover ${capability}`,
+    "x-takeover-client": CLIENT_A
+  };
 
-  const denied = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`), PRINCIPAL_A);
+  const denied = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
+    headers: { "x-takeover-client": CLIENT_A }
+  }), PRINCIPAL_A);
   assert.equal(denied.status, 404);
 
   const wrongPrincipal = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, { headers: auth }), PRINCIPAL_B);
   assert.equal(wrongPrincipal.status, 404);
+
+  const wrongClient = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
+    headers: {
+      authorization: `Takeover ${capability}`,
+      "x-takeover-client": CLIENT_B
+    }
+  }), PRINCIPAL_A);
+  assert.equal(wrongClient.status, 404);
 
   const frame = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, { headers: auth }), PRINCIPAL_A);
   assert.equal(frame.status, 200);
@@ -125,10 +177,14 @@ test("frame and bounded inputs require matching principal, capability and same-o
   assert.deepEqual(calls.at(-1), ["tap", "intervention-a", 7, 10, 20]);
 });
 
-test("done revokes remote capability without pretending to approve the MCP action", async () => {
+test("done revokes remote capability and client lease without approving the MCP action", async () => {
   const { broker, sessionId } = fixture();
   const capability = await bootstrap(broker, sessionId);
-  const auth = { authorization: `Takeover ${capability}`, origin: "https://takeover.example" };
+  const auth = {
+    authorization: `Takeover ${capability}`,
+    "x-takeover-client": CLIENT_A,
+    origin: "https://takeover.example"
+  };
   const done = await broker.handle(new Request(`http://localhost/takeover/api/done/${sessionId}`, {
     method: "POST",
     headers: auth
@@ -137,7 +193,10 @@ test("done revokes remote capability without pretending to approve the MCP actio
   assert.deepEqual(await done.json(), { done: true });
 
   const stale = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
-    headers: { authorization: `Takeover ${capability}` }
+    headers: {
+      authorization: `Takeover ${capability}`,
+      "x-takeover-client": CLIENT_A
+    }
   }), PRINCIPAL_A);
   assert.equal(stale.status, 404);
 });
