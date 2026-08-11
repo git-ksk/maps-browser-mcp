@@ -60,16 +60,12 @@ export class TakeoverSessionManager {
     return this.grant(record);
   }
 
-  verify(id: string, capability: string): Omit<TakeoverGrant, "capability"> {
-    const record = this.records.get(id);
-    if (!record || record.revoked) {
-      throw new TakeoverSessionError("TAKEOVER_NOT_FOUND", "Takeover session is not active");
-    }
-    if (record.expiresAt <= this.now()) {
-      record.revoked = true;
-      throw new TakeoverSessionError("TAKEOVER_EXPIRED", "Takeover session expired");
-    }
+  issueCapability(id: string): TakeoverGrant {
+    return this.grant(this.requireActive(id));
+  }
 
+  verify(id: string, capability: string): Omit<TakeoverGrant, "capability"> {
+    const record = this.requireActive(id);
     const expected = Buffer.from(this.capabilityFor(record), "utf8");
     const supplied = Buffer.from(capability, "utf8");
     if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
@@ -93,6 +89,18 @@ export class TakeoverSessionManager {
     for (const record of this.records.values()) {
       if (record.interventionId === interventionId) record.revoked = true;
     }
+  }
+
+  private requireActive(id: string): TakeoverRecord {
+    const record = this.records.get(id);
+    if (!record || record.revoked) {
+      throw new TakeoverSessionError("TAKEOVER_NOT_FOUND", "Takeover session is not active");
+    }
+    if (record.expiresAt <= this.now()) {
+      record.revoked = true;
+      throw new TakeoverSessionError("TAKEOVER_EXPIRED", "Takeover session expired");
+    }
+    return record;
   }
 
   private grant(record: TakeoverRecord): TakeoverGrant {
