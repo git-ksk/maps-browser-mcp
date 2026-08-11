@@ -9,6 +9,10 @@ import {
 import type { MapsAction, MapsViewState } from "../types.js";
 import { PolicyEngine, PolicyError } from "../policy/policy-engine.js";
 import { ChromeProcess } from "./chrome-process.js";
+import {
+  classifyGoogleInterventionSurface,
+  isAllowedHumanTakeoverSurface
+} from "./intervention-surface.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -626,14 +630,13 @@ export class MapsBrowserRuntime {
   }
 
   private assertHumanTakeoverSurface(value: string): void {
-    if (this.policy.isAllowedMapsUrl(value) || this.isChallengeUrl(value)) return;
+    if (isAllowedHumanTakeoverSurface(value, (candidate) => this.policy.isAllowedMapsUrl(candidate))) return;
     let hostname = "";
     try {
       hostname = new URL(value).hostname.toLowerCase();
     } catch {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "Remote takeover reached an invalid browser URL");
     }
-    if (hostname === "accounts.google.com" || hostname === "consent.google.com") return;
     throw new BrowserRuntimeError(
       "UI_STATE_CHANGED",
       `Remote takeover stopped because the browser left the allowed Google intervention surfaces (${hostname || "unknown"})`
@@ -645,7 +648,9 @@ export class MapsBrowserRuntime {
       this.invalidateSemanticState();
       throw new BrowserRuntimeError("MAPS_NOT_OPEN", "Google Maps is not open in the dedicated browser tab");
     }
-    if (this.isChallengeUrl(value)) {
+
+    const interventionSurface = classifyGoogleInterventionSurface(value);
+    if (interventionSurface === "access_challenge") {
       this.requireHumanIntervention(
         "access_challenge",
         "Google presented an access challenge. Automatic bypass is intentionally unsupported.",
@@ -659,9 +664,9 @@ export class MapsBrowserRuntime {
       } catch {
         // Keep generic text.
       }
-      const reason: MapsInterventionReason = hostname === "accounts.google.com"
+      const reason: MapsInterventionReason = interventionSurface === "sign_in"
         ? "sign_in"
-        : hostname === "consent.google.com"
+        : interventionSurface === "consent"
           ? "consent"
           : "external_surface";
       this.requireHumanIntervention(
@@ -669,15 +674,6 @@ export class MapsBrowserRuntime {
         `Browser left the Google Maps surface (${hostname}). Complete the required manual step without sharing credentials with the agent.`,
         intendedAction
       );
-    }
-  }
-
-  private isChallengeUrl(value: string): boolean {
-    try {
-      const url = new URL(value);
-      return url.pathname.startsWith("/sorry/") || url.hostname.includes("recaptcha");
-    } catch {
-      return false;
     }
   }
 }
