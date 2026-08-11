@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { AuthPrincipal } from "./auth-provider.js";
 import type { MapsIntervention } from "./browser/runtime.js";
-import { principalBinding } from "./request-principal.js";
+import { currentRequestPrincipal, principalBinding } from "./request-principal.js";
 import { TakeoverSessionError, TakeoverSessionManager } from "./takeover-session.js";
 
 export interface TakeoverBrowserAdapter {
@@ -105,9 +105,9 @@ export class TakeoverBroker {
 
   createLink(
     intervention: Pick<MapsIntervention, "id" | "epoch">,
-    principal: AuthPrincipal
+    principal: AuthPrincipal | undefined = currentRequestPrincipal()
   ): string | undefined {
-    if (!this.config.enabled || !this.config.publicBaseUrl) return undefined;
+    if (!this.config.enabled || !this.config.publicBaseUrl || !principal) return undefined;
     const grant = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding(principal));
     return new URL(`/takeover/${encodeURIComponent(grant.id)}`, this.config.publicBaseUrl).toString();
   }
@@ -116,8 +116,11 @@ export class TakeoverBroker {
     this.sessions.revokeForIntervention(interventionId);
   }
 
-  async handle(request: Request, principal: AuthPrincipal): Promise<Response> {
-    if (!this.config.enabled) return json(404, { error: "not_found" });
+  async handle(
+    request: Request,
+    principal: AuthPrincipal | undefined = currentRequestPrincipal()
+  ): Promise<Response> {
+    if (!this.config.enabled || !principal) return json(404, { error: "not_found" });
     const boundPrincipal = principalBinding(principal);
     const url = new URL(request.url);
     const pageMatch = /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
