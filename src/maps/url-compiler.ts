@@ -1,7 +1,14 @@
-import type { MapsAction, TravelMode } from "../types.js";
+import {
+  ROUTE_AVOID_OPTIONS,
+  type MapsAction,
+  type RouteAvoid,
+  type TravelMode
+} from "../types.js";
 
 const MAPS_BASE = "https://www.google.com/maps";
 const MAX_URL_LENGTH = 2048;
+const MAX_WAYPOINTS = 3;
+const ROUTE_AVOID_SET = new Set<string>(ROUTE_AVOID_OPTIONS);
 
 function nonEmpty(value: string, name: string): string {
   const trimmed = value.trim();
@@ -20,6 +27,24 @@ function integerBounded(value: number, name: string, min: number, max: number): 
   const checked = bounded(value, name, min, max);
   if (!Number.isInteger(checked)) throw new Error(`${name} must be a whole integer`);
   return checked;
+}
+
+function normalizedWaypoints(values: readonly string[] | undefined): string[] | undefined {
+  if (!values || values.length === 0) return undefined;
+  if (values.length > MAX_WAYPOINTS) {
+    throw new Error(`waypoints must contain at most ${MAX_WAYPOINTS} locations`);
+  }
+  return values.map((value, index) => nonEmpty(value, `waypoints[${index}]`));
+}
+
+function normalizedAvoid(values: readonly RouteAvoid[] | undefined): RouteAvoid[] | undefined {
+  if (!values || values.length === 0) return undefined;
+  const result: RouteAvoid[] = [];
+  for (const value of values) {
+    if (!ROUTE_AVOID_SET.has(value)) throw new Error(`Unsupported route avoidance option: ${value}`);
+    if (!result.includes(value)) result.push(value);
+  }
+  return result.length > 0 ? result : undefined;
 }
 
 function finalize(url: URL): string {
@@ -43,17 +68,30 @@ export class MapsUrlCompiler {
     origin?: string;
     destination: string;
     mode: TravelMode;
+    waypoints?: readonly string[];
+    avoid?: readonly RouteAvoid[];
   }): { url: string; action: MapsAction } {
     const destination = nonEmpty(input.destination, "destination");
     const origin = input.origin ? nonEmpty(input.origin, "origin") : undefined;
+    const waypoints = normalizedWaypoints(input.waypoints);
+    const avoid = normalizedAvoid(input.avoid);
     const url = new URL(`${MAPS_BASE}/dir/`);
     url.searchParams.set("api", "1");
     if (origin) url.searchParams.set("origin", origin);
     url.searchParams.set("destination", destination);
     url.searchParams.set("travelmode", input.mode);
+    if (waypoints) url.searchParams.set("waypoints", waypoints.join("|"));
+    if (avoid) url.searchParams.set("avoid", avoid.join(","));
     return {
       url: finalize(url),
-      action: { kind: "directions", origin, destination, mode: input.mode }
+      action: {
+        kind: "directions",
+        origin,
+        destination,
+        mode: input.mode,
+        ...(waypoints ? { waypoints } : {}),
+        ...(avoid ? { avoid } : {})
+      }
     };
   }
 
