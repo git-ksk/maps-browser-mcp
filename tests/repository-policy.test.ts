@@ -95,13 +95,18 @@ test("container base image is digest-pinned and monitored", () => {
 });
 
 test("human-intervention detection stays fail-closed and contains no solver integration", () => {
-  const source = read("src/browser/runtime.ts");
-  assert.match(source, /HUMAN_INTERVENTION_REQUIRED/);
-  assert.ok(source.includes("'iframe[src*=\"recaptcha\"]'"));
-  assert.ok(source.includes("'form[action*=\"/sorry/\"]'"));
-  assert.ok(source.includes("'input[name=\"captcha\"]'"));
-  assert.ok(source.includes('url.pathname.startsWith("/sorry/")'));
-  assert.ok(source.includes('url.hostname.includes("recaptcha")'));
+  const runtimeSource = read("src/browser/runtime.ts");
+  const surfaceSource = read("src/browser/intervention-surface.ts");
+  assert.match(runtimeSource, /HUMAN_INTERVENTION_REQUIRED/);
+  assert.ok(runtimeSource.includes("'iframe[src*=\"recaptcha\"]'"));
+  assert.ok(runtimeSource.includes("'form[action*=\"/sorry/\"]'"));
+  assert.ok(runtimeSource.includes("'input[name=\"captcha\"]'"));
+  assert.match(runtimeSource, /classifyGoogleInterventionSurface/);
+  assert.match(surfaceSource, /url\.protocol !== "https:"/);
+  assert.match(surfaceSource, /GOOGLE_SORRY_HOSTS\.has\(hostname\)/);
+  assert.match(surfaceSource, /pathname\.startsWith\("\/sorry\/"\)/);
+  assert.match(surfaceSource, /GOOGLE_RECAPTCHA_HOSTS\.has\(hostname\)/);
+  assert.match(surfaceSource, /pathname\.startsWith\("\/recaptcha\/"\)/);
 
   const packageJson = read("package.json");
   assert.doesNotMatch(packageJson, /recaptcha|captcha-solver|puppeteer-extra-plugin-stealth|playwright-extra|proxy-chain/i);

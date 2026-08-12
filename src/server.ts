@@ -33,6 +33,12 @@ import {
   type HandoffRequestState,
   type HandoffResumeStrategy
 } from "./handoff-mrtr.js";
+import {
+  claimHandoffOwner,
+  createHandoffOwner,
+  handoffOwnerMatches,
+  type HandoffOwner
+} from "./handoff-owner.js";
 import { createMapsExecutionAdapter } from "./maps-execution-adapter.js";
 import { MapsUrlCompiler } from "./maps/url-compiler.js";
 import { PolicyEngine, PolicyError } from "./policy/policy-engine.js";
@@ -81,12 +87,6 @@ const handoffStateCodec = createRequestStateCodec<HandoffRequestState>({
   ttlSeconds: HANDOFF_STATE_TTL_SECONDS
 });
 
-interface HandoffOwner {
-  toolName: string;
-  argsDigest: string;
-  resumeStrategy: HandoffResumeStrategy;
-}
-
 const handoffOwners = new Map<string, HandoffOwner>();
 
 const queryText = z.string().trim().min(1).max(500);
@@ -123,11 +123,11 @@ function activePrincipalBinding(): string {
 }
 
 function checkpointHumanHandoff(owner: HandoffOwner): void {
-  v3Handoff?.checkpoint(activePrincipalBinding(), owner.argsDigest);
+  v3Handoff?.checkpoint(owner.principalBinding, owner.argsDigest);
 }
 
-function clearHandoffCheckpoint(): void {
-  v3Handoff?.clearCheckpoint(activePrincipalBinding());
+function clearHandoffCheckpoint(owner?: HandoffOwner): void {
+  v3Handoff?.clearCheckpoint(owner?.principalBinding ?? activePrincipalBinding());
 }
 
 function consumeMatchingRecovery(toolName: string, args: unknown): void {
@@ -155,45 +155,37 @@ function staleAfterInterventionResult(toolName: string): CallToolResult {
 }
 
 function ownerFor(toolName: string, args: unknown, resumeStrategy: HandoffResumeStrategy): HandoffOwner {
-  return {
-    toolName,
-    argsDigest: digestToolInvocation(toolName, args),
-    resumeStrategy
-  };
+  return createHandoffOwner(activePrincipalBinding(), toolName, args, resumeStrategy);
 }
 
-function ownerMatches(left: HandoffOwner, right: HandoffOwner): boolean {
-  return left.toolName === right.toolName &&
-    left.argsDigest === right.argsDigest &&
-    left.resumeStrategy === right.resumeStrategy;
-}
-
-function handoffPrompt(intervention: MapsIntervention): string {
+function handoffPrompt(intervention: MapsIntervention, owner: HandoffOwner): string {
   const base = interventionPrompt(intervention.reason);
-  const takeoverUrl = takeoverBroker.createLink(intervention);
+  const principal = currentRequestPrincipal();
+  const takeoverUrl = principal && principalBinding(principal) === owner.principalBinding
+    ? takeoverBroker.createLink(intervention, principal)
+    : undefined;
   if (!takeoverUrl) return base;
   return `${base}\n\nRemote human takeover is available through the configured authenticated HTTPS gateway:\n${takeoverUrl}\n\nOpen that URL on your phone, complete the manual browser interaction, close remote control with Done, then return here and choose Continue. The capability is short-lived, bound to this intervention and resource epoch, and must not be forwarded.`;
 }
 
 async function humanInputRequired(
   intervention: MapsIntervention,
-  owner: HandoffOwner,
+  candidateOwner: HandoffOwner,
   args: unknown
 ): Promise<InputRequiredResult | CallToolResult> {
-  const existingOwner = handoffOwners.get(intervention.id);
-  if (existingOwner && !ownerMatches(existingOwner, owner)) {
+  const owner = handoffOwners.get(intervention.id);
+  if (!owner || !handoffOwnerMatches(owner, candidateOwner)) {
     return errorResult(new BrowserRuntimeError(
       "HUMAN_INTERVENTION_REQUIRED",
-      "Another MCP operation already owns the active human intervention. Complete or cancel the original operation before starting a different Maps action."
+      "The active human intervention belongs to another authenticated principal or no longer has a valid owner. Complete the original flow before starting another Maps action."
     ));
   }
-  handoffOwners.set(intervention.id, owner);
 
   let active = runtime.getActiveIntervention();
   if (!active || active.id !== intervention.id) {
     handoffOwners.delete(intervention.id);
     takeoverBroker.revokeForIntervention(intervention.id);
-    clearHandoffCheckpoint();
+    clearHandoffCheckpoint(owner);
     return errorResult(new BrowserRuntimeError(
       "UI_STATE_CHANGED",
       "The human intervention is no longer active. Repeat the intended Maps action."
@@ -222,19 +214,19 @@ async function humanInputRequired(
     requestState,
     inputRequests: {
       [HANDOFF_INPUT_KEY]: inputRequired.elicit({
-        message: handoffPrompt(active),
+        message: handoffPrompt(active, owner),
         requestedSchema: HUMAN_INTERVENTION_SCHEMA
       })
     }
   });
 }
 
-function cancelIntervention(interventionId: string): CallToolResult {
+function cancelIntervention(interventionId: string, owner: HandoffOwner): CallToolResult {
   takeoverBroker.revokeForIntervention(interventionId);
   const active = runtime.getActiveIntervention();
   if (active?.id === interventionId) runtime.cancelHumanIntervention(interventionId);
   handoffOwners.delete(interventionId);
-  clearHandoffCheckpoint();
+  clearHandoffCheckpoint(owner);
   return jsonResult({ cancelled: true, reason: "human_intervention_cancelled" });
 }
 
@@ -244,9 +236,33 @@ async function executeToolTask<T>(
   resumeStrategy: HandoffResumeStrategy,
   task: () => Promise<T>
 ): Promise<CallToolResult | InputRequiredResult> {
+  const owner = ownerFor(toolName, args, resumeStrategy);
   try {
     policy.consumeAction();
-    const result = await operationQueue.run(task);
+    const result = await operationQueue.run(async () => {
+      const interventionBefore = runtime.getActiveIntervention()?.id;
+      try {
+        return await task();
+      } finally {
+        const interventionAfter = runtime.getActiveIntervention();
+        if (interventionAfter && interventionAfter.id !== interventionBefore) {
+          const boundOwner = claimHandoffOwner(
+            handoffOwners,
+            interventionAfter.id,
+            interventionAfter.status,
+            owner
+          );
+          if (!boundOwner) {
+            takeoverBroker.revokeForIntervention(interventionAfter.id);
+            runtime.cancelHumanIntervention(interventionAfter.id);
+            throw new BrowserRuntimeError(
+              "UI_STATE_CHANGED",
+              "A newly-created human intervention could not be bound to the originating authenticated principal. The intervention was cancelled."
+            );
+          }
+        }
+      }
+    });
     return jsonResult(result);
   } catch (error) {
     if (
@@ -254,7 +270,7 @@ async function executeToolTask<T>(
       error.code === "HUMAN_INTERVENTION_REQUIRED" &&
       error.intervention
     ) {
-      return humanInputRequired(error.intervention, ownerFor(toolName, args, resumeStrategy), args);
+      return humanInputRequired(error.intervention, owner, args);
     }
     return errorResult(error);
   }
@@ -282,10 +298,10 @@ async function runToolWithHandoff<T>(input: {
 
   const expectedOwner = ownerFor(input.toolName, input.args, input.resumeStrategy);
   const owner = handoffOwners.get(state.interventionId);
-  if (!owner || !ownerMatches(owner, expectedOwner)) {
+  if (!owner || !handoffOwnerMatches(owner, expectedOwner)) {
     return errorResult(new BrowserRuntimeError(
       "UI_STATE_CHANGED",
-      "The human intervention owner is no longer active. Repeat the intended Maps action."
+      "The human intervention owner does not match this authenticated principal and invocation. Repeat the intended Maps action from the original session."
     ));
   }
 
@@ -293,7 +309,7 @@ async function runToolWithHandoff<T>(input: {
   if (!active || active.id !== state.interventionId || active.epoch !== state.epoch) {
     handoffOwners.delete(state.interventionId);
     takeoverBroker.revokeForIntervention(state.interventionId);
-    clearHandoffCheckpoint();
+    clearHandoffCheckpoint(owner);
     return errorResult(new BrowserRuntimeError(
       "UI_STATE_CHANGED",
       "The browser changed while waiting for human intervention. Repeat the intended Maps action."
@@ -305,7 +321,7 @@ async function runToolWithHandoff<T>(input: {
     return humanInputRequired(active, owner, input.args);
   }
   if (response.kind !== "elicit" || response.action !== "accept") {
-    return cancelIntervention(state.interventionId);
+    return cancelIntervention(state.interventionId, owner);
   }
 
   const content = acceptedContent(
@@ -317,7 +333,7 @@ async function runToolWithHandoff<T>(input: {
     return humanInputRequired(active, owner, input.args);
   }
   if (content.decision === "cancel") {
-    return cancelIntervention(state.interventionId);
+    return cancelIntervention(state.interventionId, owner);
   }
 
   takeoverBroker.revokeForIntervention(state.interventionId);
@@ -339,14 +355,14 @@ async function runToolWithHandoff<T>(input: {
       runtime.cancelHumanIntervention(state.interventionId);
     }
     handoffOwners.delete(state.interventionId);
-    clearHandoffCheckpoint();
+    clearHandoffCheckpoint(owner);
     return errorResult(error);
   }
 
   const decision = runtime.resumeAfterHumanIntervention(state.interventionId);
   takeoverBroker.revokeForIntervention(state.interventionId);
   handoffOwners.delete(state.interventionId);
-  clearHandoffCheckpoint();
+  clearHandoffCheckpoint(owner);
   if (decision.resumePolicy !== "replay_safe" || input.resumeStrategy === "require_fresh_semantic_action") {
     return staleAfterInterventionResult(input.toolName);
   }
