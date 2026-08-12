@@ -30,7 +30,7 @@ Extraction boundaryを広げず改善できる範囲でsemantic qualityを上げ
 
 ## MCP Apps / Optional Interactive UI
 
-MCP Appsを使ったGoogle Maps directionsのinline rendering PoCは検証成功済みです。既存のtext/tool workflowをbaselineとして維持しつつ、UIはportabilityとcapability negotiationが固まるまではexperimentalとして扱います。
+MCP Appsを使ったGoogle Maps directionsのinline rendering PoCは検証成功済みです。既存のtext/tool workflowをbaselineとして維持しつつ、UIは残るportability確認が完了するまではexperimentalとして扱います。
 
 ### 標準仕様としての位置づけ
 
@@ -70,6 +70,8 @@ PoCで確認済み:
 - Viewは `text/html;profile=mcp-app` とMCP Apps lifecycleを使用
 - nested Google Maps Embed iframeは、既存Remote MCP接続経由でChatGPT Web内に正常renderされた
 - UI metadataを使わないHost向けにもtext / structured contentを返すfallbackを維持
+- Embed feature設定時だけ、serverは標準の `io.modelcontextprotocol/ui` extension と `text/html;profile=mcp-app` をMCP extension capabilityとしてadvertiseする
+- stdio smokeで、UI extensionを宣言しないclientへのtext / structured fallbackと、UI extensionを宣言するclientの `ui://` resource pathを両方検証済み
 - 既存9個のbrowser / navigation toolは変更していない
 - 実Google Maps Embed API keyはdeployment設定にのみ置き、repositoryには絶対にcommitしない。専用restricted keyとdeployment secret / environment mechanismを使う
 
@@ -89,11 +91,10 @@ PoCで確認済み:
 Production-readyと判断する前に、残りを確認します。
 
 1. 可能なら別のMCP Apps対応host 1種類で検証する
-2. MCP Apps非対応hostでtext-only fallbackがend-to-endで壊れないことを確認する
+2. 可能なら別の実MCP Apps非対応hostでもtext-only fallbackを確認する。protocol-level fallbackはsmoke testで検証済み
 3. ChatGPT Webで成功した以外の対応host layout / container sizingも確認する
-4. すべてのMCP clientがUI対応と仮定せず、HostのUI capability negotiationを明示的に扱う
 
-ChatGPT Webでの実render成功により、当初のfeasibility確認は完了しています。残りはPoC成立条件ではなく、portabilityとhardeningの作業です。
+ChatGPT Webでの実render成功により当初のfeasibility確認は完了しています。MCP extension広告、capabilityを宣言するclientのsmoke、text / structured fallbackは検証済みで、残りはcross-host portabilityとhardeningです。
 
 ## ロードマップでも維持する非ゴール
 
