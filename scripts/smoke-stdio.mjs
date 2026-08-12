@@ -24,9 +24,10 @@ function assertTools(listed, era) {
   }
 }
 
-async function withStdioSession(run) {
+async function withStdioSession(run, extraEnv = {}) {
   const child = spawn(process.execPath, ["dist/index.js"], {
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, ...extraEnv }
   });
   let stderr = "";
   child.stderr.on("data", (chunk) => {
@@ -118,4 +119,48 @@ await withStdioSession(async ({ request }) => {
   assertTools(await request("tools-modern", "tools/list", { _meta: meta }), "modern");
 });
 
-console.log("stdio MCP smoke test passed for legacy and modern protocol eras");
+await withStdioSession(async ({ request, send }) => {
+  const initialized = await request(1, "initialize", {
+    protocolVersion: "2025-11-25",
+    capabilities: {},
+    clientInfo: { name: "maps-browser-mcp-app-smoke", version: "1" }
+  });
+  if (initialized?.result?.serverInfo?.name !== "maps-browser-mcp") {
+    throw new Error(`Unexpected MCP Apps smoke initialize response: ${JSON.stringify(initialized)}`);
+  }
+  send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+
+  const listed = await request(2, "tools/list", {});
+  assertTools(listed, "MCP Apps-enabled");
+  const renderTool = listed?.result?.tools?.find((tool) => tool?.name === "maps_render_directions");
+  if (renderTool?._meta?.ui?.resourceUri !== "ui://maps-browser-mcp/directions.html") {
+    throw new Error(`Missing MCP Apps tool linkage: ${JSON.stringify(renderTool)}`);
+  }
+
+  const resource = await request(3, "resources/read", {
+    uri: "ui://maps-browser-mcp/directions.html"
+  });
+  const content = resource?.result?.contents?.[0];
+  if (content?.mimeType !== "text/html;profile=mcp-app" ||
+      content?._meta?.ui?.csp?.frameDomains?.[0] !== "https://www.google.com" ||
+      !content?.text?.includes("ui/notifications/tool-result")) {
+    throw new Error(`Unexpected MCP Apps resource: ${JSON.stringify(resource)}`);
+  }
+
+  const called = await request(4, "tools/call", {
+    name: "maps_render_directions",
+    arguments: {
+      origin: "Tokyo Station",
+      destination: "Shibuya Station",
+      mode: "transit"
+    }
+  });
+  if (called?.result?.structuredContent?.origin !== "Tokyo Station" ||
+      called?.result?.structuredContent?.destination !== "Shibuya Station" ||
+      called?.result?.structuredContent?.mode !== "transit" ||
+      !called?.result?.content?.[0]?.text?.includes("Tokyo Station")) {
+    throw new Error(`Unexpected MCP Apps tool result: ${JSON.stringify(called)}`);
+  }
+}, { GOOGLE_MAPS_EMBED_API_KEY: "smoke-test-key" });
+
+console.log("stdio MCP smoke test passed for legacy, modern, and MCP Apps-enabled paths");

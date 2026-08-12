@@ -22,7 +22,8 @@ const KEYS = [
   "MAPS_TAKEOVER_TTL_SECONDS",
   "MAPS_HANDOFF_CHECKPOINT_FILE",
   "MAPS_HANDOFF_CHECKPOINT_KEY",
-  "MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS"
+  "MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS",
+  "GOOGLE_MAPS_EMBED_API_KEY"
 ] as const;
 
 const CHECKPOINT_KEY = Buffer.alloc(32, 6).toString("base64url");
@@ -302,5 +303,19 @@ test("durable handoff checkpoint accepts a stable key and bounded TTL", async ()
     MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS: "86401"
   }, () => {
     assert.throws(() => loadConfig(), /between 60 and 86400/);
+  });
+});
+
+test("MCP Apps map embed is disabled unless an API key is configured", async () => {
+  await withEnv({}, () => {
+    assert.equal(loadConfig().mcpApps.googleMapsEmbedApiKey, undefined);
+  });
+
+  await withEnv({ GOOGLE_MAPS_EMBED_API_KEY: "  test-embed-key  " }, () => {
+    assert.equal(loadConfig().mcpApps.googleMapsEmbedApiKey, "test-embed-key");
+  });
+
+  await withEnv({ GOOGLE_MAPS_EMBED_API_KEY: "   " }, () => {
+    assert.equal(loadConfig().mcpApps.googleMapsEmbedApiKey, undefined);
   });
 });

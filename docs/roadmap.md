@@ -28,9 +28,9 @@ Improve semantic quality where it can be done without widening the extraction bo
 
 Potential examples include departure/arrival time and other supported route options. Prefer official URL/API parameters or other documented interfaces over exploratory DOM automation.
 
-## Future: MCP Apps / optional interactive UI
+## MCP Apps / optional interactive UI
 
-A future experiment may add an optional interactive UI to the existing MCP server so compatible chat hosts can render a map-oriented view inline while the existing text/tool workflow remains available everywhere.
+An MCP Apps proof of concept is now validated for inline Google Maps directions rendering while the existing text/tool workflow remains available as the baseline. The UI remains experimental until portability and capability-negotiation work is complete.
 
 ### Standards position
 
@@ -49,23 +49,31 @@ Host support is not universal. UI must therefore remain a **progressive enhancem
 
 OpenAI's earlier Apps SDK / optional-UI approach helped inform the standardized MCP Apps design, but the roadmap should avoid unnecessary OpenAI-specific coupling so the same server can work with other compliant MCP hosts.
 
-### Proposed Google Maps Embed proof of concept
+### Validated Google Maps Embed proof of concept
 
-A small PoC can test whether an MCP Apps View can present an official Google Maps Embed surface alongside the current bounded tool results.
+The initial PoC successfully rendered an official Google Maps Embed directions surface inside ChatGPT using the existing Remote MCP URL connection. No separate UI endpoint or special connection mechanism was required: the host discovered the `ui://` resource through the same MCP server.
 
-Suggested flow:
+Validated flow:
 
 ```text
 user request
-  -> maps_directions / maps_search
-  -> existing bounded tool result
-  -> UI-enabled render tool or UI-linked tool
+  -> existing data/navigation tools as needed
+  -> maps_render_directions
   -> host reads ui:// resource
   -> sandboxed MCP Apps View
   -> official Google Maps Embed surface
 ```
 
-Design requirements:
+Validated PoC status:
+
+- `maps_render_directions` is a display-only render tool linked to `ui://maps-browser-mcp/directions.html`.
+- The View uses `text/html;profile=mcp-app` and the MCP Apps lifecycle.
+- The nested Google Maps Embed iframe renders successfully in ChatGPT Web through the existing Remote MCP connection.
+- The tool continues to return text and structured content so hosts that ignore the UI metadata still receive a useful result.
+- The existing nine browser/navigation tools remain unchanged.
+- The real Google Maps Embed API key is deployment configuration only and must never be committed to the repository. Use a dedicated restricted key and a deployment secret/environment mechanism.
+
+Design requirements that remain in force:
 
 - Keep the existing MCP endpoint and tool behavior as the baseline.
 - Keep map rendering separate from browser-based visible-state reading.
@@ -76,16 +84,16 @@ Design requirements:
 - Do not treat UI support as permission to widen scraping, crawling, persistence, or review collection.
 - Verify Google Maps Embed terms, CSP requirements, and host compatibility again at implementation time.
 
-### Portability validation
+### Remaining portability validation
 
-Before treating the UI as production-ready, test at least:
+Before treating the UI as production-ready, complete the remaining checks:
 
-1. ChatGPT developer/private-plugin connection using the existing remote MCP URL.
-2. One additional MCP Apps-capable host where practical.
-3. A host without MCP Apps support to confirm graceful text-only fallback.
-4. Mobile and desktop layouts, because the host controls the iframe/container dimensions.
+1. Validate one additional MCP Apps-capable host where practical.
+2. Validate a host without MCP Apps support to confirm graceful text-only fallback end to end.
+3. Validate supported host layouts and container sizing beyond the successful ChatGPT Web PoC.
+4. Make host UI capability negotiation explicit rather than assuming every MCP client can render the View.
 
-The server should detect/observe negotiated UI capability rather than assuming every MCP client can render the View.
+The successful ChatGPT Web render closes the original feasibility question; these remaining checks are portability and hardening work rather than blockers for the PoC itself.
 
 ## Explicit non-goals for the roadmap
 
