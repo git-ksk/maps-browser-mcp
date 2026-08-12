@@ -173,13 +173,8 @@ async function humanInputRequired(
   candidateOwner: HandoffOwner,
   args: unknown
 ): Promise<InputRequiredResult | CallToolResult> {
-  const owner = claimHandoffOwner(
-    handoffOwners,
-    intervention.id,
-    intervention.status,
-    candidateOwner
-  );
-  if (!owner) {
+  const owner = handoffOwners.get(intervention.id);
+  if (!owner || !handoffOwnerMatches(owner, candidateOwner)) {
     return errorResult(new BrowserRuntimeError(
       "HUMAN_INTERVENTION_REQUIRED",
       "The active human intervention belongs to another authenticated principal or no longer has a valid owner. Complete the original flow before starting another Maps action."
@@ -241,9 +236,33 @@ async function executeToolTask<T>(
   resumeStrategy: HandoffResumeStrategy,
   task: () => Promise<T>
 ): Promise<CallToolResult | InputRequiredResult> {
+  const owner = ownerFor(toolName, args, resumeStrategy);
   try {
     policy.consumeAction();
-    const result = await operationQueue.run(task);
+    const result = await operationQueue.run(async () => {
+      const interventionBefore = runtime.getActiveIntervention()?.id;
+      try {
+        return await task();
+      } finally {
+        const interventionAfter = runtime.getActiveIntervention();
+        if (interventionAfter && interventionAfter.id !== interventionBefore) {
+          const boundOwner = claimHandoffOwner(
+            handoffOwners,
+            interventionAfter.id,
+            interventionAfter.status,
+            owner
+          );
+          if (!boundOwner) {
+            takeoverBroker.revokeForIntervention(interventionAfter.id);
+            runtime.cancelHumanIntervention(interventionAfter.id);
+            throw new BrowserRuntimeError(
+              "UI_STATE_CHANGED",
+              "A newly-created human intervention could not be bound to the originating authenticated principal. The intervention was cancelled."
+            );
+          }
+        }
+      }
+    });
     return jsonResult(result);
   } catch (error) {
     if (
@@ -251,7 +270,7 @@ async function executeToolTask<T>(
       error.code === "HUMAN_INTERVENTION_REQUIRED" &&
       error.intervention
     ) {
-      return humanInputRequired(error.intervention, ownerFor(toolName, args, resumeStrategy), args);
+      return humanInputRequired(error.intervention, owner, args);
     }
     return errorResult(error);
   }
