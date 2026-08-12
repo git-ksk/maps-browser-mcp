@@ -12,6 +12,8 @@ const EXPECTED_TOOLS = [
   "maps_read_place_summary",
   "maps_read_route_summary"
 ];
+const MCP_APPS_EXTENSION_ID = "io.modelcontextprotocol/ui";
+const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
 function assertTools(listed, era) {
   const tools = listed?.result?.tools;
@@ -21,6 +23,23 @@ function assertTools(listed, era) {
   const names = new Set(tools.map((tool) => tool?.name).filter(Boolean));
   for (const name of EXPECTED_TOOLS) {
     if (!names.has(name)) throw new Error(`Missing ${era} stdio MCP tool: ${name}`);
+  }
+}
+
+function assertMcpAppsServerCapability(initialized, expected) {
+  const ui = initialized?.result?.capabilities?.extensions?.[MCP_APPS_EXTENSION_ID];
+  const supported = Array.isArray(ui?.mimeTypes) && ui.mimeTypes.includes(MCP_APP_MIME_TYPE);
+  if (supported !== expected) {
+    throw new Error(`Unexpected MCP Apps server capability: ${JSON.stringify(initialized)}`);
+  }
+}
+
+function assertRenderFallback(called) {
+  if (called?.result?.structuredContent?.origin !== "Tokyo Station" ||
+      called?.result?.structuredContent?.destination !== "Shibuya Station" ||
+      called?.result?.structuredContent?.mode !== "transit" ||
+      !called?.result?.content?.[0]?.text?.includes("Tokyo Station")) {
+    throw new Error(`Unexpected MCP Apps fallback result: ${JSON.stringify(called)}`);
   }
 }
 
@@ -98,9 +117,14 @@ await withStdioSession(async ({ request, send }) => {
   if (initialized?.result?.serverInfo?.name !== "maps-browser-mcp") {
     throw new Error(`Unexpected legacy stdio initialize response: ${JSON.stringify(initialized)}`);
   }
+  assertMcpAppsServerCapability(initialized, false);
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
-  assertTools(await request(2, "tools/list", {}), "legacy");
-});
+  const listed = await request(2, "tools/list", {});
+  assertTools(listed, "legacy");
+  if (listed?.result?.tools?.some((tool) => tool?.name === "maps_render_directions")) {
+    throw new Error(`MCP Apps tool exposed without API key: ${JSON.stringify(listed)}`);
+  }
+}, { GOOGLE_MAPS_EMBED_API_KEY: "" });
 
 await withStdioSession(async ({ request }) => {
   const meta = {
@@ -117,17 +141,51 @@ await withStdioSession(async ({ request }) => {
     throw new Error(`Unexpected modern stdio server/discover response: ${JSON.stringify(discovered)}`);
   }
   assertTools(await request("tools-modern", "tools/list", { _meta: meta }), "modern");
-});
+}, { GOOGLE_MAPS_EMBED_API_KEY: "" });
 
 await withStdioSession(async ({ request, send }) => {
   const initialized = await request(1, "initialize", {
     protocolVersion: "2025-11-25",
     capabilities: {},
+    clientInfo: { name: "maps-browser-mcp-text-fallback-smoke", version: "1" }
+  });
+  assertMcpAppsServerCapability(initialized, true);
+  send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+
+  const listed = await request(2, "tools/list", {});
+  assertTools(listed, "MCP Apps text fallback");
+  const renderTool = listed?.result?.tools?.find((tool) => tool?.name === "maps_render_directions");
+  if (!renderTool) {
+    throw new Error(`Missing display-only fallback tool: ${JSON.stringify(listed)}`);
+  }
+
+  const called = await request(3, "tools/call", {
+    name: "maps_render_directions",
+    arguments: {
+      origin: "Tokyo Station",
+      destination: "Shibuya Station",
+      mode: "transit"
+    }
+  });
+  assertRenderFallback(called);
+}, { GOOGLE_MAPS_EMBED_API_KEY: "smoke-test-key" });
+
+await withStdioSession(async ({ request, send }) => {
+  const initialized = await request(1, "initialize", {
+    protocolVersion: "2025-11-25",
+    capabilities: {
+      extensions: {
+        [MCP_APPS_EXTENSION_ID]: {
+          mimeTypes: [MCP_APP_MIME_TYPE]
+        }
+      }
+    },
     clientInfo: { name: "maps-browser-mcp-app-smoke", version: "1" }
   });
   if (initialized?.result?.serverInfo?.name !== "maps-browser-mcp") {
     throw new Error(`Unexpected MCP Apps smoke initialize response: ${JSON.stringify(initialized)}`);
   }
+  assertMcpAppsServerCapability(initialized, true);
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
   const listed = await request(2, "tools/list", {});
@@ -141,7 +199,7 @@ await withStdioSession(async ({ request, send }) => {
     uri: "ui://maps-browser-mcp/directions.html"
   });
   const content = resource?.result?.contents?.[0];
-  if (content?.mimeType !== "text/html;profile=mcp-app" ||
+  if (content?.mimeType !== MCP_APP_MIME_TYPE ||
       content?._meta?.ui?.csp?.frameDomains?.[0] !== "https://www.google.com" ||
       !content?.text?.includes("ui/notifications/tool-result")) {
     throw new Error(`Unexpected MCP Apps resource: ${JSON.stringify(resource)}`);
@@ -155,12 +213,7 @@ await withStdioSession(async ({ request, send }) => {
       mode: "transit"
     }
   });
-  if (called?.result?.structuredContent?.origin !== "Tokyo Station" ||
-      called?.result?.structuredContent?.destination !== "Shibuya Station" ||
-      called?.result?.structuredContent?.mode !== "transit" ||
-      !called?.result?.content?.[0]?.text?.includes("Tokyo Station")) {
-    throw new Error(`Unexpected MCP Apps tool result: ${JSON.stringify(called)}`);
-  }
+  assertRenderFallback(called);
 }, { GOOGLE_MAPS_EMBED_API_KEY: "smoke-test-key" });
 
-console.log("stdio MCP smoke test passed for legacy, modern, and MCP Apps-enabled paths");
+console.log("stdio MCP smoke test passed for legacy, modern, MCP Apps text fallback, and negotiated UI paths");
