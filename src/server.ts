@@ -411,27 +411,36 @@ export function buildServer(): McpServer {
         avoid: z.array(z.enum(ROUTE_AVOID_OPTIONS)).max(3).optional()
       })
     },
-    async ({ origin, destination, mode, waypoints, avoid }, ctx) => runToolWithHandoff({
-      toolName: "maps_directions",
-      args: { origin, destination, mode, waypoints, avoid },
-      resumeStrategy: "retry_original",
-      ctx,
-      task: async () => {
-        const compiled = compiler.directions({ origin, destination, mode, waypoints, avoid });
-        const result = await runtime.navigate(compiled.url, compiled.action);
-        return {
-          opened: true,
-          url: result.url,
-          mode,
-          ...(compiled.action.kind === "directions" && compiled.action.waypoints
-            ? { waypoints: compiled.action.waypoints }
-            : {}),
-          ...(compiled.action.kind === "directions" && compiled.action.avoid
-            ? { avoid: compiled.action.avoid }
-            : {})
-        };
-      }
-    })
+    async ({ origin, destination, mode, waypoints, avoid }, ctx) => {
+      const args = {
+        origin,
+        destination,
+        mode,
+        ...(waypoints && waypoints.length > 0 ? { waypoints } : {}),
+        ...(avoid && avoid.length > 0 ? { avoid } : {})
+      };
+      return runToolWithHandoff({
+        toolName: "maps_directions",
+        args,
+        resumeStrategy: "retry_original",
+        ctx,
+        task: async () => {
+          const compiled = compiler.directions({ origin, destination, mode, waypoints, avoid });
+          const result = await runtime.navigate(compiled.url, compiled.action);
+          return {
+            opened: true,
+            url: result.url,
+            mode,
+            ...(compiled.action.kind === "directions" && compiled.action.waypoints
+              ? { waypoints: compiled.action.waypoints }
+              : {}),
+            ...(compiled.action.kind === "directions" && compiled.action.avoid
+              ? { avoid: compiled.action.avoid }
+              : {})
+          };
+        }
+      });
+    }
   );
 
   server.registerTool(
