@@ -1,5 +1,10 @@
-import type { VisibleIndexedItem, VisibleStateSummary } from "../types.js";
+import type {
+  VisibleIndexedItem,
+  VisibleSemanticAnnotation,
+  VisibleStateSummary
+} from "../types.js";
 import { BrowserRuntimeError, MapsBrowserRuntime } from "./runtime.js";
+import { classifyVisibleSemanticSignals } from "./semantic-signals.js";
 
 const ROUTE_HINT = /(\d+\s*(?:min|mins|hr|hrs|h|分|時間)|depart|arrive|via|乗換|発|着|徒歩|電車|train|bus|transit|経由)/i;
 const PLACE_HINT = /(★|rating|open|closed|営業時間|営業中|閉店|住所|address|電話|phone|\b\d+(?:\.\d+)?\s*(?:m|km)\b)/i;
@@ -17,6 +22,23 @@ function compactText(value: string): string {
 
 function boundedLabel(value: string, limit = 240): string {
   return compactText(value).slice(0, limit);
+}
+
+function semanticAnnotations(
+  kind: "place" | "route",
+  items: VisibleIndexedItem[],
+  lines: string[]
+): VisibleSemanticAnnotation[] {
+  const annotations: VisibleSemanticAnnotation[] = [];
+  for (const item of items) {
+    const signals = classifyVisibleSemanticSignals(kind, item.label);
+    if (signals.length > 0) annotations.push({ source: "item", index: item.index, signals });
+  }
+  for (let index = 0; index < lines.length; index += 1) {
+    const signals = classifyVisibleSemanticSignals(kind, lines[index] ?? "");
+    if (signals.length > 0) annotations.push({ source: "line", index, signals });
+  }
+  return annotations;
 }
 
 export class VisibleStateReader {
@@ -136,6 +158,7 @@ export class VisibleStateReader {
       view,
       items,
       lines,
+      semanticAnnotations: semanticAnnotations(kind, items, lines),
       truncated,
       source: "google_maps_bounded_visible_ui",
       untrustedExternalText: true,

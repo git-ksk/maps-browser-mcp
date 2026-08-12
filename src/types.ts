@@ -29,6 +29,27 @@ export type MapsViewState =
   | "show"
   | "streetview";
 
+export const VISIBLE_SEMANTIC_SIGNAL_KINDS = [
+  "duration",
+  "distance",
+  "departure",
+  "arrival",
+  "via",
+  "transit",
+  "rating",
+  "open_status",
+  "address",
+  "phone"
+] as const;
+
+export type VisibleSemanticSignalKind = (typeof VISIBLE_SEMANTIC_SIGNAL_KINDS)[number];
+
+export interface VisibleSemanticAnnotation {
+  source: "item" | "line";
+  index: number;
+  signals: VisibleSemanticSignalKind[];
+}
+
 export interface VisibleIndexedItem {
   index: number;
   label: string;
@@ -39,6 +60,7 @@ export interface VisibleStateSummary {
   view: MapsViewState;
   items: VisibleIndexedItem[];
   lines: string[];
+  semanticAnnotations?: VisibleSemanticAnnotation[];
   truncated: boolean;
   source: "google_maps_bounded_visible_ui";
   untrustedExternalText: true;
