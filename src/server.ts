@@ -49,7 +49,7 @@ import { SemanticController } from "./browser/semantic-controller.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import { TakeoverBroker } from "./takeover-broker.js";
-import { TRAVEL_MODES } from "./types.js";
+import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.1.1";
 const config = loadConfig();
@@ -402,24 +402,45 @@ export function buildServer(): McpServer {
   server.registerTool(
     "maps_directions",
     {
-      description: "Open Google Maps directions. Origin may be omitted so Google Maps can use the browser/device location when available.",
+      description: "Open Google Maps directions using documented Maps URL parameters. Origin may be omitted so Google Maps can use the browser/device location when available. Optional waypoints and avoid constraints remain bounded.",
       inputSchema: z.object({
         origin: locationText.optional(),
         destination: locationText,
-        mode: z.enum(TRAVEL_MODES).default("transit")
+        mode: z.enum(TRAVEL_MODES).default("transit"),
+        waypoints: z.array(locationText).max(3).optional(),
+        avoid: z.array(z.enum(ROUTE_AVOID_OPTIONS)).max(3).optional()
       })
     },
-    async ({ origin, destination, mode }, ctx) => runToolWithHandoff({
-      toolName: "maps_directions",
-      args: { origin, destination, mode },
-      resumeStrategy: "retry_original",
-      ctx,
-      task: async () => {
-        const compiled = compiler.directions({ origin, destination, mode });
-        const result = await runtime.navigate(compiled.url, compiled.action);
-        return { opened: true, url: result.url, mode };
-      }
-    })
+    async ({ origin, destination, mode, waypoints, avoid }, ctx) => {
+      const args = {
+        origin,
+        destination,
+        mode,
+        ...(waypoints && waypoints.length > 0 ? { waypoints } : {}),
+        ...(avoid && avoid.length > 0 ? { avoid } : {})
+      };
+      return runToolWithHandoff({
+        toolName: "maps_directions",
+        args,
+        resumeStrategy: "retry_original",
+        ctx,
+        task: async () => {
+          const compiled = compiler.directions({ origin, destination, mode, waypoints, avoid });
+          const result = await runtime.navigate(compiled.url, compiled.action);
+          return {
+            opened: true,
+            url: result.url,
+            mode,
+            ...(compiled.action.kind === "directions" && compiled.action.waypoints
+              ? { waypoints: compiled.action.waypoints }
+              : {}),
+            ...(compiled.action.kind === "directions" && compiled.action.avoid
+              ? { avoid: compiled.action.avoid }
+              : {})
+          };
+        }
+      });
+    }
   );
 
   server.registerTool(
@@ -509,7 +530,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     "maps_set_travel_mode",
     {
-      description: "Change the travel mode of the active directions request by rebuilding the official Maps URL instead of exploring the DOM.",
+      description: "Change the travel mode of the active directions request by rebuilding the official Maps URL instead of exploring the DOM. Existing waypoints and avoid constraints are preserved.",
       inputSchema: z.object({ mode: z.enum(TRAVEL_MODES) })
     },
     async ({ mode }, ctx) => runToolWithHandoff({

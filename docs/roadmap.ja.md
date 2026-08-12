@@ -17,16 +17,24 @@
 
 ### 1. Route / Place readingをboundedのまま実用化
 
-Extraction boundaryを広げず改善できる範囲でsemantic qualityを上げます。候補:
+bounded summary pathでは、すでにaccepted visible textに含まれているsignalだけを対象に、routeのduration / departure / arrivalやplaceのrating / open statusなどの保守的なsemantic annotationを追加しました。DOM / AX readは増やしていません。今後も同じextraction boundaryを維持できる範囲だけsemantic qualityを改善します。
 
-- active UIですでに見えているroute情報の構造化を明確にする
-- active UIですでに見えているplace情報の構造化を明確にする
-- 現在のread budget / response size上限を維持する
+現在のinvariant:
+
+- 既存のread budget、candidate上限、AX depth、node上限、line上限、response size上限を維持する
+- raw bounded label / textをsource of truthとして残し、untrusted external dataとして扱う
+- 明示的なvisible cueがない曖昧な数字や時刻に意味を推測で付けない
 - Maps UIが想定外に変化した場合は引き続きfail closedにする
 
 ### 2. 安全に表現できる経路条件を追加
 
-出発・到着時刻など、ユーザーが明示したroute optionを候補とします。探索的なDOM操作より、Google公式URL/API parameterやdocumented interfaceを優先します。
+探索的なDOM操作や推測したWeb parameterではなく、Google Maps URLとしてdocumentedなparameterだけをstructured pathへ追加します。boundedなroute option surfaceは次です。
+
+- 順序付き `waypoints`（最大3件）
+- `avoid` は `ferries` / `highways` / `tolls` のみ
+- active travel mode変更時もこれらの条件を維持する
+
+出発・到着時刻によるroutingは、documented Google Maps URLs directions surfaceに該当parameterがないため、このbrowser controllerでは**提供しません**。将来、project boundaryに合うsupported / documented interfaceがある場合だけ再検討します。
 
 ## MCP Apps / Optional Interactive UI
 
