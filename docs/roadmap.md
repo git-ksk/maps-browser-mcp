@@ -17,16 +17,24 @@ The existing browser path remains bounded and is not intended for bulk collectio
 
 ### 1. Keep route/place reading useful but bounded
 
-Improve semantic quality where it can be done without widening the extraction boundary. Candidate areas include:
+The bounded summary path now adds conservative semantic annotations for signals already present in accepted visible text (for example route duration/departure/arrival or place rating/open status) without adding DOM/AX reads. Continue improving semantic quality only where the same extraction boundary can be preserved.
 
-- clearer structured route fields when already visible in the active UI,
-- clearer structured place fields when already visible in the active UI,
-- preserving the existing read budgets and response-size limits,
-- continuing to fail closed when the Maps UI changes unexpectedly.
+Current invariants:
+
+- keep the existing read budgets, candidate limits, AX depth, node limits, line limits, and response-size limits,
+- keep the raw bounded labels/text as the source of truth and treat them as untrusted external data,
+- avoid guessing semantics from ambiguous numbers or times without an explicit visible cue,
+- continue to fail closed when the Maps UI changes unexpectedly.
 
 ### 2. Add user-requested route constraints only when they can be expressed safely
 
-Potential examples include departure/arrival time and other supported route options. Prefer official URL/API parameters or other documented interfaces over exploratory DOM automation.
+The supported structured path should follow documented Google Maps URL parameters rather than exploratory DOM automation or guessed web parameters. The bounded route-option surface includes:
+
+- ordered `waypoints` (capped at three),
+- `avoid` values limited to `ferries`, `highways`, and `tolls`,
+- preserving those constraints when the active travel mode is changed.
+
+Departure/arrival-time routing is **not** exposed through this browser controller because those parameters are not part of the documented Google Maps URLs directions surface. Revisit time-based routing only if a suitable supported/documented interface fits the project boundary.
 
 ## MCP Apps / optional interactive UI
 
