@@ -2,6 +2,10 @@ export const TRAVEL_MODES = ["driving", "walking", "bicycling", "transit"] as co
 
 export type TravelMode = (typeof TRAVEL_MODES)[number];
 
+export const ROUTE_AVOID_OPTIONS = ["ferries", "highways", "tolls"] as const;
+
+export type RouteAvoid = (typeof ROUTE_AVOID_OPTIONS)[number];
+
 export type MapsAction =
   | { kind: "search"; query: string }
   | {
@@ -9,6 +13,8 @@ export type MapsAction =
       origin?: string;
       destination: string;
       mode: TravelMode;
+      waypoints?: string[];
+      avoid?: RouteAvoid[];
     }
   | { kind: "show"; latitude: number; longitude: number; zoom?: number }
   | {
