@@ -11,6 +11,7 @@ Documentation index for `maps-browser-mcp`.
 - [Troubleshooting](troubleshooting.md) — error codes and safe recovery procedures
 - [ChatGPT connection notes](chatgpt.md) — ChatGPT App / Remote MCP boundary, authentication and tool refresh
 - [Usage modes and examples](use-cases.md) — when to use navigation-only vs. bounded interactive assist, with local and remote examples
+- [Roadmap](roadmap.md) — future directions including portable MCP Apps / optional UI and a Google Maps Embed proof of concept
 
 ## Design and safety
 
