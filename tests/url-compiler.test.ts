@@ -21,12 +21,65 @@ test("builds transit directions and allows an omitted origin", () => {
   assert.equal(parsed.searchParams.get("origin"), null);
   assert.equal(parsed.searchParams.get("destination"), "渋谷駅");
   assert.equal(parsed.searchParams.get("travelmode"), "transit");
+  assert.equal(parsed.searchParams.get("waypoints"), null);
+  assert.equal(parsed.searchParams.get("avoid"), null);
   assert.deepEqual(action, {
     kind: "directions",
     origin: undefined,
     destination: "渋谷駅",
     mode: "transit"
   });
+});
+
+test("builds documented bounded waypoints and route avoidance", () => {
+  const { url, action } = compiler.directions({
+    origin: " 東京駅 ",
+    destination: "箱根湯本駅",
+    mode: "driving",
+    waypoints: [" 横浜駅 ", "小田原駅"],
+    avoid: ["tolls", "highways", "tolls"]
+  });
+  const parsed = new URL(url);
+  assert.equal(parsed.searchParams.get("origin"), "東京駅");
+  assert.equal(parsed.searchParams.get("destination"), "箱根湯本駅");
+  assert.equal(parsed.searchParams.get("travelmode"), "driving");
+  assert.equal(parsed.searchParams.get("waypoints"), "横浜駅|小田原駅");
+  assert.equal(parsed.searchParams.get("avoid"), "tolls,highways");
+  assert.deepEqual(action, {
+    kind: "directions",
+    origin: "東京駅",
+    destination: "箱根湯本駅",
+    mode: "driving",
+    waypoints: ["横浜駅", "小田原駅"],
+    avoid: ["tolls", "highways"]
+  });
+});
+
+test("rejects route options outside the bounded documented surface", () => {
+  assert.throws(
+    () => compiler.directions({
+      destination: "渋谷駅",
+      mode: "driving",
+      waypoints: ["A", "B", "C", "D"]
+    }),
+    /at most 3/
+  );
+  assert.throws(
+    () => compiler.directions({
+      destination: "渋谷駅",
+      mode: "driving",
+      waypoints: ["   "]
+    }),
+    /must not be empty/
+  );
+  assert.throws(
+    () => compiler.directions({
+      destination: "渋谷駅",
+      mode: "driving",
+      avoid: ["private-roads" as never]
+    }),
+    /Unsupported route avoidance option/
+  );
 });
 
 test("rejects invalid map coordinates and fractional zoom", () => {
