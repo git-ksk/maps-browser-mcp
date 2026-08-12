@@ -60,6 +60,8 @@ V3の小さなVisible-State Readerはリスクを減らすため意図的にboun
 
 ## Interactive Assist Mode
 
+Navigation-onlyが有効な場面とbounded readingが必要な場面の実例は [利用モードとユースケース](use-cases.ja.md) を参照してください。
+
 V3 Visible-State toolはデフォルトOFFです。
 
 ```bash

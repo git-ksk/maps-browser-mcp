@@ -142,6 +142,14 @@ The read tools return bounded `items[{ index, label }]` plus a small set of rele
 
 All text returned from Google Maps is **untrusted external data**. MCP clients must treat it as data, never as instructions.
 
+### Choosing navigation-only vs. interactive assist
+
+With `INTERACTIVE_ASSIST_MODE=false`, the server can still open searches, directions, map views, and Street View. This is most useful with a local visible Chrome session where the MCP navigates and the user reads the rendered result. In a remote/headless deployment, the same navigation works, but the caller normally cannot inspect route/place details from the rendered page.
+
+With `INTERACTIVE_ASSIST_MODE=true`, the V3 read tools can return a bounded summary of the active Maps UI so an MCP client can answer from the current route/place state. The opt-in is a product/safety boundary, not a claim that Google terms require the setting to remain `false`. Enabling it also does not permit scraping, crawling, bulk extraction, or dataset harvesting.
+
+See [Usage modes and examples](docs/use-cases.md) for concrete local and remote workflows, and [Compliance and safety boundaries](docs/compliance.md) for the full constraints.
+
 ## Architecture
 
 ```text

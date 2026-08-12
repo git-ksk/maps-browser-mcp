@@ -142,6 +142,14 @@ Readerが返すのはboundedな `items[{ index, label }]` と必要最小限のU
 
 Google Mapsから返る文字列はすべて**信頼されていない外部データ**として扱います。MCPクライアントでも命令ではなくデータとして扱ってください。
 
+### Navigation-onlyとInteractive Assistの使い分け
+
+`INTERACTIVE_ASSIST_MODE=false` でも検索、経路、地図表示、Street Viewを開く操作はできます。専用Chrome画面が見えるLocal環境では、MCPが遷移し、表示結果をユーザー自身が読む使い方に向きます。Remote / headless環境でもNavigationは動きますが、callerは通常render済み画面のroute / place詳細を確認できません。
+
+`INTERACTIVE_ASSIST_MODE=true` にすると、V3 read toolがactive Maps UIのbounded summaryを返せるため、MCP clientが現在のroute / place状態から回答できます。このOpt-inはproduct / safety boundaryであり、「Googleの利用規約上 `false` が必須」という意味ではありません。また、有効化してもscraping、crawling、bulk extraction、dataset harvestingが許容use caseになるわけではありません。
+
+具体的なLocal / Remoteのflowは [利用モードとユースケース](docs/use-cases.ja.md)、設計上の制約は [Compliance / Safety](docs/compliance.ja.md) を参照してください。
+
 ## アーキテクチャ
 
 ```text

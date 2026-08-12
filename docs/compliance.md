@@ -58,6 +58,8 @@ These are process-level safety controls, not a claim that keyword matching or ra
 
 ## Interactive assist mode
 
+For practical guidance on when navigation-only mode is useful and when bounded reading is needed, see [Usage modes and examples](use-cases.md).
+
 The V3 visible-state tools are disabled by default. They are enabled with:
 
 ```bash

@@ -10,6 +10,7 @@ Documentation index for `maps-browser-mcp`.
 - [Container / headless Linux](container.md) — standard Linux containers, headless Chromium, ports, profiles, readiness and sandbox boundaries
 - [Troubleshooting](troubleshooting.md) — error codes and safe recovery procedures
 - [ChatGPT connection notes](chatgpt.md) — ChatGPT App / Remote MCP boundary, authentication and tool refresh
+- [Usage modes and examples](use-cases.md) — when to use navigation-only vs. bounded interactive assist, with local and remote examples
 
 ## Design and safety
 
