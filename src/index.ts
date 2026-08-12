@@ -17,12 +17,15 @@ import {
   probeBrowserReady,
   shutdownRuntime
 } from "./server.js";
+import { MCP_APP_MIME_TYPE } from "./mcp-apps-map-embed.js";
 import {
   hostAllowed,
   originAllowed,
   parseContentLength
 } from "./http-security.js";
 import { runWithRequestPrincipal } from "./request-principal.js";
+
+const MCP_APPS_EXTENSION_ID = "io.modelcontextprotocol/ui";
 
 class HttpRequestError extends Error {
   constructor(
@@ -171,8 +174,22 @@ function makeAbortController(req: IncomingMessage, res: ServerResponse): AbortCo
   return abortController;
 }
 
+function buildTransportServer() {
+  const server = buildServer();
+  if (config.mcpApps.googleMapsEmbedApiKey) {
+    server.server.registerCapabilities({
+      extensions: {
+        [MCP_APPS_EXTENSION_ID]: {
+          mimeTypes: [MCP_APP_MIME_TYPE]
+        }
+      }
+    });
+  }
+  return server;
+}
+
 async function startHttp(): Promise<void> {
-  const mcpHandler = createMcpHandler(buildServer);
+  const mcpHandler = createMcpHandler(buildTransportServer);
   const authProvider = await createHttpAuthProvider(config);
   const httpServer = createServer((req, res) => {
     if (!hostAllowed(req.headers.host, config.http.allowedHosts)) {
@@ -318,7 +335,7 @@ async function startStdio(): Promise<void> {
   process.once("SIGINT", () => void shutdownRuntime().finally(() => process.exit(0)));
   process.once("SIGTERM", () => void shutdownRuntime().finally(() => process.exit(0)));
   console.error("[maps-browser-mcp] serving over stdio");
-  await serveStdio(buildServer);
+  await serveStdio(buildTransportServer);
 }
 
 if (process.argv.includes("--http")) {
