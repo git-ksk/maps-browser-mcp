@@ -34,7 +34,9 @@ export class SemanticController {
     const compiled = this.compiler.directions({
       origin: last.origin,
       destination: last.destination,
-      mode
+      mode,
+      waypoints: last.waypoints,
+      avoid: last.avoid
     });
     const result = await this.runtime.navigate(compiled.url, compiled.action);
     return { url: result.url, mode };
