@@ -11,6 +11,11 @@ import {
 } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { loadConfig } from "./config.js";
+import {
+  buildDirectionsAppHtml,
+  MAP_DIRECTIONS_APP_RESOURCE_URI,
+  MCP_APP_MIME_TYPE
+} from "./mcp-apps-map-embed.js";
 import { ExecutionHandoffError } from "./execution-handoff.js";
 import { ExecutionHandoffRuntimeV3 } from "./execution-handoff-v3.js";
 import {
@@ -537,6 +542,67 @@ export function buildServer(): McpServer {
       }
     })
   );
+
+  if (config.mcpApps.googleMapsEmbedApiKey) {
+    const embedApiKey = config.mcpApps.googleMapsEmbedApiKey;
+
+    server.registerResource(
+      "maps_directions_app",
+      MAP_DIRECTIONS_APP_RESOURCE_URI,
+      {
+        title: "Google Maps directions",
+        description: "Inline Google Maps directions view for MCP Apps-capable hosts.",
+        mimeType: MCP_APP_MIME_TYPE
+      },
+      async (uri) => ({
+        contents: [{
+          uri: uri.href,
+          mimeType: MCP_APP_MIME_TYPE,
+          text: buildDirectionsAppHtml(embedApiKey),
+          _meta: {
+            ui: {
+              csp: {
+                frameDomains: ["https://www.google.com"]
+              },
+              prefersBorder: true
+            }
+          }
+        }]
+      })
+    );
+
+    server.registerTool(
+      "maps_render_directions",
+      {
+        title: "Render Google Maps directions",
+        description: "Render explicit origin/destination directions in an inline MCP Apps view. Display-only: this does not navigate or mutate the dedicated browser session. Text output remains useful on hosts without MCP Apps support.",
+        inputSchema: z.object({
+          origin: locationText,
+          destination: locationText,
+          mode: z.enum(TRAVEL_MODES).default("driving")
+        }),
+        annotations: {
+          readOnlyHint: true,
+          idempotentHint: true
+        },
+        _meta: {
+          ui: {
+            resourceUri: MAP_DIRECTIONS_APP_RESOURCE_URI
+          }
+        }
+      },
+      async ({ origin, destination, mode }) => {
+        const route = { origin, destination, mode };
+        return {
+          content: [{
+            type: "text" as const,
+            text: `Inline map prepared for ${origin} → ${destination} (${mode}).`
+          }],
+          structuredContent: route
+        };
+      }
+    );
+  }
 
   return server;
 }

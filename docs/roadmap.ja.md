@@ -28,9 +28,9 @@ Extraction boundaryを広げず改善できる範囲でsemantic qualityを上げ
 
 出発・到着時刻など、ユーザーが明示したroute optionを候補とします。探索的なDOM操作より、Google公式URL/API parameterやdocumented interfaceを優先します。
 
-## 将来展望: MCP Apps / Optional Interactive UI
+## MCP Apps / Optional Interactive UI
 
-将来的なexperimentとして、既存MCP serverへOptional UIを追加し、対応chat hostでは会話内にmap-oriented viewを表示しつつ、非対応hostでは今のtext/tool workflowをそのまま利用できる構成を検討します。
+MCP Appsを使ったGoogle Maps directionsのinline rendering PoCは検証成功済みです。既存のtext/tool workflowをbaselineとして維持しつつ、UIは残るportability確認が完了するまではexperimentalとして扱います。
 
 ### 標準仕様としての位置づけ
 
@@ -49,23 +49,33 @@ Host側の対応は一律ではありません。そのためUIは**progressive 
 
 OpenAIのApps SDK / Optional UIの先行実装はMCP Apps標準化にも影響を与えていますが、ロードマップでは不要なOpenAI固有依存を避け、同じserverを他のMCP Apps対応hostでも利用できる設計を優先します。
 
-### Google Maps Embed PoC案
+### Google Maps Embed PoC 検証結果
 
-MCP Apps View内で公式Google Maps Embed surfaceを表示し、現在のbounded tool resultと組み合わせられるかを小さなPoCで検証します。
+既存のRemote MCP URL接続のまま、ChatGPT内で公式Google Maps Embed directions surfaceを正常にrenderできることを確認しました。UI専用endpointや特殊な接続方式は不要で、同じMCP serverからHostが `ui://` resourceを取得する構成で動作します。
 
-想定flow:
+検証済みflow:
 
 ```text
 user request
-  -> maps_directions / maps_search
-  -> 既存のbounded tool result
-  -> UI-enabled render tool または UI-linked tool
+  -> 必要に応じて既存のdata / navigation tool
+  -> maps_render_directions
   -> Hostが ui:// resourceを取得
   -> sandboxed MCP Apps View
   -> 公式Google Maps Embed surface
 ```
 
-設計条件:
+PoCで確認済み:
+
+- `maps_render_directions` は `ui://maps-browser-mcp/directions.html` に紐づくdisplay-only render tool
+- Viewは `text/html;profile=mcp-app` とMCP Apps lifecycleを使用
+- nested Google Maps Embed iframeは、既存Remote MCP接続経由でChatGPT Web内に正常renderされた
+- UI metadataを使わないHost向けにもtext / structured contentを返すfallbackを維持
+- Embed feature設定時だけ、serverは標準の `io.modelcontextprotocol/ui` extension と `text/html;profile=mcp-app` をMCP extension capabilityとしてadvertiseする
+- stdio smokeで、UI extensionを宣言しないclientへのtext / structured fallbackと、UI extensionを宣言するclientの `ui://` resource pathを両方検証済み
+- 既存9個のbrowser / navigation toolは変更していない
+- 実Google Maps Embed API keyはdeployment設定にのみ置き、repositoryには絶対にcommitしない。専用restricted keyとdeployment secret / environment mechanismを使う
+
+引き続き維持する設計条件:
 
 - 現在のMCP endpointとtool behaviorをbaselineとして維持する
 - map renderingとbrowser-based visible-state readingを分離する
@@ -76,16 +86,15 @@ user request
 - UI対応をscraping / crawling / persistence / review collectionのscope拡張理由にしない
 - 実装時にGoogle Maps Embedの利用条件、CSP要件、Host互換性を再確認する
 
-### Portability検証
+### 残るPortability検証
 
-Production-readyと判断する前に、少なくとも次を確認します。
+Production-readyと判断する前に、残りを確認します。
 
-1. 現在のRemote MCP URLを使ったChatGPT developer/private-plugin接続
-2. 可能なら別のMCP Apps対応host 1種類
-3. MCP Apps非対応hostでtext-only fallbackが壊れないこと
-4. Hostがiframe/container sizeを管理するため、mobile / desktopの両layout
+1. 可能なら別のMCP Apps対応host 1種類で検証する
+2. 可能なら別の実MCP Apps非対応hostでもtext-only fallbackを確認する。protocol-level fallbackはsmoke testで検証済み
+3. ChatGPT Webで成功した以外の対応host layout / container sizingも確認する
 
-Serverは「すべてのMCP clientがUIを表示できる」と仮定せず、negotiated UI capabilityを前提に動作させます。
+ChatGPT Webでの実render成功により当初のfeasibility確認は完了しています。MCP extension広告、capabilityを宣言するclientのsmoke、text / structured fallbackは検証済みで、残りはcross-host portabilityとhardeningです。
 
 ## ロードマップでも維持する非ゴール
 

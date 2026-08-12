@@ -116,6 +116,9 @@ export interface AppConfig {
     publicBaseUrl?: string;
     ttlMs: number;
   };
+  mcpApps: {
+    googleMapsEmbedApiKey?: string;
+  };
   handoffCheckpoint: {
     enabled: boolean;
     filePath?: string;
@@ -243,6 +246,9 @@ export function loadConfig(): AppConfig {
       enabled: remoteTakeover,
       publicBaseUrl,
       ttlMs: takeoverTtlMs
+    },
+    mcpApps: {
+      googleMapsEmbedApiKey: process.env.GOOGLE_MAPS_EMBED_API_KEY?.trim() || undefined
     },
     handoffCheckpoint: {
       enabled: Boolean(checkpointPathRaw && checkpointKey),
