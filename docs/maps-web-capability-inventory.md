@@ -57,7 +57,7 @@ Google Maps Web is dynamic and may vary by locale, viewport, experiment, geograp
 | Place Overview / Reviews / About tabs | V4 normal priority | Tab selection may be exposed; review-body harvesting remains out of scope. |
 | Place → directions | V4 normal priority | Existing `maps_directions` covers the workflow structurally; add current-place convenience only if it preserves identity. |
 | Place → nearby search | V4 high priority | Browser-native place-context workflow; revalidate the active place before applying the nearby query. |
-| Place share / Maps share URL | V4 high priority | Generate/read the visible Maps share link without clipboard scraping or generic DOM exposure. First V4 implementation slice. |
+| Place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` revalidates the active place immediately before one visible Share action, then returns only a bounded allow-listed Google Maps share URL. Interactive Assist is required. |
 | Expand opening hours | V4 normal priority | Bounded visible-place interaction; do not build persistent place datasets. |
 | Copy/open website, phone, address, Plus Code | lower priority / official overlap | Useful panel actions, but most data value overlaps structured place interfaces. |
 | Save place / saved lists | login required | Real unauthenticated Save action redirected to Google Account sign-in. V5 only. |
@@ -109,7 +109,7 @@ V4 should be delivered in small reviewable groups rather than as one broad DOM-a
 
 Priority order:
 
-1. place share link,
+1. place share link — implemented as `maps_get_place_share_link(expectedLabel)`,
 2. nearby search from the verified active place,
 3. photo surface/category navigation,
 4. bounded place tabs/opening-hours interactions.
