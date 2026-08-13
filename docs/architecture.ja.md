@@ -4,6 +4,8 @@
 
 `maps-browser-mcp` は汎用Browser Automation MCPより意図的に狭い設計です。公開MCP toolはGoogle Maps上の意味的な操作だけを表し、低レベルbrowser primitiveは内部に閉じます。
 
+未ログインGoogle Maps Webのcanonical coverageは [V4 Capability Inventory](maps-web-capability-inventory.ja.md)、browser / structured interfaceの優先順位は [Project positioning](positioning.ja.md) を参照してください。
+
 ## レイヤー構成
 
 ```text
@@ -63,7 +65,7 @@ Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solverは使いま
 
 ## Navigation Fast Path
 
-Search、directions、map view、Street ViewはGoogle公式Maps URLを使います。
+Search、directions、map view、coordinate-based Street ViewはGoogle公式Maps URLを使います。
 
 ```text
 1 MCP call -> 1 URL compilation -> 1 CDP Page.navigate
@@ -73,15 +75,42 @@ Search、directions、map view、Street ViewはGoogle公式Maps URLを使いま�
 
 ## Semantic Interaction
 
-MCP clientへgeneric `click`、`type`、任意selector、JavaScript実行toolは公開しません。
+MCP clientへgeneric `click`、`type`、任意selector、JavaScript実行、raw DOM、raw Accessibility Tree、raw CDP toolは公開しません。
 
-Place / route candidateはboundedなMaps専用heuristicで抽出します。V3でcandidate indexを列挙する処理とV2でindexを選択する処理は**同じcandidate extraction logic**を共有します。
+Place / route candidateはboundedなMaps専用heuristicで抽出します。bounded readerでcandidate indexを列挙する処理とindexを選択する処理は**同じcandidate extraction logic**を共有します。
 
 Selectionは任意の `expectedLabel` を受け取り、Google Maps側のdynamic listがread後に変化していた場合は `UI_STATE_CHANGED` でclickを拒否します。
 
 Travel mode変更はUI clickを行いません。現在のofficial directions URLを指定modeで再compileし、直接navigateします。
 
-## V3 Visible-State Reader
+### V4 browser-native semantic operation pattern
+
+V4ではdocumented Maps URLだけでは十分に表現できないMaps Web機能も扱いますが、public surfaceはMaps-specific semantic operationのまま維持します。
+
+```text
+validated semantic state
+  -> bounded target probe
+  -> expected identity revalidation
+  -> exactly one Maps-specific visible control/action
+  -> bounded postcondition/result probe
+  -> semantic result or fail closed
+```
+
+必須条件:
+
+1. **State gate** — current Google Maps surfaceと期待semantic viewを確認する
+2. **Identity gate** — 操作直前に対象identityを再取得する。並び替え・active place/route変更はactionを無効化する
+3. **Scoped target** — verified Maps-specific surface内だけを操作し、page全体からgeneric controlを探さない
+4. **Ambiguity refusal** — targetが0件、複数、conflict、staleなら推測せずsemantic error
+5. **Bounded postcondition** — requested resultを証明する最小visible stateだけ読む
+6. **Policy accounting** — UI stateを読むoperationはInteractive Assist、action limit、visible-read limitの内側で動作
+7. **Human Intervention authority** — consent / sign-in / CAPTCHA / challengeを検出したらagent inputを停止。Human Intervention active中にcleanup CDP inputも送らない
+8. **Fresh reissue after handoff** — Human完了を別actionのapprovalとせず、stateful semantic actionを自動replayしない
+9. **No hidden data path** — internal Maps API/XHR harvesting、generic clipboard dump、undocumented endpoint抽出でvisible semantic interactionを置換しない
+
+最初のV4 operation `maps_get_place_share_link(expectedLabel)` はこのpatternをplace panelへ適用します。place stateを確認し、active place headingを再検証し、そのverified panel内でvisible Share controlがちょうど1つであることを要求し、result dialogからboundedなMaps share URLだけを受け入れます。dialog cleanupもagent authorityがactiveな場合だけ行います。
+
+## Visible-State Reading
 
 Visible-state readingはoptionalかつデフォルトOFFです。有効時は:
 
@@ -101,6 +130,17 @@ ResultはMaps由来label / textを明示的にuntrusted external dataとして�
 Full DOM / AX dump、生HTML、review body、network response、Google Maps内部API payloadは返しません。
 
 Action / read counterはprocess-local safety guardであり、再起動でresetされます。永続accountingや法的compliance保証ではありません。
+
+## Human Intervention Boundary
+
+自然発生したconsent / sign-in / CAPTCHA / access challengeは既存Execution Handoffでagent authorityを停止します。
+
+- MCPはaccount credentialを受け取らない
+- challengeをsolve / bypassしない
+- Human control完了をpending actionや別actionのapprovalとみなさない
+- state-changing / state-dependent semantic operationはfresh reissue / revalidationを要求
+- reconnect / restart後に旧semantic operationを自動replayしない
+- V4 cleanupはintervention stateを確認し、handoff activeならUI inputを送らない
 
 ## HTTP Transport
 
@@ -149,4 +189,4 @@ ServerはMaps結果datasetを意図的に永続保存しません。ただし専
 
 Chrome / CDP startupはGoogle Mapsへtrafficを出さず、GitHub-hosted Linux、macOS 15 arm64、Windows runnerで実行します。
 
-通常push / PR CIは意図的にGoogle Maps pageへアクセスしません。実UI互換性は、maintainer / userが明示起動するmanual-only `Live Maps E2E` workflowで固定・低ボリュームに確認します。
+通常push / PR CIは意図的にGoogle Maps pageへアクセスしません。実UI互換性は、maintainer / userが明示起動するmanual-only `Live Maps E2E` workflowで固定・低ボリュームに確認します。V4 live checkもbounded / user-directedとし、CAPTCHA/challengeを意図的に発生・突破しません。
