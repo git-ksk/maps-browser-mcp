@@ -57,7 +57,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | place の概要 / クチコミ / About tab | V4 normal priority | tab selection は候補。review body harvesting は引き続き out of scope。 |
 | place → directions | V4 normal priority | `maps_directions` でworkflowは構造的にカバー済み。current-place convenience は identity を保てる場合のみ追加。 |
 | place → 付近を検索 | V4 high priority | browser-native な place-context workflow。active place identity を再検証してから query を適用。 |
-| place share / Maps share URL | V4 high priority | generic clipboard/DOMを公開せず、visible Maps share link を生成・取得する。V4最初の実装slice。 |
+| place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` がvisible Shareを1回操作する直前にactive placeを再検証し、boundedなallow-list済みGoogle Maps share URLだけを返す。Interactive Assist必須。 |
 | 営業時間展開 | V4 normal priority | bounded visible-place interaction。persistent place dataset は作らない。 |
 | website / phone / address / Plus Code のcopy/open | lower priority / official overlap | panel action としては有用だが、data価値の多くは structured place interface と重なる。 |
 | place保存 / saved list | login required | 実ブラウザで未ログイン Save が Google Account sign-in へ遷移。V5。 |
@@ -109,7 +109,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 
 優先順:
 
-1. place share link
+1. place share link — `maps_get_place_share_link(expectedLabel)` として実装済み
 2. verified active place からの nearby search
 3. photo surface / category navigation
 4. bounded place tab / opening-hours interaction
