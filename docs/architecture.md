@@ -2,6 +2,8 @@
 
 `maps-browser-mcp` is intentionally narrower than a general browser automation MCP. The public tool surface describes Google Maps actions; low-level browser primitives remain internal.
 
+See [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.md) for the canonical unauthenticated feature coverage and [Project positioning](positioning.md) for the browser-vs-structured-interface priority model.
+
 ## Layers
 
 ```text
@@ -53,7 +55,7 @@ No stealth plugins, fingerprint spoofing, proxy rotation, or CAPTCHA solvers are
 
 ## Navigation fast path
 
-Search, directions, map views, and Street View use official Google Maps URLs. The normal path is:
+Search, directions, map views, and coordinate-based Street View use official Google Maps URLs. The normal path is:
 
 ```text
 1 MCP call -> 1 URL compilation -> 1 CDP Page.navigate
@@ -63,13 +65,42 @@ No page discovery or DOM scan is needed for these operations.
 
 ## Semantic interaction
 
-The MCP does not expose generic `click`, `type`, arbitrary selector, or JavaScript-execution tools to the model.
+The MCP does not expose generic `click`, `type`, arbitrary selector, JavaScript-execution, raw DOM, raw Accessibility Tree, or raw CDP tools to the model.
 
-Place and route candidates are extracted through bounded Maps-specific heuristics. The **same candidate extraction logic** is used when V3 lists indexed candidates and when V2 selects an index. Selection optionally accepts `expectedLabel`; if the dynamic Google Maps list changed after reading, the click is refused with `UI_STATE_CHANGED`.
+Place and route candidates are extracted through bounded Maps-specific heuristics. The **same candidate extraction logic** is used when the bounded reader lists indexed candidates and when selection acts on an index. Selection optionally accepts `expectedLabel`; if the dynamic Google Maps list changed after reading, the click is refused with `UI_STATE_CHANGED`.
 
 Changing travel mode does not click the page. The server recompiles the active official directions URL with the requested travel mode and navigates directly.
 
-## Visible-state reading (V3)
+### V4 browser-native semantic operation pattern
+
+V4 broadens coverage into Maps Web functions that cannot be represented adequately by documented Maps URLs, while keeping the public surface semantic and Maps-specific.
+
+A V4 UI-native operation should follow this pattern:
+
+```text
+validated semantic state
+  -> bounded target probe
+  -> expected identity revalidation
+  -> exactly one Maps-specific visible control/action
+  -> bounded postcondition/result probe
+  -> semantic result or fail closed
+```
+
+Required properties:
+
+1. **State gate** — verify the current Google Maps surface and expected semantic view before action.
+2. **Identity gate** — re-read the intended target immediately before mutation/interaction. Dynamic ordering or a changed active place/route must invalidate the action.
+3. **Scoped target** — operate only inside the verified Maps-specific surface; do not search/click arbitrary page controls.
+4. **Ambiguity refusal** — zero, duplicate, conflicting, or stale targets return a semantic error instead of selecting heuristically.
+5. **Bounded postcondition** — inspect only the minimum visible state needed to prove the requested result.
+6. **Policy accounting** — Interactive Assist, action limits, and visible-read limits remain applicable when the operation reads UI state.
+7. **Human Intervention authority** — if consent, sign-in, CAPTCHA, or another challenge is detected, agent input stops. Cleanup code must not send further CDP input while a Human Intervention is active.
+8. **Fresh reissue after handoff** — completion of Human Intervention is not approval for another action and does not authorize automatic replay of a stateful semantic operation.
+9. **No hidden data path** — do not substitute internal Maps API/XHR harvesting, generic clipboard dumps, or undocumented endpoint extraction for visible semantic interaction.
+
+The first V4 operation, `maps_get_place_share_link(expectedLabel)`, applies this pattern to the selected place panel: it verifies place state, revalidates the active place heading, requires exactly one visible Share control in that verified panel, accepts only a bounded Maps share URL from the resulting dialog, and closes the dialog only while agent authority remains active.
+
+## Visible-state reading
 
 Visible-state reading is optional and disabled by default. When enabled, the reader:
 
@@ -89,6 +120,19 @@ The result explicitly marks Maps labels/text as untrusted external data. The ser
 It does not return full DOM/AX dumps, raw HTML, review bodies, network responses, or Google Maps internal API payloads.
 
 The action/read counters are process-local safety guards and reset when the process restarts. They are not persistent accounting or a claim of legal compliance.
+
+## Human Intervention boundary
+
+Naturally occurring consent, sign-in, CAPTCHA, and access-challenge surfaces suspend agent authority through the existing Execution Handoff path.
+
+The boundary is deliberately separate from semantic action approval:
+
+- MCP never receives account credentials,
+- challenges are not solved or bypassed,
+- completing human control does not approve the pending or a different action,
+- state-changing/state-dependent semantic operations require fresh reissue and revalidation,
+- reconnect/restart never automatically replays an older semantic operation,
+- V4 operation cleanup must test intervention state before sending any best-effort UI input.
 
 ## HTTP transport
 
@@ -124,4 +168,4 @@ Normal CI runs dependency audit, type/unit checks, Node.js 20/22/24 builds, real
 
 Chrome/CDP startup is exercised without Google Maps traffic on GitHub-hosted Linux, macOS 15 arm64, and Windows runners.
 
-Normal push/PR CI intentionally does **not** automate visits to Google Maps pages. A separate manual-only `Live Maps E2E` workflow performs the fixed, low-volume real-UI compatibility probe when explicitly triggered by a maintainer/user.
+Normal push/PR CI intentionally does **not** automate visits to Google Maps pages. A separate manual-only `Live Maps E2E` workflow performs fixed, low-volume real-UI compatibility probes when explicitly triggered by a maintainer/user. V4 live checks remain bounded, user-directed, and must never deliberately generate or bypass CAPTCHA/challenge flows.
