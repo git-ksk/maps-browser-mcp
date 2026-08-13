@@ -20,7 +20,7 @@
 
 Dockerfile、headless Chromium startup、browser profile path、container filesystem前提、container固有Chrome flagを実質的に変更したrelease前は `container` を選択してください。Routine activityのたびに両方を実行せず、live checkは低ボリュームかつ目的に応じて実行します。
 
-既存workflowはsearch/selectとroute/selectの確立済みpathを確認します。V4 UI-native operationは、固定manual-workflow scenarioを意図的に追加するまでは、下記のbounded local checklistで必要なoperationだけ確認できます。
+固定workflowは、確立済みsearch/read/select path、**V4 selected-place share-link operationをちょうど1回**、確立済みtransit route read/select pathを確認します。Result crawling、screenshot、review harvesting、persistenceへは広げません。
 
 `container` pathはrepository Dockerfileをbuildし、同じbounded scriptをそのimage内で実行します。Chromium sandboxが使えるcontainer設定を使い、`MAPS_ALLOW_UNSANDBOXED_CHROMIUM` は有効化しません。どちらのpathにもartifact upload stepはありません。
 
