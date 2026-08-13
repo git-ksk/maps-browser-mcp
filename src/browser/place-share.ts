@@ -85,10 +85,15 @@ export function parsePlaceShareLinkProbe(value: unknown): string | undefined {
   if (probe?.ok === true && typeof probe.url === "string") {
     return validateMapsShareUrl(probe.url);
   }
-  if (probe?.reason === "ambiguous") {
+  if (
+    probe?.reason === "changed" ||
+    probe?.reason === "ambiguous_place" ||
+    probe?.reason === "ambiguous_dialog" ||
+    probe?.reason === "ambiguous"
+  ) {
     throw new BrowserRuntimeError(
       "UI_STATE_CHANGED",
-      "Google Maps exposed multiple different share-link targets; refusing to guess"
+      "The active Google Maps place/share dialog changed or became ambiguous; refusing to guess"
     );
   }
   return undefined;
@@ -109,9 +114,9 @@ function openPlaceShareExpression(expectedLabel: string): string {
     const expected = ${expected};
     const allowedShareLabels = new Set(${shareLabels});
 
-    const mains = Array.from(document.querySelectorAll('[role="main"]')).filter(visible);
+    const mains = Array.from(document.querySelectorAll('[role="main"]')).filter(visible).slice(0, 8);
     const matching = mains.map((main) => {
-      const headings = Array.from(main.querySelectorAll('h1, [role="heading"]')).filter(visible);
+      const headings = Array.from(main.querySelectorAll('h1, [role="heading"]')).filter(visible).slice(0, 32);
       const labels = headings.map(labelOf).filter(Boolean);
       const exact = labels.find((label) => normalize(label) === expected);
       return exact ? { main, placeLabel: exact } : null;
@@ -123,6 +128,7 @@ function openPlaceShareExpression(expectedLabel: string): string {
     const target = matching[0];
     const buttons = Array.from(target.main.querySelectorAll('button, [role="button"]'))
       .filter(visible)
+      .slice(0, 96)
       .filter((button) => allowedShareLabels.has(normalize(labelOf(button))));
     if (buttons.length === 0) return { ok: false, reason: 'missing_share', placeLabel: target.placeLabel };
     if (buttons.length !== 1) return { ok: false, reason: 'ambiguous_share', placeLabel: target.placeLabel };
@@ -132,36 +138,61 @@ function openPlaceShareExpression(expectedLabel: string): string {
   })()`;
 }
 
-const READ_PLACE_SHARE_EXPRESSION = `(() => {
-  const visible = (el) => {
-    const r = el.getBoundingClientRect();
-    const s = getComputedStyle(el);
-    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-  };
-  const safe = (value) => {
-    try {
-      const url = new URL(value);
-      return url.protocol === 'https:' && (
-        url.hostname === 'maps.app.goo.gl' ||
-        (url.hostname === 'www.google.com' && (url.pathname === '/maps' || url.pathname.startsWith('/maps/')))
-      );
-    } catch {
-      return false;
-    }
-  };
+function readPlaceShareExpression(expectedLabel: string): string {
+  const expected = JSON.stringify(normalizeLabel(expectedLabel));
+  return `(() => {
+    const visible = (el) => {
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+    };
+    const labelOf = (el) => (el.getAttribute('aria-label') || el.textContent || '')
+      .replace(/\\s+/g, ' ').trim().slice(0, 240);
+    const normalize = (value) => value.replace(/\\s+/g, ' ').trim().toLocaleLowerCase();
+    const expected = ${expected};
+    const safe = (value) => {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'https:' && (
+          url.hostname === 'maps.app.goo.gl' ||
+          (url.hostname === 'www.google.com' && (url.pathname === '/maps' || url.pathname.startsWith('/maps/')))
+        );
+      } catch {
+        return false;
+      }
+    };
 
-  const fields = Array.from(document.querySelectorAll('input, textarea, [role="textbox"]')).filter(visible);
-  const urls = [];
-  const seen = new Set();
-  for (const field of fields) {
-    const value = String(field.value || field.textContent || '').trim().slice(0, 2048);
-    if (!safe(value) || seen.has(value)) continue;
-    seen.add(value);
-    urls.push(value);
-    if (urls.length > 1) return { ok: false, reason: 'ambiguous' };
-  }
-  return urls.length === 1 ? { ok: true, url: urls[0] } : { ok: false, reason: 'pending' };
-})()`;
+    const mains = Array.from(document.querySelectorAll('[role="main"]')).filter(visible).slice(0, 8);
+    const matchingPlaces = mains.filter((main) => {
+      const headings = Array.from(main.querySelectorAll('h1, [role="heading"]')).filter(visible).slice(0, 32);
+      return headings.some((heading) => normalize(labelOf(heading)) === expected);
+    });
+    if (matchingPlaces.length === 0) return { ok: false, reason: 'changed' };
+    if (matchingPlaces.length !== 1) return { ok: false, reason: 'ambiguous_place' };
+
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible).slice(0, 8);
+    const candidates = [];
+    for (const dialog of dialogs) {
+      const fields = Array.from(dialog.querySelectorAll('input, textarea, [role="textbox"]'))
+        .filter(visible)
+        .slice(0, 16);
+      const urls = [];
+      const seen = new Set();
+      for (const field of fields) {
+        const value = String(field.value || field.textContent || '').trim().slice(0, 2048);
+        if (!safe(value) || seen.has(value)) continue;
+        seen.add(value);
+        urls.push(value);
+        if (urls.length > 1) return { ok: false, reason: 'ambiguous' };
+      }
+      if (urls.length === 1) candidates.push(urls[0]);
+      if (candidates.length > 1) return { ok: false, reason: 'ambiguous_dialog' };
+    }
+    return candidates.length === 1
+      ? { ok: true, url: candidates[0] }
+      : { ok: false, reason: 'pending' };
+  })()`;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -199,7 +230,7 @@ export async function getVerifiedPlaceShareLink(
     while (Date.now() < deadline) {
       await runtime.assertReadableView("place");
       const read = await client.Runtime.evaluate({
-        expression: READ_PLACE_SHARE_EXPRESSION,
+        expression: readPlaceShareExpression(expectedLabel),
         returnByValue: true,
         awaitPromise: true
       });
