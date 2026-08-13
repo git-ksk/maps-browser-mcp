@@ -1,23 +1,56 @@
 # Roadmap
 
-[日本語](roadmap.ja.md) | [Documentation](README.md)
+[日本語](roadmap.ja.md) | [Documentation](README.md) | [V4 capability inventory](maps-web-capability-inventory.md)
 
-This roadmap records likely directions for `maps-browser-mcp`. It is not a commitment to ship every item. The project should continue to prefer small, user-directed workflows and supported structured interfaces when those already satisfy the use case.
+This roadmap records likely directions for `maps-browser-mcp`. It is not a commitment to ship every item. The project should continue to prefer small, user-directed workflows. Supported structured interfaces remain preferred when the rendered Google Maps Web experience is not required, but overlap with an official interface is a priority signal rather than an automatic browser-scope exclusion.
 
 ## Current baseline
 
 The current server intentionally separates two operating modes:
 
 - **Navigation-only** — open Google Maps search, directions, map, and Street View surfaces without reading rendered Maps content.
-- **Interactive Assist** — optionally read a small, bounded summary of the active route/place UI and select a current candidate using `index + expectedLabel`.
+- **Interactive Assist** — optionally read a small, bounded summary of the active route/place UI and perform Maps-specific semantic interactions with current-state/identity validation.
 
 The existing browser path remains bounded and is not intended for bulk collection, crawling, review harvesting, or persistent Maps-derived datasets. See [Usage modes and examples](use-cases.md) and [Compliance / Safety](compliance.md).
+
+## V4 — broad unauthenticated Google Maps Web semantic coverage
+
+V4 is defined as:
+
+> **Broad semantic coverage of major Google Maps Web capabilities available without authentication.**
+
+The canonical feature-by-feature scope and coverage table is [Google Maps Web Capability Inventory](maps-web-capability-inventory.md).
+
+Priority order:
+
+1. browser-native / UI-dependent Maps Web capabilities,
+2. search / directions / place operations required to complete a browser workflow,
+3. capabilities whose value mostly overlaps an official structured interface.
+
+The browser surface must still remain Maps-specific. V4 does **not** expose raw DOM, raw Accessibility Tree, raw CDP, pointer primitives, generic browser automation, desktop automation, or shell execution through MCP.
+
+V4 is split into reviewable slices:
+
+- **V4-A** — canonical inventory and reusable semantic identity/stale-state primitives,
+- **V4-B** — place workflow: share link, nearby, photos, bounded panel interactions,
+- **V4-C** — search and map viewport: filters, search-this-area, current location, semantic layers,
+- **V4-D** — directions UI: departure/arrival and transit options, route sharing, route editing/details,
+- **V4-E** — Street View entry and Maps-specific semantic navigation,
+- **V4-F** — bounded live compatibility closeout and final coverage table.
+
+Login-required capability stays out of V4 and moves to V5. Consent, sign-in, CAPTCHA, or access challenges that occur naturally continue to stop at the existing Human Intervention boundary; they are never bypassed and completing human intervention does not approve a different semantic action.
+
+Issue #36's second real Execution Handoff adapter proof remains a separate track. It is not a reason to generalize this server into a browser/desktop/shell MCP.
+
+### First V4 implementation slice
+
+`maps_get_place_share_link(expectedLabel)` is the first V4 browser-native semantic operation. It uses the currently selected place only, revalidates the active place identity immediately before activating the visible Share control, accepts only bounded Google Maps share URLs, and fails closed on missing/ambiguous targets. The operation remains behind Interactive Assist and the visible-read/action budgets.
 
 ## Near-term direction
 
 ### 1. Keep route/place reading useful but bounded
 
-The bounded summary path now adds conservative semantic annotations for signals already present in accepted visible text (for example route duration/departure/arrival or place rating/open status) without adding DOM/AX reads. Continue improving semantic quality only where the same extraction boundary can be preserved.
+The bounded summary path adds conservative semantic annotations for signals already present in accepted visible text (for example route duration/departure/arrival or place rating/open status) without widening the existing read boundary. Continue improving semantic quality only where the same extraction boundary can be preserved.
 
 Current invariants:
 
@@ -26,19 +59,19 @@ Current invariants:
 - avoid guessing semantics from ambiguous numbers or times without an explicit visible cue,
 - continue to fail closed when the Maps UI changes unexpectedly.
 
-### 2. Add user-requested route constraints only when they can be expressed safely
+### 2. Use documented URLs for structured routing, semantic UI controls for browser-native routing options
 
-The supported structured path should follow documented Google Maps URL parameters rather than exploratory DOM automation or guessed web parameters. The bounded route-option surface includes:
+The structured route path continues to use documented Google Maps URL parameters rather than guessed web parameters. The bounded URL-backed route-option surface includes:
 
 - ordered `waypoints` (capped at three),
 - `avoid` values limited to `ferries`, `highways`, and `tolls`,
 - preserving those constraints when the active travel mode is changed.
 
-Departure/arrival-time routing is **not** exposed through this browser controller because those parameters are not part of the documented Google Maps URLs directions surface. Revisit time-based routing only if a suitable supported/documented interface fits the project boundary.
+Departure/arrival time and transit preference controls are important unauthenticated Maps Web capabilities, but they are not represented by the documented Google Maps URLs directions parameters used by this project. V4 may therefore support them through **bounded, visible Maps-specific semantic controls with postcondition/identity validation**. Do not invent undocumented URL parameters, intercept internal Maps APIs/XHR, or expose generic DOM automation to reach them.
 
 ## MCP Apps / optional interactive UI
 
-An MCP Apps proof of concept is now validated for inline Google Maps directions rendering while the existing text/tool workflow remains available as the baseline. The UI remains experimental until the remaining portability work is complete.
+An MCP Apps proof of concept is validated for inline Google Maps directions rendering while the existing text/tool workflow remains available as the baseline. The UI remains experimental until the remaining portability work is complete.
 
 ### Standards position
 
@@ -80,13 +113,13 @@ Validated PoC status:
 - The tool continues to return text and structured content so hosts that ignore the UI metadata still receive a useful result.
 - When the Embed feature is configured, the server advertises the standard `io.modelcontextprotocol/ui` extension with `text/html;profile=mcp-app` through MCP extension capabilities.
 - Stdio smoke coverage validates both a client without the UI extension receiving the text/structured fallback and a client declaring the UI extension exercising the `ui://` resource path.
-- The existing nine browser/navigation tools remain unchanged.
+- V4 adds Maps-specific browser tools without changing the MCP Apps render boundary.
 - The real Google Maps Embed API key is deployment configuration only and must never be committed to the repository. Use a dedicated restricted key and a deployment secret/environment mechanism.
 
 Design requirements that remain in force:
 
-- Keep the existing MCP endpoint and tool behavior as the baseline.
-- Keep map rendering separate from browser-based visible-state reading.
+- Keep the existing MCP endpoint and established tool behavior as the baseline.
+- Keep map rendering separate from browser-based visible-state reading/interaction.
 - Prefer a dedicated render/UI tool if that keeps data tools simpler and portable.
 - Return a useful text fallback for hosts without MCP Apps support.
 - Declare only the minimum CSP origins required by the Embed implementation.
@@ -106,7 +139,7 @@ The successful ChatGPT Web render closes the original feasibility question. MCP 
 
 ## Explicit non-goals for the roadmap
 
-Future UI work does not change these project boundaries:
+V4 coverage and future UI work do not change these project boundaries:
 
 - no bulk scraping or crawling,
 - no route/place/review dataset harvesting,
@@ -114,9 +147,11 @@ Future UI work does not change these project boundaries:
 - no review-body harvesting,
 - no undocumented Maps internal API interception,
 - no CAPTCHA solving or bot-detection bypass,
+- no raw DOM / raw CDP / generic browser MCP surface,
 - no dependency on a rich UI for core MCP tool functionality.
 
 ## References
 
+- [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.md)
 - [MCP Apps official repository](https://github.com/modelcontextprotocol/ext-apps)
 - [MCP Apps stable specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)
