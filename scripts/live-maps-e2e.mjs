@@ -62,6 +62,22 @@ try {
     typeof selectedPlace.selected === "string" && selectedPlace.selected.length > 0,
     "Place selection did not return a label"
   );
+  await sleep(1_500);
+
+  // One bounded V4 browser-native operation against the verified selected place.
+  // The operation itself restricts output to the selected label plus an allow-listed Maps share URL.
+  policy.consumeAction();
+  policy.consumeVisibleRead();
+  const placeShare = await semantic.getPlaceShareLink(selectedPlace.selected);
+  assert(placeShare.placeLabel.length > 0, "Place share did not preserve a selected-place label");
+  assert(placeShare.source === "google_maps_share_dialog", "Unexpected place-share result source");
+  const shareUrl = new URL(placeShare.url);
+  assert(shareUrl.protocol === "https:", "Place share URL was not HTTPS");
+  assert(
+    shareUrl.hostname === "maps.app.goo.gl" ||
+      (shareUrl.hostname === "www.google.com" && (shareUrl.pathname === "/maps" || shareUrl.pathname.startsWith("/maps/"))),
+    "Place share URL left the allow-listed Google Maps origins"
+  );
 
   // One public transit route. This is intentionally fixed and low-volume.
   policy.consumeAction();
@@ -88,7 +104,7 @@ try {
     "Route selection did not return a label"
   );
 
-  console.log("Live Maps E2E passed: bounded place read/select, transit read, and guarded route selection");
+  console.log("Live Maps E2E passed: bounded place read/select/share, transit read, and guarded route selection");
 } finally {
   await runtime.close().catch(() => undefined);
   await fsp.rm(profileDir, {
