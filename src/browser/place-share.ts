@@ -214,7 +214,9 @@ export async function getVerifiedPlaceShareLink(
       "Google Maps did not expose a bounded share link for the verified active place"
     );
   } finally {
-    await client.Input.dispatchKeyEvent({ type: "keyDown", key: "Escape" }).catch(() => undefined);
-    await client.Input.dispatchKeyEvent({ type: "keyUp", key: "Escape" }).catch(() => undefined);
+    if (!runtime.getActiveIntervention()) {
+      await client.Input.dispatchKeyEvent({ type: "keyDown", key: "Escape" }).catch(() => undefined);
+      await client.Input.dispatchKeyEvent({ type: "keyUp", key: "Escape" }).catch(() => undefined);
+    }
   }
 }
