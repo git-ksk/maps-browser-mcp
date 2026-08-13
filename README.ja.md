@@ -4,7 +4,7 @@
 
 Google Mapsのuser-visible Web UIを、専用Chrome / Chromiumセッションから限定的に操作する、制約重視・ExperimentalなMCP browser controllerです。
 
-> **ステータス:** V1〜V3実装済み。Google Mapsの実UIに依存するsemantic interactionと限定Visible-State Readerは、UI変更の影響を受けるためExperimentalです。
+> **ステータス:** V1〜V3実装済み。**V4開発中:** 認証なしで利用できる主要なGoogle Maps Web capabilityをMaps-specificなsemantic operationとして広くカバーします。実UI依存のsemantic interactionとbounded visible-state readingは、UI変更の影響を受けるためExperimentalです。
 
 ## このプロジェクトの狙い
 
@@ -20,15 +20,27 @@ Google Mapsのuser-visible Web UIを、専用Chrome / Chromiumセッションか
 
 ### このprojectの位置づけ
 
-supported Google Maps Platform APIやGoogle-managed Maps MCPでworkflowを満たせる場合は、その公式structured interfaceを優先します。`maps-browser-mcp` は、実際にuser-visibleなMaps Web surfaceを必要とするbounded workflow向けであり、browser pathをAPI利用回避の仕組みとして扱いません。
+supported Google Maps Platform APIやGoogle-managed Maps MCPで、**render済みMaps Web体験を必要とせず**workflowを満たせる場合は、その公式structured interfaceを優先します。`maps-browser-mcp` はuser-visibleなMaps Web surfaceそのものが必要なbounded workflow向けです。公式interfaceとの重複は優先順位を下げる要因であって自動的なscope除外理由ではなく、browser pathをAPI利用回避の仕組みとして扱いません。
 
 | Surface | 向いている用途 | このprojectの違い |
 | --- | --- | --- |
-| Google Maps Platform / Google-managed Maps MCP | supportedなstructured Maps / grounding / place / route等のdata・operation | workflowを満たすならこちらを優先。このprojectはboundedなuser-visible Maps browser sessionを操作する |
+| Google Maps Platform / Google-managed Maps MCP | supportedなstructured Maps / grounding / place / route等のdata・operation | render済みMaps Webが不要ならこちらを優先。このprojectはboundedなuser-visible Maps browser sessionを操作する |
 | General-purpose browser MCP | 幅広いWeb navigation・任意browser automation | Maps-specific actionだけを公開し、control surfaceを大幅に小さく保つ |
 | Scraper / dataset harvester | bulk collection・persistent extraction | 明示的に対象外。visible-state readはbounded / transient / opt-in |
 
-詳細は **[Project positioning 日本語版](docs/positioning.ja.md)** と **[Compliance / Safety 日本語版](docs/compliance.ja.md)** を参照してください。
+詳細は **[Project positioning 日本語版](docs/positioning.ja.md)**、**[V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md)**、**[Compliance / Safety 日本語版](docs/compliance.ja.md)** を参照してください。
+
+## V4の方向性
+
+V4はV1〜V3よりcoverageを広げますが、制約付きarchitectureは維持します。
+
+> **V4 = broad semantic coverage of major Google Maps Web capabilities available without authentication**
+>
+> 認証なしで利用できる主要なGoogle Maps Web capabilityを、Maps-specificなsemantic MCP operationとして広くカバーする。
+
+優先順位は、browser-native / UI-dependent機能を最優先、browser workflow完結に必要なsearch / directions / placeを次、公式structured interfaceとほぼ同等の機能をその次とします。
+
+機能単位のcanonical status表は **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md)** です。ログイン必須機能はV5へ送ります。V4でもraw DOM、raw Accessibility Tree、raw CDP、generic browser action、desktop action、shell executionをMCPへ公開しません。
 
 ## 5分クイックスタート
 
@@ -68,11 +80,11 @@ Google Mapsへアクセスせずmanaged Chromium + CDPまで確認するreadines
 curl -i http://127.0.0.1:8787/readyz
 ```
 
-初回起動、汎用MCPクライアント設定例、V3有効化、profile cleanupまで含む詳しい手順は **[Getting Started 日本語版](docs/getting-started.ja.md)** を参照してください。
+初回起動、汎用MCPクライアント設定例、Interactive Assist有効化、profile cleanupまで含む詳しい手順は **[Getting Started 日本語版](docs/getting-started.ja.md)** を参照してください。
 
 ## 基本的な使い方
 
-NavigationはV3を有効にしなくても使えます。
+NavigationはInteractive Assistを有効にしなくても使えます。
 
 ```text
 maps_search({ query: "東京駅" })
@@ -86,7 +98,7 @@ maps_directions({
 })
 ```
 
-V3を有効にした場合、場所候補は次の順序で扱うのを推奨します。
+Interactive Assistを有効にした場合、場所候補は次の順序で扱うのを推奨します。
 
 ```text
 maps_search(...)
@@ -94,6 +106,17 @@ maps_search(...)
   -> items[{ index, label }] から選ぶ
   -> maps_select_result({ index, expectedLabel: label })
 ```
+
+V4最初のbrowser-native workflowでは、このidentity chainをMaps生成のplace share URLまで延長します。
+
+```text
+maps_search(...)
+  -> maps_read_place_summary()
+  -> maps_select_result({ index, expectedLabel: label })
+  -> maps_get_place_share_link({ expectedLabel: selectedPlaceLabel })
+```
+
+`maps_get_place_share_link` はvisibleな「共有」controlを操作する直前にactive placeを再検証し、place/share targetが変化・曖昧化していればfail closedします。
 
 経路候補も同様です。
 
@@ -104,7 +127,7 @@ maps_directions(...)
   -> maps_select_route({ index, expectedLabel: label })
 ```
 
-`expectedLabel` は重要です。Google Mapsが候補順を動的に並べ替えた場合、別候補を誤クリックせず `UI_STATE_CHANGED` で停止します。
+`expectedLabel` は重要です。Google Mapsが候補を動的に並べ替えたり置換した場合、別対象を誤操作せず `UI_STATE_CHANGED` で停止します。
 
 ## MCPツール
 
@@ -115,18 +138,19 @@ maps_directions(...)
 - `maps_show`
 - `maps_streetview`
 
-### Interaction
+### Semantic Interaction
 
 - `maps_select_result`
+- `maps_get_place_share_link` — V4、Interactive Assist必須
 - `maps_select_route`
 - `maps_set_travel_mode`
 
-### V3: 限定Visible-State Reader
+### Optional bounded visible-state reading
 
 - `maps_read_place_summary`
 - `maps_read_route_summary`
 
-V3の画面読み取りは**デフォルトOFF**です。必要な場合だけ有効化します。
+Interactive Assistは**デフォルトOFF**です。必要な場合だけ有効化します。
 
 ```bash
 INTERACTIVE_ASSIST_MODE=true npm start
@@ -138,7 +162,7 @@ INTERACTIVE_ASSIST_MODE=true npm start
 INTERACTIVE_ASSIST_MODE=true npm run start:http
 ```
 
-Readerが返すのはboundedな `items[{ index, label }]` と必要最小限のUIテキストです。生HTML、DOM全体、Accessibility Tree全体、network payload、cookie、レビュー本文の収集は行いません。
+Readerが返すのはboundedな `items[{ index, label }]` と必要最小限のUIテキストです。V4 semantic UI operationも同じくboundedなMaps-specific state / identity checkを使います。生HTML、DOM全体、Accessibility Tree全体、network payload、cookie、clipboard dump、レビュー本文の収集は行いません。
 
 Google Mapsから返る文字列はすべて**信頼されていない外部データ**として扱います。MCPクライアントでも命令ではなくデータとして扱ってください。
 
@@ -146,9 +170,9 @@ Google Mapsから返る文字列はすべて**信頼されていない外部デ�
 
 `INTERACTIVE_ASSIST_MODE=false` でも検索、経路、地図表示、Street Viewを開く操作はできます。専用Chrome画面が見えるLocal環境では、MCPが遷移し、表示結果をユーザー自身が読む使い方に向きます。Remote / headless環境でもNavigationは動きますが、callerは通常render済み画面のroute / place詳細を確認できません。
 
-`INTERACTIVE_ASSIST_MODE=true` にすると、V3 read toolがactive Maps UIのbounded summaryを返せるため、MCP clientが現在のroute / place状態から回答できます。このOpt-inはproduct / safety boundaryであり、「Googleの利用規約上 `false` が必須」という意味ではありません。また、有効化してもscraping、crawling、bulk extraction、dataset harvestingが許容use caseになるわけではありません。
+`INTERACTIVE_ASSIST_MODE=true` にすると、bounded read toolとV4 semantic UI operationがactive Maps UIを扱えます。identity validationとread/action budgetは維持します。このOpt-inはproduct / safety boundaryであり、「Googleの利用規約上 `false` が必須」という意味ではありません。また、有効化してもscraping、crawling、bulk extraction、dataset harvestingが許容use caseになるわけではありません。
 
-具体的なLocal / Remoteのflowは [利用モードとユースケース](docs/use-cases.ja.md)、設計上の制約は [Compliance / Safety](docs/compliance.ja.md) を参照してください。
+具体的なLocal / Remoteのflowは [利用モードとユースケース](docs/use-cases.ja.md)、現在のV4 coverageは [Capability Inventory](docs/maps-web-capability-inventory.ja.md)、設計上の制約は [Compliance / Safety](docs/compliance.ja.md) を参照してください。
 
 ## アーキテクチャ
 
@@ -179,6 +203,8 @@ Google Maps Web
 1 MCP call -> 1 Google公式Maps URL -> 1 CDP Page.navigate
 ```
 
+V4のUI-native operationでもCDPは内部実装detailのままです。MCPにはMaps-specific semantic operationだけを公開し、操作直前に対象identity/stateを再検証し、bounded postconditionを確認し、曖昧ならfail closedします。
+
 1プロセスが1つのsemantic browser stateを管理します。ブラウザ操作は直列化し、待ち行列には上限を設け、1操作がtimeoutした場合はwatchdogがbrowser/CDP sessionをresetします。
 
 詳細は **[Architecture 日本語版](docs/architecture.ja.md)** を参照してください。
@@ -205,7 +231,7 @@ Google Maps Web
 
 本プロジェクトが起動するCDP endpointは `127.0.0.1` にbindします。managed profile再利用時はbrowser identityを検証し、Google Mapsタブが複数ある場合はどれかを勝手に選ばず停止します。
 
-Google側で同意、ログイン、CAPTCHA、アクセスチャレンジが表示された場合は `HUMAN_INTERVENTION_REQUIRED` で停止します。必要な手作業を専用browser上で行い、その後に元のMaps操作を最初から実行してください。
+Google側で同意、ログイン、CAPTCHA、アクセスチャレンジが表示された場合は `HUMAN_INTERVENTION_REQUIRED` で停止します。既存Human Intervention flowで必要な手作業を完了してください。Human完了を別actionのapprovalとはみなさず、stateful semantic operationは自動replayせずfresh reissue / revalidationを要求します。
 
 ## HTTP / Remote MCP client
 
@@ -258,11 +284,11 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MAPS_CDP_PORT` | unset | 上級者向け既存ローカルCDP endpoint |
 | `MAPS_HEADLESS` | `false` | headless mode |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linuxの制約runtime向け最終手段。明示時のみ `--no-sandbox` |
-| `INTERACTIVE_ASSIST_MODE` | `false` | V3読み取りを有効化 |
+| `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | process-local操作上限 |
-| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | V3独立読み取り上限 |
-| `MAPS_MAX_AX_NODES` | `120` | V3 Accessibility node上限 |
-| `MAPS_MAX_READ_CHARS` | `1800` | V3返却text上限 |
+| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | 独立したbounded visible-state/UI read上限 |
+| `MAPS_MAX_AX_NODES` | `120` | bounded visible-state readingのAccessibility node上限 |
+| `MAPS_MAX_READ_CHARS` | `1800` | bounded visible-state readingの返却text上限 |
 | `MAPS_MAX_PENDING_ACTIONS` | `8` | 待機可能なbrowser操作数 |
 | `MAPS_OPERATION_TIMEOUT_MS` | `25000` | 1操作watchdog |
 
@@ -280,18 +306,19 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 
 以下を目的にはしていません。
 
-- Google Maps Platform APIの代替
 - 汎用Browser MCP
 - Google Mapsのbulk scraper / crawler
 - 店舗・口コミ・経路dataset収集
 - CAPTCHA solver
 - bot検知回避
 
-Google Maps内部API intercept、XHR/fetch収集、stealth plugin、fingerprint偽装、proxy rotation、Maps dataset永続化は意図的に実装しません。
+Google Maps Platform / Google-managed Maps MCPとの重複自体はscope外理由ではありませんが、browser実装はuser-visible Maps Web workflowへ固有価値がある機能から優先します。
 
-明らかなbulk collection要求はPolicy Engineで拒否します。V3には独立したrolling hourly read budgetがあります。navigation先はGoogle Maps HTTPS web surfaceに限定し、visibleなinline access challengeも検出して操作を停止します。
+Google Maps内部API intercept、XHR/fetch収集、stealth plugin、fingerprint偽装、proxy rotation、Maps dataset永続化、raw DOM/CDP MCP tool、generic desktop control、shell controlは意図的に実装しません。
 
-V3はリスクを抑えた設計ですが、すべてのbrowser-agent用途についてGoogleから許可を保証されたものではありません。利用者は適用される規約・法令を確認してください。supported structured Google Maps interfaceでworkflowを満たせる場合はbrowser automationよりそちらを優先します。詳細は **[Compliance / Safety 日本語版](docs/compliance.ja.md)** を参照してください。
+明らかなbulk collection要求はPolicy Engineで拒否します。Interactive Assistには独立したrolling hourly read budgetがあります。navigation先はGoogle Maps HTTPS web surfaceに限定し、visibleなinline access challengeも検出して操作を停止します。
+
+本projectは、すべてのbrowser-agent用途についてGoogleから許可を保証するものではありません。利用者は適用される規約・法令を確認してください。Maps Web体験を必要とせずsupported structured Google Maps interfaceでworkflowを満たせる場合はそちらを優先します。詳細は **[Compliance / Safety 日本語版](docs/compliance.ja.md)** を参照してください。
 
 ## プライバシー
 
@@ -327,7 +354,8 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 ## 現在の制限
 
 - Google Maps UI変更でExperimentalなsemantic selectorが壊れる可能性があります。
-- V3 Visible-State ReaderはExperimentalかつboundedです。
+- V4 coverageは開発中で、canonical inventoryにimplemented / remaining capabilityを記録します。
+- bounded visible-state/UI interactionはExperimentalかつOpt-inです。
 - 1processは1人・1local browser session向けで、multi-tenant hosting向けではありません。
 - CAPTCHA、同意、ログインflowを自動突破しません。
 - rate/read counterはprocess-local safety guardで、永続的な利用量計測や法的compliance mechanismではありません。
@@ -339,12 +367,14 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 | 文書 | 内容 |
 | --- | --- |
 | [日本語ドキュメント一覧](docs/README.ja.md) | 日本語版ドキュメントの目次 |
-| [Getting Started](docs/getting-started.ja.md) | install、初回起動、client形、V3、cleanup |
+| [Getting Started](docs/getting-started.ja.md) | install、初回起動、client形、Interactive Assist、cleanup |
 | [Container / headless Linux](docs/container.ja.md) | 標準Linux container、headless Chromium、port/profile/readiness/sandbox境界 |
 | [Troubleshooting](docs/troubleshooting.ja.md) | error code別の安全な復旧手順 |
 | [ChatGPT](docs/chatgpt.ja.md) | ChatGPT/App接続境界とtool refresh |
-| [Architecture](docs/architecture.ja.md) | runtime、CDP、state、queue/watchdog |
-| [Project positioning](docs/positioning.ja.md) | 競合category、公式interface優先、product direction |
+| [Architecture](docs/architecture.ja.md) | runtime、CDP、state、queue/watchdog、semantic UI operation model |
+| [Project positioning](docs/positioning.ja.md) | 競合category、Maps Web priority、公式interface重複、product direction |
+| [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md) | 未ログインcapabilityのcanonical coverage/status表とV4 slice |
+| [Roadmap](docs/roadmap.ja.md) | V4実装順とMCP Apps portability direction |
 | [Compliance / Safety](docs/compliance.ja.md) | 利用目的・非目的・規約境界 |
 | [Manual Live E2E](docs/manual-e2e.ja.md) | 実Google Maps user-triggered互換性確認 |
 | [Release Checklist](docs/release.ja.md) | release前CI、Live check、security、tag手順 |
