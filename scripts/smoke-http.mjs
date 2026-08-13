@@ -141,7 +141,12 @@ try {
       ? modernTools.result.tools.map((tool) => tool?.name).filter(Boolean)
       : []
   );
-  if (toolNames.size !== 9 || !toolNames.has("maps_search") || !toolNames.has("maps_read_route_summary")) {
+  if (
+    toolNames.size !== 10 ||
+    !toolNames.has("maps_search") ||
+    !toolNames.has("maps_get_place_share_link") ||
+    !toolNames.has("maps_read_route_summary")
+  ) {
     throw new Error(`Unexpected modern tools/list response: ${JSON.stringify(modernTools)}`);
   }
 

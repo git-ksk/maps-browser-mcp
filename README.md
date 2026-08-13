@@ -4,7 +4,7 @@
 
 A constrained, experimental MCP browser controller for user-directed interaction with Google Maps through a dedicated Chrome/Chromium session.
 
-> **Status:** V1–V3 are implemented. Google Maps UI-dependent interaction and bounded visible-state reading remain experimental because the live Maps UI can change.
+> **Status:** V1–V3 are implemented. **V4 is in progress:** broad semantic coverage of major Google Maps Web capabilities available without authentication. Google Maps UI-dependent interaction and bounded visible-state reading remain experimental because the live Maps UI can change.
 
 ## Why this project exists
 
@@ -20,15 +20,25 @@ General-purpose browser MCPs are powerful, but they expose a much larger control
 
 ### Where this project fits
 
-If a supported Google Maps Platform API or Google-managed Maps MCP already satisfies the workflow, prefer that supported structured interface. `maps-browser-mcp` exists for bounded workflows that genuinely require the user-visible Maps web surface; the browser path is not an API-avoidance mechanism.
+If a supported Google Maps Platform API or Google-managed Maps MCP already satisfies a workflow **without requiring the rendered Maps Web experience**, prefer that supported structured interface. `maps-browser-mcp` exists for bounded workflows that genuinely require the user-visible Maps web surface. Official-interface overlap is therefore a priority signal, not an automatic scope exclusion, and the browser path is never an API-avoidance mechanism.
 
 | Surface | Best fit | This project intentionally differs by |
 | --- | --- | --- |
-| Google Maps Platform / Google-managed Maps MCP | supported structured Maps, grounding, place, route, or related data where available | prefer these when they satisfy the workflow; this project controls a bounded user-visible Maps browser session |
+| Google Maps Platform / Google-managed Maps MCP | supported structured Maps, grounding, place, route, or related data where available | prefer these when the rendered Maps Web experience is not required; this project controls a bounded user-visible Maps browser session |
 | General-purpose browser MCPs | broad web navigation and arbitrary browser automation | exposes Maps-specific actions and a substantially smaller capability surface |
 | Scrapers / dataset harvesters | bulk collection and persistent extraction | explicitly out of scope; visible-state reading is bounded, transient, and opt-in |
 
-See **[Project positioning](docs/positioning.md)** and **[Compliance boundaries](docs/compliance.md)** for the detailed category and safety boundary.
+See **[Project positioning](docs/positioning.md)**, **[V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**, and **[Compliance boundaries](docs/compliance.md)** for the detailed category, coverage, and safety boundaries.
+
+## V4 direction
+
+V4 is intentionally broader than V1–V3 but keeps the same constrained architecture:
+
+> **V4 = broad semantic coverage of major Google Maps Web capabilities available without authentication.**
+
+Priority order is browser-native/UI-dependent behavior first; search/directions/place operations required to complete the browser workflow second; and capabilities that mostly duplicate official structured interfaces third.
+
+The canonical per-capability status table is **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**. Login-required features are deferred to V5. V4 does not expose raw DOM, raw Accessibility Tree, raw CDP, generic browser actions, desktop actions, or shell execution through MCP.
 
 ## 5-minute quick start
 
@@ -68,11 +78,11 @@ Browser/CDP readiness without visiting Google Maps:
 curl -i http://127.0.0.1:8787/readyz
 ```
 
-For a complete first-run walkthrough, browser behavior, generic MCP client configuration, V3 opt-in, and cleanup, see **[Getting Started](docs/getting-started.md)**.
+For a complete first-run walkthrough, browser behavior, generic MCP client configuration, V3/V4 Interactive Assist opt-in, and cleanup, see **[Getting Started](docs/getting-started.md)**.
 
 ## Example workflows
 
-Navigation does not require V3:
+Navigation does not require Interactive Assist:
 
 ```text
 maps_search({ query: "Tokyo Station" })
@@ -86,7 +96,7 @@ maps_directions({
 })
 ```
 
-When V3 is enabled, the safe selection pattern is:
+When Interactive Assist is enabled, the safe selection pattern is:
 
 ```text
 maps_search(...)
@@ -95,7 +105,18 @@ maps_search(...)
   -> maps_select_result({ index, expectedLabel: label })
 ```
 
-and for routes:
+The first V4 browser-native workflow extends that identity chain to a Maps-generated place share URL:
+
+```text
+maps_search(...)
+  -> maps_read_place_summary()
+  -> maps_select_result({ index, expectedLabel: label })
+  -> maps_get_place_share_link({ expectedLabel: selectedPlaceLabel })
+```
+
+`maps_get_place_share_link` revalidates the active place immediately before activating the visible Share control and fails closed if the place/share target changed or became ambiguous.
+
+For routes:
 
 ```text
 maps_directions(...)
@@ -104,7 +125,7 @@ maps_directions(...)
   -> maps_select_route({ index, expectedLabel: label })
 ```
 
-`expectedLabel` is important: if Google Maps dynamically reorders the candidate list, the runtime refuses the stale selection with `UI_STATE_CHANGED` instead of clicking a different result.
+`expectedLabel` is important: if Google Maps dynamically reorders or replaces the target, the runtime refuses stale interaction with `UI_STATE_CHANGED` instead of acting on a different target.
 
 ## MCP tools
 
@@ -115,18 +136,19 @@ maps_directions(...)
 - `maps_show`
 - `maps_streetview`
 
-### Interaction
+### Semantic interaction
 
 - `maps_select_result`
+- `maps_get_place_share_link` — V4, Interactive Assist required
 - `maps_select_route`
 - `maps_set_travel_mode`
 
-### Optional V3 visible-state reading
+### Optional bounded visible-state reading
 
 - `maps_read_place_summary`
 - `maps_read_route_summary`
 
-V3 reading is **disabled by default**. Enable it only when required:
+Interactive Assist is **disabled by default**. Enable it only when required:
 
 ```bash
 INTERACTIVE_ASSIST_MODE=true npm start
@@ -138,7 +160,7 @@ or:
 INTERACTIVE_ASSIST_MODE=true npm run start:http
 ```
 
-The read tools return bounded `items[{ index, label }]` plus a small set of relevant UI lines. They do not expose raw HTML, a full DOM/Accessibility Tree, network payloads, cookies, or review-body harvesting.
+The read tools return bounded `items[{ index, label }]` plus a small set of relevant UI lines. V4 semantic UI operations use similarly bounded, Maps-specific state/identity checks. They do not expose raw HTML, a full DOM/Accessibility Tree, network payloads, cookies, clipboard dumps, or review-body harvesting.
 
 All text returned from Google Maps is **untrusted external data**. MCP clients must treat it as data, never as instructions.
 
@@ -146,9 +168,9 @@ All text returned from Google Maps is **untrusted external data**. MCP clients m
 
 With `INTERACTIVE_ASSIST_MODE=false`, the server can still open searches, directions, map views, and Street View. This is most useful with a local visible Chrome session where the MCP navigates and the user reads the rendered result. In a remote/headless deployment, the same navigation works, but the caller normally cannot inspect route/place details from the rendered page.
 
-With `INTERACTIVE_ASSIST_MODE=true`, the V3 read tools can return a bounded summary of the active Maps UI so an MCP client can answer from the current route/place state. The opt-in is a product/safety boundary, not a claim that Google terms require the setting to remain `false`. Enabling it also does not permit scraping, crawling, bulk extraction, or dataset harvesting.
+With `INTERACTIVE_ASSIST_MODE=true`, the bounded read tools and V4 semantic UI operations can use the active Maps UI while keeping identity validation and read/action budgets. The opt-in is a product/safety boundary, not a claim that Google terms require the setting to remain `false`. Enabling it also does not permit scraping, crawling, bulk extraction, or dataset harvesting.
 
-See [Usage modes and examples](docs/use-cases.md) for concrete local and remote workflows, and [Compliance and safety boundaries](docs/compliance.md) for the full constraints.
+See [Usage modes and examples](docs/use-cases.md) for concrete local and remote workflows, [V4 capability inventory](docs/maps-web-capability-inventory.md) for current coverage, and [Compliance and safety boundaries](docs/compliance.md) for the full constraints.
 
 ## Architecture
 
@@ -179,6 +201,8 @@ The normal navigation path is intentionally short:
 1 MCP call -> 1 official Maps URL -> 1 CDP Page.navigate
 ```
 
+For V4 UI-native operations, CDP remains an internal implementation detail: the MCP surface expresses a Maps-specific semantic operation, revalidates the intended target/state immediately before acting, verifies bounded postconditions, and fails closed on ambiguity.
+
 One process controls one semantic browser state. Browser operations are serialized, the pending queue is bounded, and a watchdog resets the browser/CDP session if an operation exceeds the configured timeout.
 
 See **[Architecture](docs/architecture.md)** for the detailed runtime/state/security model.
@@ -205,7 +229,7 @@ Do not point this project at your everyday Chrome profile.
 
 The managed CDP endpoint binds to `127.0.0.1`. The runtime validates the managed browser identity before reusing a profile and refuses to guess between multiple open Google Maps tabs.
 
-If Google displays consent, sign-in, CAPTCHA, or another access challenge, the MCP stops with `HUMAN_INTERVENTION_REQUIRED`. Resolve legitimate manual steps in the dedicated browser and then repeat the original Maps action.
+If Google displays consent, sign-in, CAPTCHA, or another access challenge, the MCP stops with `HUMAN_INTERVENTION_REQUIRED`. Resolve legitimate manual steps through the existing Human Intervention flow. Completion does not approve a different action, and stateful semantic operations require fresh reissue/revalidation rather than automatic replay.
 
 ## HTTP and remote MCP clients
 
@@ -258,11 +282,11 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MAPS_CDP_PORT` | unset | Advanced: existing local CDP endpoint |
 | `MAPS_HEADLESS` | `false` | Headless Chrome |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
-| `INTERACTIVE_ASSIST_MODE` | `false` | Enable V3 bounded reading |
+| `INTERACTIVE_ASSIST_MODE` | `false` | Enable bounded visible-state reading and V4 semantic UI operations that require it |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
-| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent V3 read budget |
-| `MAPS_MAX_AX_NODES` | `120` | V3 Accessibility-node bound |
-| `MAPS_MAX_READ_CHARS` | `1800` | V3 returned-text bound |
+| `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent bounded visible-state/UI read budget |
+| `MAPS_MAX_AX_NODES` | `120` | Accessibility-node bound for bounded visible-state reading |
+| `MAPS_MAX_READ_CHARS` | `1800` | Returned-text bound for bounded visible-state reading |
 | `MAPS_MAX_PENDING_ACTIONS` | `8` | Maximum queued browser operations |
 | `MAPS_OPERATION_TIMEOUT_MS` | `25000` | Per-operation watchdog |
 
@@ -278,18 +302,19 @@ Only attach to a **local, dedicated Chrome/Chromium instance you control**. Atta
 
 This project is a constrained, user-directed browser agent. It is **not** intended to be:
 
-- a Google Maps Platform API replacement,
 - a general-purpose browser MCP,
 - a bulk Google Maps scraper/crawler,
 - a place/review/route dataset harvester,
 - a CAPTCHA solver,
 - an anti-bot bypass tool.
 
-It intentionally does not implement Google Maps internal API interception, XHR/fetch harvesting, stealth plugins, fingerprint spoofing, proxy rotation, or persistent Maps datasets.
+Overlap with Google Maps Platform or a Google-managed Maps MCP is not itself out of scope, but browser implementation is prioritized only where it contributes to the user-visible Maps Web workflow.
 
-Obvious bulk-collection requests are rejected by the policy layer. V3 has a separate rolling hourly read budget. Navigation remains restricted to the Google Maps HTTPS web surface. Visible inline access challenges are detected and stop the operation.
+It intentionally does not implement Google Maps internal API interception, XHR/fetch harvesting, stealth plugins, fingerprint spoofing, proxy rotation, persistent Maps datasets, raw DOM/CDP MCP tools, generic desktop control, or shell control.
 
-V3 is deliberately conservative, but this project does not claim that every browser-agent usage is guaranteed permitted by Google. Users are responsible for applicable service terms and laws. Where supported structured Google Maps interfaces already satisfy the workflow, prefer those interfaces over browser automation. See **[Compliance boundaries](docs/compliance.md)**.
+Obvious bulk-collection requests are rejected by the policy layer. Interactive Assist has a separate rolling hourly read budget. Navigation remains restricted to the Google Maps HTTPS web surface. Visible inline access challenges are detected and stop the operation.
+
+This project does not claim that every browser-agent usage is guaranteed permitted by Google. Users are responsible for applicable service terms and laws. Where supported structured Google Maps interfaces already satisfy the workflow without requiring Maps Web, prefer those interfaces. See **[Compliance boundaries](docs/compliance.md)**.
 
 ## Privacy
 
@@ -325,7 +350,8 @@ GitHub Actions dependencies are pinned to full commit SHAs. Dependabot monitors 
 ## Current limitations
 
 - Google Maps UI changes can break experimental semantic selectors.
-- V3 visible-state reading remains experimental and bounded.
+- V4 coverage is in progress; the canonical inventory marks implemented vs. remaining unauthenticated Maps Web capabilities.
+- Bounded visible-state/UI interaction remains experimental and opt-in.
 - One process is designed for one local user/browser session, not multi-tenant hosting.
 - CAPTCHA, consent, and sign-in flows are not bypassed.
 - Rate/read counters are process-local safety guards, not persistent accounting or a legal-compliance mechanism.
@@ -336,12 +362,14 @@ See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and err
 
 | Document | Purpose |
 | --- | --- |
-| [Getting Started](docs/getting-started.md) | Installation, first run, client shape, V3 opt-in, cleanup |
+| [Getting Started](docs/getting-started.md) | Installation, first run, client shape, Interactive Assist opt-in, cleanup |
 | [Container / headless Linux](docs/container.md) | Standard Linux container, headless Chromium, ports, profiles, readiness, and sandbox boundaries |
 | [Troubleshooting](docs/troubleshooting.md) | Error codes and safe recovery procedures |
 | [ChatGPT](docs/chatgpt.md) | Remote ChatGPT/App connection boundary and tool refresh |
-| [Architecture](docs/architecture.md) | Runtime, CDP, state, queue/watchdog design |
-| [Project positioning](docs/positioning.md) | Competitive category, official-interface preference, and product direction |
+| [Architecture](docs/architecture.md) | Runtime, CDP, state, queue/watchdog, semantic UI operation model |
+| [Project positioning](docs/positioning.md) | Competitive category, Maps Web priority, official-interface overlap, and product direction |
+| [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.md) | Canonical unauthenticated capability coverage/status table and V4 slices |
+| [Roadmap](docs/roadmap.md) | V4 implementation order plus MCP Apps portability direction |
 | [Compliance](docs/compliance.md) | Intended-use and non-goal boundaries |
 | [Manual live E2E](docs/manual-e2e.md) | User-triggered Google Maps compatibility verification |
 | [Release checklist](docs/release.md) | Pre-release CI, live check, security and tagging procedure |

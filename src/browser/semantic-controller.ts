@@ -1,5 +1,6 @@
 import type { TravelMode } from "../types.js";
 import { MapsUrlCompiler } from "../maps/url-compiler.js";
+import { getVerifiedPlaceShareLink, type PlaceShareLinkResult } from "./place-share.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 
 export class SemanticController {
@@ -20,6 +21,10 @@ export class SemanticController {
       throw new Error("index must be an integer between 0 and 11");
     }
     return { selected: await this.runtime.clickRouteResult(index, expectedLabel) };
+  }
+
+  async getPlaceShareLink(expectedLabel: string): Promise<PlaceShareLinkResult> {
+    return getVerifiedPlaceShareLink(this.runtime, expectedLabel);
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {

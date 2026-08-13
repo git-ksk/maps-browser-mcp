@@ -510,6 +510,30 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
+    "maps_get_place_share_link",
+    {
+      description: "Return the Google Maps-generated share link for the currently selected place. expectedLabel is required and is revalidated against the active place immediately before the visible Share control is activated. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedLabel: expectedLabelText
+      }),
+      annotations: {
+        readOnlyHint: true
+      }
+    },
+    async ({ expectedLabel }, ctx) => runToolWithHandoff({
+      toolName: "maps_get_place_share_link",
+      args: { expectedLabel },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.getPlaceShareLink(expectedLabel);
+      }
+    })
+  );
+
+  server.registerTool(
     "maps_select_route",
     {
       description: "Select a currently displayed route candidate by zero-based index. Pass expectedLabel from maps_read_route_summary when available to guard against UI reordering.",

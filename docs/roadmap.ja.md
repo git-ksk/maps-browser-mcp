@@ -1,23 +1,58 @@
 # ロードマップ
 
-[English](roadmap.md) | [日本語ドキュメント](README.ja.md)
+[English](roadmap.md) | [日本語ドキュメント](README.ja.md) | [V4 capability inventory](maps-web-capability-inventory.ja.md)
 
-このロードマップは `maps-browser-mcp` の今後の方向性を記録するものです。すべての項目を実装すると約束するものではありません。今後も小さくuser-directedなworkflowを優先し、supported structured interfaceでuse caseを満たせる場合はそちらを優先します。
+このロードマップは `maps-browser-mcp` の今後の方向性を記録するものです。すべての項目を実装すると約束するものではありません。今後も小さくuser-directedなworkflowを優先します。render済みGoogle Maps Web体験そのものが不要な場合はsupported structured interfaceを優先しますが、公式interfaceとの重複はbrowser scopeから自動除外する理由ではなく、優先順位を下げる要因として扱います。
 
 ## 現在のベースライン
 
 現在のserverは、意図的に2つの利用モードを分離しています。
 
 - **Navigation-only** — render済みMaps contentを読まず、Google Mapsのsearch / directions / map / Street View surfaceを開く
-- **Interactive Assist** — active route / place UIの小さなbounded summaryをOpt-inで読み、`index + expectedLabel` により現在の候補を安全側で選択する
+- **Interactive Assist** — active route / place UIの小さなbounded summaryをOpt-inで読み、current-state / identity validation付きのMaps-specific semantic interactionを行う
 
 既存browser pathは今後もboundedに保ち、bulk collection、crawling、review harvesting、Maps由来persistent datasetを目的にしません。詳細は [利用モードとユースケース](use-cases.ja.md) と [Compliance / Safety](compliance.ja.md) を参照してください。
+
+## V4 — 未ログインGoogle Maps Webの広範なsemantic coverage
+
+V4は次の位置づけです。
+
+> **V4 = broad semantic coverage of major Google Maps Web capabilities available without authentication**
+>
+> 認証なしで利用できる主要なGoogle Maps Web capabilityを、Maps-specificなsemantic MCP operationとして広くカバーする。
+
+機能単位のscope / coverage正本は [Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md) です。
+
+優先順位:
+
+1. browser-native / UI-dependentなGoogle Maps Web capability
+2. browser workflow完結に必要なsearch / directions / place operation
+3. 公式structured interfaceと価値がほぼ重なるcapability
+
+browser control surfaceは引き続きMaps-specificに限定します。V4でもraw DOM、raw Accessibility Tree、raw CDP、pointer primitive、generic browser automation、desktop automation、shell executionをMCPへ公開しません。
+
+V4は小さくreview可能なsliceへ分割します。
+
+- **V4-A** — canonical inventoryと再利用可能なsemantic identity / stale-state primitive
+- **V4-B** — place workflow: share link、nearby、photos、bounded panel interaction
+- **V4-C** — search / map viewport: filter、search-this-area、現在地、semantic layer
+- **V4-D** — directions UI: departure/arrival・transit option、route share、route edit/detail
+- **V4-E** — Street View entryとMaps-specific semantic navigation
+- **V4-F** — bounded live compatibility closeoutと最終coverage table
+
+ログイン必須capabilityはV4へ入れずV5へ送ります。利用中にconsent / sign-in / CAPTCHA / access challengeが自然発生した場合は既存Human Interventionで停止し、突破しません。Human Intervention完了を別semantic actionのapprovalとはみなしません。
+
+Issue #36のsecond real Execution Handoff adapter proofは別トラックです。V4のためにこのserverをgeneric browser / desktop / shell MCPへ広げません。
+
+### V4最初の実装slice
+
+`maps_get_place_share_link(expectedLabel)` を最初のbrowser-native semantic operationとして追加します。currently selected placeだけを対象にし、visible Share controlを押す直前にactive place identityを再検証し、boundedなGoogle Maps share URLだけを許可します。target missing / ambiguousはfail closedとし、Interactive Assistとvisible-read/action budgetの内側で動作します。
 
 ## 近い将来の方向性
 
 ### 1. Route / Place readingをboundedのまま実用化
 
-bounded summary pathでは、すでにaccepted visible textに含まれているsignalだけを対象に、routeのduration / departure / arrivalやplaceのrating / open statusなどの保守的なsemantic annotationを追加しました。DOM / AX readは増やしていません。今後も同じextraction boundaryを維持できる範囲だけsemantic qualityを改善します。
+bounded summary pathでは、accepted visible textに含まれているsignalだけを対象に、routeのduration / departure / arrivalやplaceのrating / open statusなどの保守的なsemantic annotationを追加しています。既存read boundaryを広げず、同じextraction boundaryを維持できる範囲だけsemantic qualityを改善します。
 
 現在のinvariant:
 
@@ -26,15 +61,15 @@ bounded summary pathでは、すでにaccepted visible textに含まれている
 - 明示的なvisible cueがない曖昧な数字や時刻に意味を推測で付けない
 - Maps UIが想定外に変化した場合は引き続きfail closedにする
 
-### 2. 安全に表現できる経路条件を追加
+### 2. Structured routingはdocumented URL、browser-native routing optionはsemantic UI controlを使う
 
-探索的なDOM操作や推測したWeb parameterではなく、Google Maps URLとしてdocumentedなparameterだけをstructured pathへ追加します。boundedなroute option surfaceは次です。
+structured route pathは引き続き、推測したWeb parameterではなくdocumented Google Maps URL parameterを使用します。boundedなURL-backed route option surface:
 
 - 順序付き `waypoints`（最大3件）
 - `avoid` は `ferries` / `highways` / `tolls` のみ
 - active travel mode変更時もこれらの条件を維持する
 
-出発・到着時刻によるroutingは、documented Google Maps URLs directions surfaceに該当parameterがないため、このbrowser controllerでは**提供しません**。将来、project boundaryに合うsupported / documented interfaceがある場合だけ再検討します。
+出発/到着時刻やtransit preferenceは、projectが使うdocumented Google Maps URLs directions parameterでは表現されない一方、未ログインGoogle Maps Webの重要なUI capabilityです。そのためV4では、**boundedなvisible Maps-specific semantic control + postcondition / identity validation** で実装対象にできます。undocumented URL parameterを推測したり、internal Maps API/XHRをinterceptしたり、generic DOM automationをMCPへ公開して到達することは禁止します。
 
 ## MCP Apps / Optional Interactive UI
 
@@ -80,13 +115,13 @@ PoCで確認済み:
 - UI metadataを使わないHost向けにもtext / structured contentを返すfallbackを維持
 - Embed feature設定時だけ、serverは標準の `io.modelcontextprotocol/ui` extension と `text/html;profile=mcp-app` をMCP extension capabilityとしてadvertiseする
 - stdio smokeで、UI extensionを宣言しないclientへのtext / structured fallbackと、UI extensionを宣言するclientの `ui://` resource pathを両方検証済み
-- 既存9個のbrowser / navigation toolは変更していない
+- V4はMCP Apps render boundaryを変えず、Maps-specific browser toolを追加する
 - 実Google Maps Embed API keyはdeployment設定にのみ置き、repositoryには絶対にcommitしない。専用restricted keyとdeployment secret / environment mechanismを使う
 
 引き続き維持する設計条件:
 
-- 現在のMCP endpointとtool behaviorをbaselineとして維持する
-- map renderingとbrowser-based visible-state readingを分離する
+- 現在のMCP endpointと確立済みtool behaviorをbaselineとして維持する
+- map renderingとbrowser-based visible-state reading / interactionを分離する
 - portabilityが上がるならdata toolとrender/UI toolを分離する
 - MCP Apps非対応host向けに有用なtext fallbackを維持する
 - Embedに必要な最小限のCSP originだけ宣言する
@@ -106,7 +141,7 @@ ChatGPT Webでの実render成功により当初のfeasibility確認は完了し�
 
 ## ロードマップでも維持する非ゴール
 
-UIを追加しても、次の境界は変えません。
+V4 coverageやUI追加でも、次の境界は変えません。
 
 - bulk scraping / crawlingをしない
 - route / place / review datasetをharvestしない
@@ -114,9 +149,11 @@ UIを追加しても、次の境界は変えません。
 - review bodyを収集しない
 - undocumented Maps internal API trafficをinterceptしない
 - CAPTCHA solving / bot-detection bypassをしない
+- raw DOM / raw CDP / generic browser MCP surfaceを公開しない
 - core MCP tool functionalityをrich UI必須にしない
 
 ## 参考
 
+- [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md)
 - [MCP Apps 公式repository](https://github.com/modelcontextprotocol/ext-apps)
 - [MCP Apps stable specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)

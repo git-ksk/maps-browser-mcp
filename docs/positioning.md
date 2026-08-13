@@ -1,6 +1,6 @@
 # Project positioning
 
-[English](positioning.md) | [日本語](positioning.ja.md)
+[日本語](positioning.ja.md) | [V4 capability inventory](maps-web-capability-inventory.md)
 
 `maps-browser-mcp` is a **constrained, experimental Google Maps browser controller for MCP**. Its purpose is to provide a deliberately bounded, Maps-specific control surface for user-directed interaction with the visible Google Maps web UI.
 
@@ -17,6 +17,12 @@ This preference is a **priority signal, not a hard scope exclusion**. A capabili
 ## Product scope and implementation priority
 
 The long-term product direction is **broad semantic coverage of user-directed operations that are meaningfully available in Google Maps Web**, while preserving the project's constrained Maps-only capability surface and safety boundaries.
+
+For V4, that direction is made concrete as:
+
+> **V4 = broad semantic coverage of major Google Maps Web capabilities available without authentication.**
+
+The canonical V4 implemented/remaining/login-required coverage table is [Google Maps Web Capability Inventory](maps-web-capability-inventory.md). Authentication-required workflows are deferred beyond V4 rather than being mixed into the unauthenticated coverage milestone.
 
 The project does not define its scope by subtracting everything that an official API or Google-managed MCP can also do. Instead, overlap changes implementation priority:
 

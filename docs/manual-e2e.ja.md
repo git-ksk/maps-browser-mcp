@@ -4,14 +4,7 @@
 
 通常CIは意図的にGoogle Maps pageへアクセスしません。Google Maps実UIに依存するreleaseでは、repositoryの**manual-only** GitHub Actions workflow `Live Maps E2E (manual)`、またはcontrolled local environmentからこのchecklistを使って互換性を確認します。
 
-Live workflowは `workflow_dispatch` からのみ起動します。固定・低ボリュームの2 scenarioだけを実行します。
-
-- `Tokyo Station` 周辺のplace / category search
-- `Tokyo Station` → `Yokohama Station` のtransit route
-
-Screenshot、DOM / AX dump、review、cookie、browser profile、Maps result artifactは保存しません。
-
-同じbounded scriptをGitHub-hosted runner上の `host` path、またはrepository Dockerfileからbuildしたimage内の `container` pathで実行できます。`container` はpackaged headless Chromium runtimeと実Google Maps UIの組み合わせを必要時だけ検証するためのもので、通常CIへlive Maps accessを追加するものではありません。
+既存Live workflowは固定・低ボリュームのまま維持します。V4 capabilityごとの確認を広範なcrawlerへ拡張せず、変更したsemantic operationに必要なbounded scenarioだけを実行してください。
 
 このworkflow / checklistをunattended crawlingへ拡張しないでください。各scenarioは通常requestを1件だけ使い、Googleがaccess challengeを表示した場合は停止します。
 
@@ -27,27 +20,7 @@ Screenshot、DOM / AX dump、review、cookie、browser profile、Maps result art
 
 Dockerfile、headless Chromium startup、browser profile path、container filesystem前提、container固有Chrome flagを実質的に変更したrelease前は `container` を選択してください。Routine activityのたびに両方を実行せず、live checkは低ボリュームかつ目的に応じて実行します。
 
-確認内容:
-
-- Official Maps URL navigationがGoogle Maps web surface内に留まる
-- Bounded V3 place readが限定UI dataだけを返し、untrustedとしてmarkする
-- 少なくとも1件のselectable place candidateを検出
-- `index + expectedLabel` で現在の同一place candidateを選択
-- Transit directions requestがbounded route dataを返す
-- 少なくとも1件のselectable route candidateを検出
-- `index + expectedLabel` で現在の同一route candidateを選択
-- Access challenge / non-Maps redirectを回避せずfailする
-
-期待するLive path:
-
-```text
-place search
-  -> bounded place read
-  -> guarded place selection
-  -> transit directions
-  -> bounded route read
-  -> guarded route selection
-```
+固定workflowは、確立済みsearch/read/select path、**V4 selected-place share-link operationをちょうど1回**、確立済みtransit route read/select pathを確認します。Result crawling、screenshot、review harvesting、persistenceへは広げません。
 
 `container` pathはrepository Dockerfileをbuildし、同じbounded scriptをそのimage内で実行します。Chromium sandboxが使えるcontainer設定を使い、`MAPS_ALLOW_UNSANDBOXED_CHROMIUM` は有効化しません。どちらのpathにもartifact upload stepはありません。
 
@@ -67,6 +40,8 @@ npm run smoke:browser
 ```
 
 - 最初は `INTERACTIVE_ASSIST_MODE=false` で起動
+- live checkはlow-frequency / bounded / user-directedなcompatibility確認に限定
+- consent / sign-in / CAPTCHA / challengeをtest目的で意図的に発生させない
 
 ## 1. Search Navigation
 
@@ -88,10 +63,10 @@ npm run smoke:browser
 
 `INTERACTIVE_ASSIST_MODE=false` の状態で:
 
-1. `maps_read_place_summary` または `maps_read_route_summary` をcall
-2. `INTERACTIVE_ASSIST_DISABLED` が返り、page readしないことを確認
+1. `maps_read_place_summary`、`maps_read_route_summary`、または `maps_get_place_share_link` のようなV4 UI-native operationをcall
+2. Rendered UIをread / actする前に `INTERACTIVE_ASSIST_DISABLED` が返ることを確認
 
-## 4. V3 Place Read / Select
+## 4. Place Read / Select
 
 `INTERACTIVE_ASSIST_MODE=true` で再起動します。
 
@@ -105,7 +80,27 @@ npm run smoke:browser
 
 Step 6前にlistが変わった場合、期待動作はbest-effort clickではなく `UI_STATE_CHANGED` です。
 
-## 5. V3 Route Read / Select
+## 5. V4 Selected-Place Share Link
+
+V4 place-share semantic operationを検証するときだけ実行します。
+
+1. Step 4でverified placeを選択した状態から続ける
+2. Current test中だけselected placeのvisible heading / labelを確認し、place datasetとして永続化しない
+3. そのexact active-place identityを `expectedLabel` として `maps_get_place_share_link({ expectedLabel })` をcall
+4. 返却 `placeLabel` がselected placeを引き続き識別することを確認
+5. 返却URLがHTTPSで、`maps.app.goo.gl` share linkまたは `www.google.com/maps...` Maps URLであることを確認
+6. 成功後にShare dialogが開きっぱなしにならないことを確認
+7. Clipboard dump、unrelated page text、cookie、network response、internal Maps endpoint、raw DOM / AX payloadを返さないことを確認
+
+Fail-closed確認:
+
+- 既にopenしているplaceに対して意図的に違う `expectedLabel` を渡す → `UI_STATE_CHANGED`、Shareをactivateしない
+- readとactionの間にactive placeが変化した場合 → `UI_STATE_CHANGED`
+- visible Share targetまたはresult share URLがmissing / ambiguousな場合 → 推測click/linkではなくsemantic error
+
+Sign-in / consent / CAPTCHA / challengeをこのoperationのtest目的で意図的に発生させないでください。自然発生した場合だけ下記Human Intervention確認へ移行します。Handoff完了後はplace workflowをfreshにreissueし、identityを再検証します。旧share actionを自動replayしません。
+
+## 6. Route Read / Select
 
 1. `maps_directions` を1回実行
 2. `maps_read_route_summary`
@@ -113,25 +108,26 @@ Step 6前にlistが変わった場合、期待動作はbest-effort clickでは�
 4. `index + expectedLabel` で1 routeを選択
 5. 意図したrouteが選択されることを確認
 
-## 6. Manual Navigation / Stale-State Guard
+## 7. Manual Navigation / Stale-State Guard
 
 1. MCP経由でMaps searchまたはdirectionsを開始
 2. 専用browserを人間が別Maps surfaceへmanual navigation
-3. 以前のsemantic operationを再実行（例: prior result select / travel mode変更）
+3. 以前のsemantic operationを再実行（例: prior result select / prior place share / prior route travel mode変更）
 
-期待結果: `UI_STATE_CHANGED`。元のsearch / directions actionを再実行するよう要求され、古いsemantic stateでは操作しません。
+期待結果: `UI_STATE_CHANGED`。適切なsemantic workflowを再実行するよう要求され、古いsemantic stateでは操作しません。
 
-## 7. Human Intervention Boundary
+## 8. Human Intervention Boundary
 
-同意、sign-in、CAPTCHA、その他access challengeが表示された場合:
+同意、sign-in、CAPTCHA、その他access challengeが自然発生した場合:
 
 1. MCPが `HUMAN_INTERVENTION_REQUIRED` で停止することを確認
-2. CAPTCHA solving、stealth / fingerprint変更、proxy rotation、internal endpoint callを試みないことを確認
-3. Userが手動解決した場合、古いstateから継続せず元のMaps actionを再実行
+2. CAPTCHA solving、stealth / fingerprint変更、proxy rotation、credential入力、internal endpoint callを試みないことを確認
+3. Human Intervention active中はcleanup click / key / CDP inputもagentが送らないことを確認
+4. Userが手動解決した場合、古いstateから継続・replayせず、意図したMaps operationをfreshにreissueしてtarget identityを再検証
 
 Test目的でaccess challengeを意図的に発生させないでください。Challenge URL / redirectのfail-closed境界はdeterministic repository testで確認し、live confirmationは自然発生時だけ行います。
 
-## 8. Bulk Policy Boundary
+## 9. Bulk Policy Boundary
 
 広範囲の全店舗・全review収集など、明らかなbulk-oriented search requestを送ります。
 
@@ -141,7 +137,7 @@ Test目的でaccess challengeを意図的に発生させないでください。
 
 ## Release Result
 
-記録するのはpass / fail、選択したruntime（`host` / `container`）、確認時のGoogle Maps UI date / localeだけにしてください。
+記録するのはpass / fail、選択したruntime（該当する場合 `host` / `container`）、確認したsemantic operation、確認時のGoogle Maps UI date / localeだけにしてください。
 
 Public Issueへ以下を添付しないでください。
 
@@ -152,6 +148,6 @@ Public Issueへ以下を添付しないでください。
 - personal identifier
 - screenshot / logに含まれる機密情報
 
-Candidate extractionがLive Maps UIと一致しなくなった場合、semantic selectorを更新してこのchecklistが再度passするまで対象toolをExperimental / disabledとして扱います。
+Semantic targetがLive Maps UIと一致しなくなった場合、bounded selector / identity logicを更新してこのchecklistが再度passするまで対象toolをExperimental / disabledとして扱います。
 
-Release全体の手順は [Release Checklist 日本語版](release.ja.md) を参照してください。
+V4 feature statusは [Capability Inventory](maps-web-capability-inventory.ja.md)、release全体の手順は [Release Checklist 日本語版](release.ja.md) を参照してください。

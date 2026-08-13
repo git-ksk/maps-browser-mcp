@@ -11,11 +11,13 @@ Documentation index for `maps-browser-mcp`.
 - [Troubleshooting](troubleshooting.md) — error codes and safe recovery procedures
 - [ChatGPT connection notes](chatgpt.md) — ChatGPT App / Remote MCP boundary, authentication and tool refresh
 - [Usage modes and examples](use-cases.md) — when to use navigation-only vs. bounded interactive assist, with local and remote examples
-- [Roadmap](roadmap.md) — portable MCP Apps / optional UI, including the validated Google Maps Embed directions PoC and remaining portability work
+- [Roadmap](roadmap.md) — V4 Google Maps Web coverage, MCP Apps / optional UI, and remaining portability work
+- [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.md) — canonical unauthenticated Maps Web coverage table, priorities, implementation slices, login-required boundary, and explicit non-goals
 
 ## Design and safety
 
-- [Architecture](architecture.md) — process model, CDP, semantic interaction, bounded V3 reader and HTTP boundary
+- [Architecture](architecture.md) — process model, CDP, semantic interaction, bounded V3/V4 reader/controller and HTTP boundary
+- [Project positioning](positioning.md) — competitive category, Maps Web coverage priority, and official-interface overlap policy
 - [Compliance / Safety](compliance.md) — intended use, non-goals, policy boundaries and live-E2E policy
 - [Security Policy](../SECURITY.md) — exposure boundaries, sensitive information and private vulnerability reporting
 

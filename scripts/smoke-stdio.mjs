@@ -7,6 +7,7 @@ const EXPECTED_TOOLS = [
   "maps_show",
   "maps_streetview",
   "maps_select_result",
+  "maps_get_place_share_link",
   "maps_select_route",
   "maps_set_travel_mode",
   "maps_read_place_summary",

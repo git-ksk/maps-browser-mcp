@@ -1,24 +1,27 @@
 # 利用モードとユースケース
 
-[English](use-cases.md) | [日本語ドキュメント](README.ja.md)
+[English](use-cases.md) | [日本語ドキュメント](README.ja.md) | [V4 capability inventory](maps-web-capability-inventory.ja.md)
 
 `maps-browser-mcp` には、意図的に分けた2つの利用モードがあります。
 
 - **Navigation-only** — MCPはGoogle Maps Webを開く・切り替えるところまで担当し、表示結果は人間が確認する
-- **Interactive Assist** — ユーザーの現在の依頼に必要な範囲で、表示中Maps UIの小さなbounded summaryもMCPが読み取れる
+- **Interactive Assist** — ユーザーの現在の依頼に必要な範囲で、表示中Maps UIの小さなbounded summaryを読み、Maps-specificなbounded semantic UI operationも実行できる
 
 この違いは `INTERACTIVE_ASSIST_MODE` で制御し、デフォルトは `false` です。
 
-この設定は明示的なproduct / safety boundaryです。`false` を「Googleの利用規約上必須」と説明したり、`true` を「Google Maps contentを自由に自動取得してよい許可」と説明したりしないでください。設計上の制約は [Compliance / Safety](compliance.ja.md) を参照してください。
+この設定は明示的なproduct / safety boundaryです。`false` を「Googleの利用規約上必須」と説明したり、`true` を「Google Maps contentを自由に自動取得してよい許可」と説明したりしません。設計上の制約は [Compliance / Safety](compliance.ja.md) を参照してください。
+
+V4ではInteractive Assistを、未ログインGoogle Maps Webの主要capabilityに対する広いsemantic coverageへ拡張します。generic browser primitiveは公開しません。機能別statusは [V4 capability inventory](maps-web-capability-inventory.ja.md) が正本です。
 
 ## どちらを選ぶか
 
 | Deployment / workflow | `INTERACTIVE_ASSIST_MODE=false` | `INTERACTIVE_ASSIST_MODE=true` |
 | --- | --- | --- |
-| Local MCP + 画面が見えるChrome | MCPが遷移し、ユーザー自身がMaps画面を読む用途に向く | Client側でもbounded summaryや候補labelが必要な場合に向く |
-| Remote / headless deployment | Navigationは動くが、通常callerからMaps画面が見えないため用途は限定的 | 表示中のroute / place状態をclientが回答へ使う場合に向く |
+| Local MCP + 画面が見えるChrome | MCPが遷移し、ユーザー自身がMaps画面を読む用途に向く | Client側でもbounded summaryやMaps-specific semantic interactionが必要な場合に向く |
+| Remote / headless deployment | Navigationは動くが、通常callerからMaps画面が見えないため用途は限定的 | 表示中のroute / place状態をclientが回答・安全な操作へ使う場合に向く |
 | URLベースの検索・経路・地図表示・Street View | 利用可能 | 利用可能 |
-| Route / placeのlabelや小さなvisible summaryの読み取り | 利用不可 | V3 read toolで利用可能 |
+| Route / placeのlabelや小さなvisible summaryの読み取り | 利用不可 | bounded read toolで利用可能 |
+| V4 UI-native operation（verified place share link等） | 利用不可 | 実装済みcapabilityで利用可能 |
 | Bulk collection / crawling / dataset harvesting | 非対応 | 非対応 |
 
 ## Navigation-only mode
@@ -35,7 +38,7 @@ HTTPの場合:
 INTERACTIVE_ASSIST_MODE=false npm run start:http
 ```
 
-このモードは、MCPをMaps content readerではなく**Maps navigator**として使う場合に向いています。
+このモードは、MCPをMaps content reader/controllerではなく**Maps navigator**として使う場合に向いています。
 
 ### 例: Localで経路を開く
 
@@ -69,11 +72,13 @@ maps_directions({
 - `maps_streetview`
 - `maps_set_travel_mode`
 
-`maps_select_result` / `maps_select_route` もtool自体は公開されたままですが、V3 summaryなしではcallerが現在の信頼できる `index + expectedLabel` を通常取得できません。Client自身が動的な候補から選ぶ必要がある場合は、readしてからselectするflowを推奨します。
+`maps_select_result` / `maps_select_route` もtool自体は公開されたままですが、fresh bounded summaryなしではcallerが現在の信頼できる `index + expectedLabel` を通常取得できません。Client自身が動的な候補から選ぶ必要がある場合は、readしてからselectするflowを推奨します。
+
+`maps_get_place_share_link` のようにvisible UI stateへ依存するV4 operationはInteractive Assist OFFでは使えません。
 
 ## Interactive Assist mode
 
-Visible-state readingを明示的に有効化します。
+Visible-state reading / semantic UI interactionを明示的に有効化します。
 
 ```bash
 INTERACTIVE_ASSIST_MODE=true npm start
@@ -85,10 +90,14 @@ HTTPの場合:
 INTERACTIVE_ASSIST_MODE=true npm run start:http
 ```
 
-これにより次のtoolが利用可能になります。
+bounded read tool:
 
 - `maps_read_place_summary`
 - `maps_read_route_summary`
+
+V4 UI-native operationは実装されたものから利用でき、最初は:
+
+- `maps_get_place_share_link`
 
 ### 例: 表示中の経路から回答する
 
@@ -117,19 +126,41 @@ maps_directions(...)
 
 `expectedLabel` は重要です。Google Mapsが候補順を動的に変更した場合、runtimeは推測clickせず `UI_STATE_CHANGED` を返します。
 
-## なぜReadingをOpt-inにしているか
+### V4例: 選択済みplaceのshare linkを取得する
+
+ユーザーの依頼:
+
+```text
+東京駅を探して対象を選び、そのGoogle Maps共有リンクを出して。
+```
+
+安全なsemantic flow:
+
+```text
+maps_search({ query: "東京駅" })
+  -> maps_read_place_summary()
+  -> items[{ index, label }] から選ぶ
+  -> maps_select_result({ index, expectedLabel: label })
+  -> maps_get_place_share_link({ expectedLabel: selectedPlaceLabel })
+```
+
+最後のcallはgeneric click / DOM / clipboard toolを公開しません。selected placeがactiveか確認し、visible Share controlを開く直前にexpected place identityを再検証し、verified panel内でShare targetが1件だけであることを要求し、allow-listされたbounded Google Maps share URLだけを返します。active place変更、ambiguous UI、challenge / sign-in割り込み時はfail closedまたは既存Human Interventionへ移行します。
+
+Human Intervention後はsemantic workflowをfreshにreissueし、対象を再検証します。Human完了を旧share actionの自動replay承認とはみなしません。
+
+## なぜReading / Semantic UI InteractionをOpt-inにしているか
 
 Opt-in境界には次の目的があります。
 
-- browser-visible contentの読み取りをdeployment時の明示的な判断にする
+- browser-visible contentの読み取り・操作をdeployment時の明示的な判断にする
 - Navigation-only構成を単純に保つ
-- user-directed navigationからcontent extractionへ意図せずscopeが広がるのを防ぐ
+- user-directed navigationからcontent extractionやgeneric browser automationへ意図せずscopeが広がるのを防ぐ
 - read専用budgetと返却サイズ上限を独立して適用する
 - Remote / headless環境でrender済みMaps UIを消費しているかを構成上明確にする
 
 これは、**Googleがこの環境変数を `false` にすることを要求している、という意味ではありません**。逆に `true` にしても、scraping、crawling、bulk extraction、永続保存、dataset構築がこのprojectの許容use caseになるわけではありません。
 
-有効時もReaderは `MAPS_MAX_AX_NODES`、`MAPS_MAX_READ_CHARS`、`MAPS_MAX_VISIBLE_READS_PER_HOUR` などでboundedです。raw HTML、DOM全体、Accessibility Tree全体、cookie、network payload、レビュー本文は公開しません。
+有効時もReaderは `MAPS_MAX_AX_NODES`、`MAPS_MAX_READ_CHARS`、`MAPS_MAX_VISIBLE_READS_PER_HOUR` などでboundedです。V4 UI-native operationも必要に応じてaction/read policy budgetを消費し、target/result probeをboundedに保ちます。raw HTML、DOM全体、Accessibility Tree全体、cookie、network payload、clipboard dump、レビュー本文は公開しません。
 
 ## Deployment別の考え方
 
@@ -139,20 +170,21 @@ Navigation-onlyだけでも有用です。専用Chrome windowをユーザーが�
 
 ### Remote / Cloud Run / headless
 
-Remote clientから専用browser UIは通常直接見えません。そのためNavigation-onlyでもMaps surfaceを操作する用途には使えますが、renderされたroute / place contentをMCP responseへ変換することはできません。
+Remote clientから専用browser UIは通常直接見えません。そのためNavigation-onlyでもMaps surfaceを操作する用途には使えますが、renderされたroute / place contentをMCP responseへ変換したり、UI-native V4 operationを安全に完結したりはできません。
 
-Remote clientが現在表示中のMaps結果について回答する必要がある場合、Interactive Assistがそのためのboundedな仕組みです。Remote公開には認証、browser profile、deploymentの別の制約もあるため、[ChatGPT 接続ガイド](chatgpt.ja.md)、[Container / headless Linux](container.ja.md)、[Compliance / Safety](compliance.ja.md) も参照してください。
+Remote clientが現在表示中のMaps結果について回答・安全なsemantic interactionを行う必要がある場合、Interactive Assistがそのためのboundedな仕組みです。Remote公開には認証、browser profile、deploymentの別の制約もあるため、[ChatGPT 接続ガイド](chatgpt.ja.md)、[Container / headless Linux](container.ja.md)、[Compliance / Safety](compliance.ja.md) も参照してください。
 
 ## 両モード共通の非ゴール
 
 どちらのモードでも、このprojectを汎用browser automationやMaps extraction serviceとして扱うことは意図していません。特に次は非対応です。
 
+- raw DOM / raw Accessibility Tree / raw CDP MCP tool
+- generic browser / desktop / shell MCP operation
 - bulk scraping / crawling
 - place / route / review dataset harvesting
 - background collection
-- full DOM / full Accessibility Tree extraction
 - review body harvesting
 - Maps内部network trafficのinterception
 - CAPTCHA solving / bot-detection bypass
 
-Applicationのworkflowがsupported Google Maps Platform APIやGoogle-managed Maps MCPで満たせる場合は、その公式structured interfaceを優先してください。
+Maps Web体験そのものが不要で、application workflowがsupported Google Maps Platform APIやGoogle-managed Maps MCPで満たせる場合は、その公式structured interfaceを優先します。公式重複はV4から自動除外する理由ではなくlower priorityとして扱います。
