@@ -11,11 +11,13 @@
 - [Troubleshooting 日本語版](troubleshooting.ja.md) — エラーコード別の原因と安全な復旧手順
 - [ChatGPT 接続ガイド 日本語版](chatgpt.ja.md) — ChatGPT App / Remote MCP接続、認証境界、Tool再スキャン
 - [利用モードとユースケース](use-cases.ja.md) — Navigation-only / Interactive Assistの使い分け、Local / Remoteでの実例
-- [ロードマップ](roadmap.ja.md) — portableなMCP Apps / Optional UI、検証成功済みGoogle Maps Embed directions PoC、残るportability作業
+- [ロードマップ](roadmap.ja.md) — V4 Google Maps Web coverage、MCP Apps / Optional UI、残るportability作業
+- [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md) — 未ログインMaps Webのcanonical coverage表、優先順位、V4 slice、login-required境界、明示的non-goal
 
 ## 設計・安全性
 
-- [Architecture 日本語版](architecture.ja.md) — プロセスモデル、CDP、Semantic Interaction、V3 Reader、HTTP境界
+- [Architecture 日本語版](architecture.ja.md) — プロセスモデル、CDP、Semantic Interaction、bounded V3/V4 reader/controller、HTTP境界
+- [Project positioning 日本語版](positioning.ja.md) — 競合category、Maps Web coverage優先順位、公式interface重複の扱い
 - [Compliance / Safety 日本語版](compliance.ja.md) — Google Maps利用時の設計上の境界、非ゴール、Policy Engine、Live E2E方針
 - [Security Policy 日本語版](../SECURITY.ja.md) — 安全な公開方法、機密情報、脆弱性報告
 
