@@ -1,6 +1,6 @@
 # Project positioning
 
-[English](positioning.md) | [日本語](positioning.ja.md)
+[English](positioning.md) | [日本語](positioning.ja.md) | [V4 capability inventory](maps-web-capability-inventory.ja.md)
 
 `maps-browser-mcp` は、**制約を強く設けたexperimentalなGoogle Maps browser controller for MCP** です。ユーザーが明示的に依頼した範囲で、表示中のGoogle Maps Web UIを操作するための、boundedでMaps-specificなcontrol surfaceを提供します。
 
@@ -17,6 +17,14 @@ browser automationを使うのは、実際にuser-visibleなMaps Web surfaceを�
 ## Product scopeと実装優先度
 
 長期的なproduct directionは、projectのMaps-onlyなcapability surfaceとsafety boundaryを維持しながら、**Google Maps Webでユーザーが意味のある形で実行できる主要operationを広くsemanticにカバーすること**です。
+
+V4ではこれを次のmilestoneとして明確化します。
+
+> **V4 = broad semantic coverage of major Google Maps Web capabilities available without authentication**
+>
+> 認証なしで利用できる主要なGoogle Maps Web capabilityを、Maps-specificなsemantic MCP operationとして広くカバーする。
+
+V4のimplemented / remaining / login-required coverage正本は [Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md) です。認証必須workflowは未ログインcoverage milestoneへ混ぜず、V4より後へ送ります。
 
 scopeは「公式API / Google-managed MCPでもできることを全部引いた残り」として定義しません。公式機能との重複は、scopeからの除外ではなく実装優先度に反映します。
 
