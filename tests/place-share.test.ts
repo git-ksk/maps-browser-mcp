@@ -28,6 +28,10 @@ test("place share open probe revalidates the active place identity", () => {
     isRuntimeCode("UI_STATE_CHANGED")
   );
   assert.throws(
+    () => parsePlaceShareOpenProbe({ ok: false, reason: "changed" }, "Tokyo Station"),
+    isRuntimeCode("UI_STATE_CHANGED")
+  );
+  assert.throws(
     () => parsePlaceShareOpenProbe({ ok: false, reason: "ambiguous_place" }, "Tokyo Station"),
     isRuntimeCode("UI_STATE_CHANGED")
   );
@@ -62,14 +66,17 @@ test("share URLs are restricted to HTTPS Google Maps share origins", () => {
   }
 });
 
-test("share link probe fails closed on ambiguous links", () => {
+test("share link probe fails closed on stale place or ambiguous dialog state", () => {
   assert.equal(
     parsePlaceShareLinkProbe({ ok: true, url: "https://maps.app.goo.gl/AbCdEf123" }),
     "https://maps.app.goo.gl/AbCdEf123"
   );
   assert.equal(parsePlaceShareLinkProbe({ ok: false, reason: "pending" }), undefined);
-  assert.throws(
-    () => parsePlaceShareLinkProbe({ ok: false, reason: "ambiguous" }),
-    isRuntimeCode("UI_STATE_CHANGED")
-  );
+
+  for (const reason of ["changed", "ambiguous_place", "ambiguous_dialog", "ambiguous"]) {
+    assert.throws(
+      () => parsePlaceShareLinkProbe({ ok: false, reason }),
+      isRuntimeCode("UI_STATE_CHANGED")
+    );
+  }
 });
