@@ -42,13 +42,13 @@ test("nearby open probe revalidates active place identity", () => {
   );
 });
 
-test("nearby input probe waits for a focused generic fallback and fails closed on ambiguity", () => {
+test("nearby input probe waits for a verified fallback and fails closed on ambiguity", () => {
   assert.deepEqual(
-    parseNearbyInputProbe({ ok: true, inputLabel: "Search Google Maps" }),
-    { inputLabel: "Search Google Maps" }
+    parseNearbyInputProbe({ ok: true, inputLabel: "combobox" }),
+    { inputLabel: "combobox" }
   );
   assert.equal(parseNearbyInputProbe({ ok: false, reason: "missing" }), undefined);
-  assert.equal(parseNearbyInputProbe({ ok: false, reason: "generic_not_focused" }), undefined);
+  assert.equal(parseNearbyInputProbe({ ok: false, reason: "fallback_not_ready" }), undefined);
   assert.throws(
     () => parseNearbyInputProbe({ ok: false, reason: "ambiguous" }),
     isRuntimeCode("UI_STATE_CHANGED")
