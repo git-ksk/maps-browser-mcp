@@ -26,6 +26,7 @@ jobs:
           npm test 2>&1 | tee /tmp/test.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            echo "::error title=V4 photo test failure::$(tail -n 80 /tmp/test.log | tr '\n' ' ' | cut -c1-3000)"
+            failure="$(grep -n -B 12 -A 32 '^not ok ' /tmp/test.log | head -n 48 | tr '\n' ' ' | cut -c1-5000)"
+            echo "::error title=V4 photo test failure::$failure"
           fi
           exit "$status"
