@@ -1,0 +1,37 @@
+name: V4 Photo Typecheck Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    if: ${{ github.head_ref == 'feat/v4-place-photos' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Annotated typecheck
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck 2>&1 | tee /tmp/typecheck.log
+          status=${PIPESTATUS[0]}
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^([^\(]+)\(([0-9]+),([0-9]+)\):\ error\ (TS[0-9]+):\ (.*)$ ]]; then
+              file="${BASH_REMATCH[1]}"
+              lineno="${BASH_REMATCH[2]}"
+              code="${BASH_REMATCH[4]}"
+              message="${BASH_REMATCH[5]}"
+              echo "::error file=$file,line=$lineno::$code: $message"
+            fi
+          done < /tmp/typecheck.log
+          exit "$status"
