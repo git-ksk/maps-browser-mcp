@@ -28,6 +28,40 @@ function boundedSummary(summary, maxChars) {
   assert(summary.items.length + summary.lines.length > 0, `No bounded ${summary.kind} UI content was detected`);
 }
 
+async function boundedNearbyDiagnostic(runtime) {
+  const client = await runtime.getClient();
+  const evaluated = await client.Runtime.evaluate({
+    expression: `(() => {
+      const visible = (el) => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+      };
+      const meta = (el) => el ? ({
+        tag: String(el.tagName || '').slice(0, 24),
+        role: String(el.getAttribute?.('role') || '').slice(0, 48),
+        ariaLabel: String(el.getAttribute?.('aria-label') || '').slice(0, 120),
+        placeholder: String(el.getAttribute?.('placeholder') || '').slice(0, 120),
+        type: String(el.getAttribute?.('type') || '').slice(0, 32),
+        focused: document.activeElement === el,
+        valueLength: typeof el.value === 'string' ? Math.min(el.value.length, 500) : 0
+      }) : null;
+      const inputs = Array.from(document.querySelectorAll('input, textarea, [role="searchbox"], [role="combobox"], [role="textbox"]'))
+        .filter(visible)
+        .slice(0, 8)
+        .map(meta);
+      return {
+        pathname: location.pathname.slice(0, 240),
+        activeElement: meta(document.activeElement),
+        inputs
+      };
+    })()`,
+    returnByValue: true,
+    awaitPromise: true
+  });
+  return evaluated.result.value;
+}
+
 const profileDir = await fsp.mkdtemp(path.join(os.tmpdir(), "maps-browser-mcp-live-"));
 const chrome = new ChromeProcess({ profileDir, headless: true });
 const policy = new PolicyEngine({
@@ -75,7 +109,13 @@ try {
   policy.consumeAction();
   policy.assertSearchQuery(nearbyQuery);
   policy.consumeVisibleRead();
-  const nearby = await semantic.searchNearby(selectedPlace, nearbyQuery);
+  let nearby;
+  try {
+    nearby = await semantic.searchNearby(selectedPlace, nearbyQuery);
+  } catch (error) {
+    console.error("Bounded nearby input diagnostic:", JSON.stringify(await boundedNearbyDiagnostic(runtime)));
+    throw error;
+  }
   assert(nearby.source === "google_maps_nearby_search", "Unexpected nearby-search result source");
   assert(nearby.fromPlaceLabel.length > 0, "Nearby search lost the verified source-place label");
   assert(nearby.query === nearbyQuery, "Nearby search did not preserve the requested query");
