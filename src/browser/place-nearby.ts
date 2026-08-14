@@ -10,6 +10,14 @@ const NEARBY_LABELS = [
   "周辺を検索",
   "近くを検索"
 ] as const;
+const MAPS_SEARCH_LABELS = [
+  "search google maps",
+  "google maps search",
+  "google マップを検索する",
+  "googleマップを検索する",
+  "google マップを検索",
+  "googleマップを検索"
+] as const;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,10 +88,10 @@ export function parseNearbyInputProbe(value: unknown): { inputLabel: string } | 
   if (probe?.reason === "ambiguous") {
     throw new BrowserRuntimeError(
       "UI_STATE_CHANGED",
-      "Google Maps exposed more than one nearby-mode search input; refusing to guess"
+      "Google Maps exposed more than one plausible nearby-search input; refusing to guess"
     );
   }
-  if (probe?.reason === "missing") return undefined;
+  if (probe?.reason === "missing" || probe?.reason === "generic_not_focused") return undefined;
   throw new BrowserRuntimeError("UI_STATE_CHANGED", "Google Maps nearby-search input state changed unexpectedly");
 }
 
@@ -147,7 +155,8 @@ function openNearbyExpression(expectedLabel: string): string {
 }
 
 function nearbyInputExpression(query?: string): string {
-  const allowedLabels = JSON.stringify(NEARBY_LABELS);
+  const nearbyLabels = JSON.stringify(NEARBY_LABELS);
+  const mapsSearchLabels = JSON.stringify(MAPS_SEARCH_LABELS);
   const expected = query === undefined ? "null" : JSON.stringify(normalizeLabel(query));
   return `(() => {
     const visible = (el) => {
@@ -157,24 +166,39 @@ function nearbyInputExpression(query?: string): string {
     };
     const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLocaleLowerCase();
     const labelOf = (el) => el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
-    const allowed = new Set(${allowedLabels});
+    const nearby = new Set(${nearbyLabels});
+    const mapsSearch = new Set(${mapsSearchLabels});
     const expected = ${expected};
-    const inputs = Array.from(document.querySelectorAll('input, textarea, [role="searchbox"], [role="combobox"], [role="textbox"]'))
+    const all = Array.from(document.querySelectorAll('input, textarea, [role="searchbox"], [role="combobox"], [role="textbox"]'))
       .filter(visible)
-      .slice(0, 24)
-      .filter((el) => allowed.has(normalize(labelOf(el))));
-    if (inputs.length === 0) return { ok: false, reason: expected === null ? 'missing' : 'pending' };
-    if (inputs.length !== 1) return { ok: false, reason: 'ambiguous' };
-    const target = inputs[0];
-    if (expected !== null) {
-      const value = String(target.value || target.textContent || '').slice(0, 500);
-      return normalize(value) === expected
-        ? { ok: true, query: value }
-        : { ok: false, reason: 'pending' };
+      .slice(0, 24);
+    const nearbyInputs = all.filter((el) => nearby.has(normalize(labelOf(el))));
+    const mapsInputs = all.filter((el) => mapsSearch.has(normalize(labelOf(el))));
+
+    if (expected === null) {
+      if (nearbyInputs.length > 1) return { ok: false, reason: 'ambiguous' };
+      if (nearbyInputs.length === 1) {
+        const target = nearbyInputs[0];
+        target.focus();
+        if (typeof target.select === 'function') target.select();
+        return { ok: true, inputLabel: String(labelOf(target)).slice(0, 160) };
+      }
+
+      if (mapsInputs.length === 0) return { ok: false, reason: 'missing' };
+      if (mapsInputs.length !== 1) return { ok: false, reason: 'ambiguous' };
+      const target = mapsInputs[0];
+      if (document.activeElement !== target) return { ok: false, reason: 'generic_not_focused' };
+      if (typeof target.select === 'function') target.select();
+      return { ok: true, inputLabel: String(labelOf(target)).slice(0, 160) };
     }
-    target.focus();
-    if (typeof target.select === 'function') target.select();
-    return { ok: true, inputLabel: String(labelOf(target)).slice(0, 160) };
+
+    const candidates = Array.from(new Set([...nearbyInputs, ...mapsInputs]));
+    if (candidates.length === 0) return { ok: false, reason: 'pending' };
+    if (candidates.length !== 1) return { ok: false, reason: 'ambiguous' };
+    const value = String(candidates[0].value || candidates[0].textContent || '').slice(0, 500);
+    return normalize(value) === expected
+      ? { ok: true, query: value }
+      : { ok: false, reason: 'pending' };
   })()`;
 }
 
@@ -236,7 +260,7 @@ export async function searchNearbyFromVerifiedPlace(
   if (!inputReady) {
     throw new BrowserRuntimeError(
       "UI_ELEMENT_NOT_FOUND",
-      "Google Maps did not expose one explicit nearby-mode search input for the verified active place"
+      "Google Maps did not expose one verified nearby-search input after the active-place Nearby action"
     );
   }
 
