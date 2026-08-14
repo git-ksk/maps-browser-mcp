@@ -114,7 +114,7 @@ maps_search(...)
   -> maps_get_place_share_link({ expectedLabel: selectedPlaceLabel })
 ```
 
-`maps_get_place_share_link` revalidates the active place immediately before activating the visible Share control and fails closed if the place/share target changed or became ambiguous.
+`maps_get_place_share_link` revalidates the active place immediately before activating the visible Share control and fails closed if the place/share target changed or became ambiguous. The same verified-place model is used by `maps_search_nearby`, `maps_open_place_photos`, and `maps_select_place_tab`. Place-tab selection currently exposes only live-reobserved `overview` / `about` semantics; Reviews remains observation-gated.
 
 For routes:
 
@@ -140,6 +140,9 @@ maps_directions(...)
 
 - `maps_select_result`
 - `maps_get_place_share_link` — V4, Interactive Assist required
+- `maps_search_nearby` — V4, Interactive Assist required
+- `maps_open_place_photos` — V4, Interactive Assist required
+- `maps_select_place_tab` — V4, `overview|about` only, Interactive Assist required
 - `maps_select_route`
 - `maps_set_travel_mode`
 

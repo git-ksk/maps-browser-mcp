@@ -39,6 +39,8 @@ The session verified the following real UI surfaces before the dedicated browser
 
 Google Maps Web is dynamic and may vary by locale, viewport, experiment, geography, and account state. A capability marked below reflects a semantic product decision plus the observed UI, not a promise that the same label or DOM shape is permanently stable.
 
+A bounded 2026-08-15 re-observation across JA/EN place panels and standard/wide viewports found place-bound Overview/About tabs but did not reproduce a visible Reviews tab. The tab implementation below is intentionally limited to those re-observed shapes.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -55,7 +57,7 @@ Google Maps Web is dynamic and may vary by locale, viewport, experiment, geograp
 | Read bounded place summary | implemented | Existing place summary covers visible place text without full-detail harvesting. |
 | Open place photos | implemented | `maps_open_place_photos(expectedLabel)` revalidates the active place, activates exactly one allow-listed photo entry control, verifies the Maps photo viewer and expected place heading, then invalidates the old place semantic state. No image harvesting. Interactive Assist is required. |
 | Photo category navigation | V4 high priority | Navigate only bounded, explicitly observed viewer categories with identity/postcondition checks; no bulk image harvesting. |
-| Place Overview / Reviews / About tabs | V4 normal priority | Tab selection may be exposed; review-body harvesting remains out of scope. |
+| Place Overview / Reviews / About tabs | partial / observation-gated | `maps_select_place_tab(expectedLabel, tab)` implements only the live-reobserved `overview` / `about` enum with exact place-bound tab identity and `aria-selected` postconditions. Reviews was not visible in the 2026-08-15 JA/EN re-observation, so no Reviews selector/schema is exposed. Review-body harvesting remains out of scope. |
 | Place → directions | V4 normal priority | Existing `maps_directions` covers the workflow structurally; add current-place convenience only if it preserves identity. |
 | Place → nearby search | implemented | `maps_search_nearby(expectedLabel, query)` revalidates the active place and activates exactly one allow-listed Nearby control. It then accepts only one bounded search-input state: a Nearby-labeled input or the uniquely focused empty Maps combobox produced by that action. The transition is accepted only when the requested query and a Maps search-result path are both verified. Interactive Assist is required. |
 | Place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` revalidates the active place immediately before one visible Share action, then returns only a bounded allow-listed Google Maps share URL. Interactive Assist is required. |
@@ -114,7 +116,8 @@ Priority order:
 2. nearby search — implemented as `maps_search_nearby(expectedLabel, query)` from the verified active place,
 3. place photo opener — implemented as `maps_open_place_photos(expectedLabel)` with verified viewer transition and stale place-state invalidation,
 4. photo category navigation — remaining; design from bounded observed viewer controls only,
-5. bounded place tabs/opening-hours interactions.
+5. place tabs — `maps_select_place_tab(expectedLabel, tab)` implements only `overview|about`; Reviews remains observation-gated because the current control was not re-observed,
+6. opening hours — remaining; implement only after bounded live observation establishes exact target and postconditions.
 
 ### V4-C — search and map viewport
 

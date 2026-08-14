@@ -39,6 +39,8 @@ Google Maps Platform / Google-managed Maps MCP と重なること自体は scope
 
 Google Maps Web は locale、viewport、experiment、地域、account state などで変化します。以下の表は semantic product decision と観測結果を記録するものであり、同じ label / DOM shape が恒久的に存在することを前提にしません。
 
+2026-08-15にJA/ENのplace panelとstandard/wide viewportでbounded再観測した結果、place-boundな概要/OverviewとAbout tabは確認できましたが、visibleなReviews tabは再現しませんでした。以下のtab実装は、その再観測済みshapeだけに意図的に限定しています。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -55,7 +57,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | place summary を bounded に読む | implemented | full-detail harvesting をせず visible place text を扱う。 |
 | place 写真を開く | implemented | `maps_open_place_photos(expectedLabel)` がactive placeを再検証し、allow-list済みphoto entry controlをちょうど1つだけ操作する。Maps photo viewerとexpected place headingを検証後、古いplace semantic stateを無効化する。image harvestingは行わない。Interactive Assist必須。 |
 | photo category navigation | V4 high priority | viewer上で実際にbounded観測したcategoryだけをidentity/postcondition付きで移動する。bulk image harvestingは行わない。 |
-| place の概要 / クチコミ / About tab | V4 normal priority | tab selection は候補。review body harvesting は引き続き out of scope。 |
+| place の概要 / クチコミ / About tab | partial / observation-gated | `maps_select_place_tab(expectedLabel, tab)` はlive再観測できた `overview` / `about` enumのみ実装し、place-bound tab identityと `aria-selected` postconditionを検証する。2026-08-15のJA/EN再観測ではReviews tabがvisibleでなかったため、Reviews selector/schemaは公開しない。review body harvestingは引き続きout of scope。 |
 | place → directions | V4 normal priority | `maps_directions` でworkflowは構造的にカバー済み。current-place convenience は identity を保てる場合のみ追加。 |
 | place → 付近を検索 | implemented | `maps_search_nearby(expectedLabel, query)` がactive placeを再検証し、allow-list済みのNearby controlを1つだけ操作する。その後はNearby label付きinput、またはその操作で生成された一意のfocused/empty Maps comboboxだけを受理し、requested queryとMaps search-result pathの両方を検証できた場合だけ遷移を受理する。Interactive Assist必須。 |
 | place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` がvisible Shareを1回操作する直前にactive placeを再検証し、boundedなallow-list済みGoogle Maps share URLだけを返す。Interactive Assist必須。 |
@@ -114,7 +116,8 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 2. nearby search — verified active placeからの `maps_search_nearby(expectedLabel, query)` として実装済み
 3. place photo opener — verified viewer transitionとstale place-state invalidation付きの `maps_open_place_photos(expectedLabel)` として実装済み
 4. photo category navigation — remaining。viewer上でbounded観測したcontrolからのみ設計
-5. bounded place tab / opening-hours interaction
+5. place tab — `maps_select_place_tab(expectedLabel, tab)` で `overview|about` のみ実装。Reviewsはcurrent controlを再観測できていないためobservation-gated
+6. opening hours — remaining。bounded live observationでexact target/postconditionが成立した場合だけ実装
 
 ### V4-C — search / map viewport
 

@@ -183,6 +183,17 @@ export class MapsBrowserRuntime {
     return this.handoff.getResourceEpoch();
   }
 
+  markSemanticMutation(): void {
+    this.assertAgentAuthority();
+    this.handoff.advanceResourceEpoch();
+  }
+
+  invalidateSemanticContext(): void {
+    this.assertAgentAuthority();
+    if (this.viewState === "blank" && this.lastAction === undefined) return;
+    this.invalidateSemanticState();
+  }
+
   getActiveIntervention(): MapsIntervention | undefined {
     return this.handoff.getActive();
   }

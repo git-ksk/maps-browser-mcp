@@ -90,7 +90,16 @@ Fail-closed probes:
 
 Do **not** intentionally trigger sign-in, consent, CAPTCHA, or another challenge to test this operation. If one occurs naturally, stop and use the Human Intervention checks below. After handoff completion, reissue the place workflow and revalidate identity; do not automatically replay the old share action.
 
-## 6. Route read/select
+## 6. V4 selected-place tabs
+
+Run this only from a freshly verified active place with Interactive Assist enabled.
+
+1. Call `maps_select_place_tab({ expectedLabel, tab: "about" })`, then `maps_select_place_tab({ expectedLabel, tab: "overview" })`.
+2. Confirm each successful state-changing selection verifies the requested tab as selected, preserves the same place identity, and advances the resource epoch. An already-selected tab must be idempotent.
+3. Do not test a Reviews enum: it is intentionally absent until a current visible Reviews tab is re-observed.
+4. Wrong identity, missing/duplicate controls, unexpected navigation, or invalid postconditions must fail closed. After any click whose postcondition cannot be verified, prior semantic state must not remain usable.
+
+## 7. Route read/select
 
 1. Call one `maps_directions`.
 2. Call `maps_read_route_summary`.
@@ -98,7 +107,7 @@ Do **not** intentionally trigger sign-in, consent, CAPTCHA, or another challenge
 4. Select one returned route with `index` + `expectedLabel`.
 5. Confirm the intended route is selected.
 
-## 7. Manual navigation / stale-state guard
+## 8. Manual navigation / stale-state guard
 
 1. Start a Maps search or directions request through MCP.
 2. Manually navigate the dedicated browser to a different Maps surface.
@@ -106,7 +115,7 @@ Do **not** intentionally trigger sign-in, consent, CAPTCHA, or another challenge
 
 Expected: `UI_STATE_CHANGED` and a requirement to rerun the appropriate semantic workflow. The MCP must not act on stale semantic state.
 
-## 8. Human-intervention boundary
+## 9. Human-intervention boundary
 
 If a consent, sign-in, CAPTCHA, or other access challenge appears naturally:
 
@@ -117,7 +126,7 @@ If a consent, sign-in, CAPTCHA, or other access challenge appears naturally:
 
 Do not intentionally trigger access challenges for testing. Deterministic repository tests cover the fail-closed challenge URL/redirect boundary; live confirmation is opportunistic when a challenge naturally appears.
 
-## 9. Bulk-policy boundary
+## 10. Bulk-policy boundary
 
 Send a clearly bulk-oriented search request such as asking to collect every store/review in a large area.
 

@@ -3,6 +3,7 @@ import { MapsUrlCompiler } from "../maps/url-compiler.js";
 import { searchNearbyFromVerifiedPlace, type NearbySearchResult } from "./place-nearby.js";
 import { openVerifiedPlacePhotoSurface, type PlacePhotoSurfaceResult } from "./place-photos.js";
 import { getVerifiedPlaceShareLink, type PlaceShareLinkResult } from "./place-share.js";
+import { selectVerifiedPlaceTab, type PlaceTab, type PlaceTabSelectionResult } from "./place-tabs.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 
 export class SemanticController {
@@ -35,6 +36,10 @@ export class SemanticController {
 
   async openPlacePhotos(expectedLabel: string): Promise<PlacePhotoSurfaceResult> {
     return openVerifiedPlacePhotoSurface(this.runtime, expectedLabel);
+  }
+
+  async selectPlaceTab(expectedLabel: string, tab: PlaceTab): Promise<PlaceTabSelectionResult> {
+    return selectVerifiedPlaceTab(this.runtime, expectedLabel, tab);
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {
