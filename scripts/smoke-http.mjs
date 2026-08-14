@@ -102,7 +102,6 @@ child.stderr.on("data", (chunk) => {
 try {
   await waitForHealth(baseUrl, () => stderr);
 
-  // Legacy 2025-era path: initialize handshake.
   const initialized = await postMcp(baseUrl, {
     jsonrpc: "2.0",
     id: 1,
@@ -117,8 +116,6 @@ try {
     throw new Error(`Unexpected initialize response: ${JSON.stringify(initialized)}`);
   }
 
-  // Modern 2026-07-28 path: server/discover + per-request _meta envelope and
-  // SEP-2243 standard HTTP method/name mirroring.
   const discovered = await postMcp(baseUrl, {
     jsonrpc: "2.0",
     id: "discover-1",
@@ -142,18 +139,16 @@ try {
       : []
   );
   if (
-    toolNames.size !== 11 ||
+    toolNames.size !== 12 ||
     !toolNames.has("maps_search") ||
     !toolNames.has("maps_get_place_share_link") ||
     !toolNames.has("maps_search_nearby") ||
+    !toolNames.has("maps_open_place_photos") ||
     !toolNames.has("maps_read_route_summary")
   ) {
     throw new Error(`Unexpected modern tools/list response: ${JSON.stringify(modernTools)}`);
   }
 
-  // Exercise a modern tools/call without touching Chrome. Safe mode is disabled,
-  // so the read tool must return a normal tool execution error. This validates the
-  // required Mcp-Name header/body match in addition to Mcp-Method.
   const modernToolCall = await postMcp(baseUrl, {
     jsonrpc: "2.0",
     id: "tool-modern-1",
@@ -168,7 +163,6 @@ try {
     throw new Error(`Expected safe-mode tool execution error: ${JSON.stringify(modernToolCall)}`);
   }
 
-  // Modern requests missing a required standardized header must be rejected.
   const missingMethodHeader = await fetch(`${baseUrl}/mcp`, {
     method: "POST",
     headers: {
