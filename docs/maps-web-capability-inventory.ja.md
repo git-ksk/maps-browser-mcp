@@ -43,6 +43,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 別の2026-08-15 V4-C bounded再観測では、search resultの `role=main` 外にvisibleな価格/Price、評価/Rating、時間/Hours、すべてのフィルタ/All filtersと、明示的な「地図の移動後に結果を更新」checkboxを確認しました。RatingがJA/ENとも最小かつ安定したsliceで、exact `評価` / `Rating` buttonからlabelled menuが開き、`2.0`〜`4.5` の固定 `menuitemradio` が見えます。Bounded再観測ではselected triggerが `2.0+`、`4.0+`、`4.5+` のようなnumeric chipへ変わることも確認できたため、実装はそのselected-chip stateとmenu closedをpostconditionにします。PriceとAll filtersは別surface、Hoursは曜日×時刻の大きいdialogなので引き続きobservation/design-gatedです。
 
+2026-08-15のsearch-this-area bounded再観測では、専用Chrome profileのJA UIと明示的な `--lang=en-US` UIを使い、visible search queryを維持し、「地図の移動後に結果を更新 / Update results when map moves」をoffのまま手動panしました。map center/pathは変化しsearch identityも維持されましたが、どちらのUIでもone-shotの `このエリアを検索 / Search this area` controlはvisibleになりませんでした。残ったのはupdate-after-move checkboxだけです。このcheckboxは自動更新behaviorを変える設定であり、要求しているexplicit semantic actionの代替にはしません。したがって `maps_search_this_area` はselector/schemaを作らずobservation-gatedのままです。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -52,7 +54,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | visible search result を選択 | implemented | `maps_select_result(index, expectedLabel)` が identity を再検証し、並び替え時は fail closed。 |
 | search autocomplete / suggestion 選択 | V4 high priority | suggestion を bounded に read/select する Maps-specific semantics を追加。raw combobox/DOM は公開しない。 |
 | search result filter（価格/評価/時間/全フィルタ） | partial / Rating implemented | `maps_set_search_rating(expectedQuery, rating)` でlive再観測済みRating menuだけを実装し、`2.0`〜`4.5` のhalf-step固定optionに限定する。各action前にexact visible queryを再検証し、選択後はexact requested numeric rating chipとRating menu closedをpostcondition確認する。価格/時間/全フィルタはobservation/design-gatedのままでgeneric filter string APIは公開しない。 |
-| このエリアを検索 / 地図移動後に更新 | V4 high priority | query identity を維持し、visible area に対する明示的 search action として実装。 |
+| このエリアを検索 / 地図移動後に更新 | observation-gated | 2026-08-15のJA / explicit en-US manual-pan再観測ではone-shotの `このエリアを検索 / Search this area` controlを確認できなかった。visibleな「地図の移動後に結果を更新 / Update results when map moves」checkboxは自動更新設定でありexplicit semantic actionの代替にしない。one-shot controlを観測できるまで `maps_search_this_area` selector/schemaは公開しない。 |
 | 初期画面カテゴリ探索（レストラン/ホテル等） | V4 normal priority | semantic category search は有用だが通常 search と重なる。 |
 | search result list の共有 | V4 high priority | visible search state を再検証して Maps-generated share URL を返す。 |
 | result から place を開く | implemented | `maps_select_result` が verified search state から place state へ遷移。 |
@@ -126,7 +128,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 優先順:
 
 1. result filter — Ratingは `maps_set_search_rating(expectedQuery, rating)` として実装。価格/時間/全フィルタはobservation/design-gated
-2. search-this-area / update-after-move
+2. search-this-area / update-after-move — JA/en-US manual pan後もexplicit one-shot controlを再観測できず。auto-update checkboxを代替せずobservation-gated
 3. permission-safe current-location action
 4. semantic layer toggle
 5. `maps_show` 以上の価値がある bounded viewport movement
