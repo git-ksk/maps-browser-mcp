@@ -56,7 +56,7 @@ Google Maps Web is dynamic and may vary by locale, viewport, experiment, geograp
 | Place photos / photo categories | V4 high priority | Open and navigate bounded photo surfaces semantically; no bulk image harvesting. |
 | Place Overview / Reviews / About tabs | V4 normal priority | Tab selection may be exposed; review-body harvesting remains out of scope. |
 | Place → directions | V4 normal priority | Existing `maps_directions` covers the workflow structurally; add current-place convenience only if it preserves identity. |
-| Place → nearby search | V4 high priority | Browser-native place-context workflow; revalidate the active place before applying the nearby query. |
+| Place → nearby search | implemented | `maps_search_nearby(expectedLabel, query)` revalidates the active place and activates exactly one allow-listed Nearby control. It then accepts only one bounded search-input state: a Nearby-labeled input or the uniquely focused empty Maps combobox produced by that action. The transition is accepted only when the requested query and a Maps search-result path are both verified. Interactive Assist is required. |
 | Place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` revalidates the active place immediately before one visible Share action, then returns only a bounded allow-listed Google Maps share URL. Interactive Assist is required. |
 | Expand opening hours | V4 normal priority | Bounded visible-place interaction; do not build persistent place datasets. |
 | Copy/open website, phone, address, Plus Code | lower priority / official overlap | Useful panel actions, but most data value overlaps structured place interfaces. |
@@ -110,7 +110,7 @@ V4 should be delivered in small reviewable groups rather than as one broad DOM-a
 Priority order:
 
 1. place share link — implemented as `maps_get_place_share_link(expectedLabel)`,
-2. nearby search from the verified active place,
+2. nearby search — implemented as `maps_search_nearby(expectedLabel, query)` from the verified active place,
 3. photo surface/category navigation,
 4. bounded place tabs/opening-hours interactions.
 

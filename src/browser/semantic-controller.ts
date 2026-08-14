@@ -1,5 +1,6 @@
 import type { TravelMode } from "../types.js";
 import { MapsUrlCompiler } from "../maps/url-compiler.js";
+import { searchNearbyFromVerifiedPlace, type NearbySearchResult } from "./place-nearby.js";
 import { getVerifiedPlaceShareLink, type PlaceShareLinkResult } from "./place-share.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 
@@ -25,6 +26,10 @@ export class SemanticController {
 
   async getPlaceShareLink(expectedLabel: string): Promise<PlaceShareLinkResult> {
     return getVerifiedPlaceShareLink(this.runtime, expectedLabel);
+  }
+
+  async searchNearby(expectedLabel: string, query: string): Promise<NearbySearchResult> {
+    return searchNearbyFromVerifiedPlace(this.runtime, expectedLabel, query);
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {
