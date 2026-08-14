@@ -91,7 +91,7 @@ export function parseNearbyInputProbe(value: unknown): { inputLabel: string } | 
       "Google Maps exposed more than one plausible nearby-search input; refusing to guess"
     );
   }
-  if (probe?.reason === "missing" || probe?.reason === "generic_not_focused") return undefined;
+  if (probe?.reason === "missing" || probe?.reason === "fallback_not_ready") return undefined;
   throw new BrowserRuntimeError("UI_STATE_CHANGED", "Google Maps nearby-search input state changed unexpectedly");
 }
 
@@ -174,25 +174,43 @@ function nearbyInputExpression(query?: string): string {
       .slice(0, 24);
     const nearbyInputs = all.filter((el) => nearby.has(normalize(labelOf(el))));
     const mapsInputs = all.filter((el) => mapsSearch.has(normalize(labelOf(el))));
+    const unlabeledComboboxes = all.filter((el) =>
+      el.tagName === 'INPUT' &&
+      el.getAttribute('role') === 'combobox' &&
+      normalize(labelOf(el)) === ''
+    );
 
     if (expected === null) {
-      if (nearbyInputs.length > 1) return { ok: false, reason: 'ambiguous' };
-      if (nearbyInputs.length === 1) {
-        const target = nearbyInputs[0];
-        target.focus();
-        if (typeof target.select === 'function') target.select();
-        return { ok: true, inputLabel: String(labelOf(target)).slice(0, 160) };
+      if (nearbyInputs.length > 1 || mapsInputs.length > 1 || unlabeledComboboxes.length > 1) {
+        return { ok: false, reason: 'ambiguous' };
       }
 
-      if (mapsInputs.length === 0) return { ok: false, reason: 'missing' };
-      if (mapsInputs.length !== 1) return { ok: false, reason: 'ambiguous' };
-      const target = mapsInputs[0];
-      if (document.activeElement !== target) return { ok: false, reason: 'generic_not_focused' };
+      let target;
+      if (nearbyInputs.length === 1) {
+        target = nearbyInputs[0];
+      } else if (mapsInputs.length === 1) {
+        target = mapsInputs[0];
+        if (document.activeElement !== target || normalize(target.value || '') !== '') {
+          return { ok: false, reason: 'fallback_not_ready' };
+        }
+      } else if (unlabeledComboboxes.length === 1) {
+        target = unlabeledComboboxes[0];
+        if (document.activeElement !== target || normalize(target.value || '') !== '') {
+          return { ok: false, reason: 'fallback_not_ready' };
+        }
+      } else {
+        return { ok: false, reason: 'missing' };
+      }
+
+      target.focus();
       if (typeof target.select === 'function') target.select();
-      return { ok: true, inputLabel: String(labelOf(target)).slice(0, 160) };
+      return {
+        ok: true,
+        inputLabel: String(labelOf(target) || target.getAttribute('role') || target.tagName).slice(0, 160)
+      };
     }
 
-    const candidates = Array.from(new Set([...nearbyInputs, ...mapsInputs]));
+    const candidates = Array.from(new Set([...nearbyInputs, ...mapsInputs, ...unlabeledComboboxes]));
     if (candidates.length === 0) return { ok: false, reason: 'pending' };
     if (candidates.length !== 1) return { ok: false, reason: 'ambiguous' };
     const value = String(candidates[0].value || candidates[0].textContent || '').slice(0, 500);
