@@ -28,6 +28,42 @@ function boundedSummary(summary, maxChars) {
   assert(summary.items.length + summary.lines.length > 0, `No bounded ${summary.kind} UI content was detected`);
 }
 
+async function boundedNearbyPostconditionDiagnostic(runtime, expectedQuery) {
+  const client = await runtime.getClient();
+  const expected = JSON.stringify(expectedQuery.replace(/\s+/g, " ").trim().toLocaleLowerCase());
+  const evaluated = await client.Runtime.evaluate({
+    expression: `(() => {
+      const expected = ${expected};
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLocaleLowerCase();
+      const visible = (el) => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+      };
+      const meta = (el) => el ? ({
+        tag: String(el.tagName || '').slice(0, 24),
+        role: String(el.getAttribute?.('role') || '').slice(0, 48),
+        ariaLabel: String(el.getAttribute?.('aria-label') || '').slice(0, 120),
+        placeholder: String(el.getAttribute?.('placeholder') || '').slice(0, 120),
+        focused: document.activeElement === el,
+        valueLength: typeof el.value === 'string' ? Math.min(el.value.length, 500) : 0,
+        valueMatchesExpected: typeof el.value === 'string' && normalize(el.value) === expected
+      }) : null;
+      return {
+        pathname: location.pathname.slice(0, 320),
+        activeElement: meta(document.activeElement),
+        inputs: Array.from(document.querySelectorAll('input, textarea, [role="searchbox"], [role="combobox"], [role="textbox"]'))
+          .filter(visible)
+          .slice(0, 8)
+          .map(meta)
+      };
+    })()`,
+    returnByValue: true,
+    awaitPromise: true
+  });
+  return evaluated.result.value;
+}
+
 const profileDir = await fsp.mkdtemp(path.join(os.tmpdir(), "maps-browser-mcp-live-"));
 const chrome = new ChromeProcess({ profileDir, headless: true });
 const policy = new PolicyEngine({
@@ -65,17 +101,23 @@ async function searchAndSelectFirstPlace(placeQuery) {
 }
 
 try {
-  // Public, user-directed place workflow. No reviews, crawling, screenshots, or persistence.
   const placeQuery = "coffee near Tokyo Station";
   const selectedPlace = await searchAndSelectFirstPlace(placeQuery);
 
-  // Exercise the V4-B nearby operation before unrelated legacy live checks so its
-  // compatibility result is independently observable in the workflow log.
   const nearbyQuery = "coffee";
   policy.consumeAction();
   policy.assertSearchQuery(nearbyQuery);
   policy.consumeVisibleRead();
-  const nearby = await semantic.searchNearby(selectedPlace, nearbyQuery);
+  let nearby;
+  try {
+    nearby = await semantic.searchNearby(selectedPlace, nearbyQuery);
+  } catch (error) {
+    console.error(
+      "Bounded nearby postcondition diagnostic:",
+      JSON.stringify(await boundedNearbyPostconditionDiagnostic(runtime, nearbyQuery))
+    );
+    throw error;
+  }
   assert(nearby.source === "google_maps_nearby_search", "Unexpected nearby-search result source");
   assert(nearby.fromPlaceLabel.length > 0, "Nearby search lost the verified source-place label");
   assert(nearby.query === nearbyQuery, "Nearby search did not preserve the requested query");
@@ -88,8 +130,6 @@ try {
   assert(nearbySummary.items.length > 0, "Nearby search returned no bounded place candidates");
   console.log("Live Maps nearby phase passed: verified active place -> bounded nearby search");
 
-  // Re-establish a fresh verified place before the existing share check. This keeps
-  // nearby state transition validation independent from the share dialog lifecycle.
   const sharePlace = await searchAndSelectFirstPlace(placeQuery);
   policy.consumeAction();
   policy.consumeVisibleRead();
@@ -104,7 +144,6 @@ try {
     "Place share URL left the allow-listed Google Maps origins"
   );
 
-  // One public transit route. This is intentionally fixed and low-volume.
   policy.consumeAction();
   const directions = compiler.directions({
     origin: "Tokyo Station",
@@ -120,7 +159,6 @@ try {
   boundedSummary(routeSummary, 1800);
   assert(routeSummary.items.length > 0, "No selectable transit route candidates were detected");
 
-  // Verify the stale-index guard using exactly the label returned by the bounded reader.
   const firstRoute = routeSummary.items[0];
   assert(firstRoute, "No first route candidate was returned");
   const selectedRoute = await semantic.selectRoute(firstRoute.index, firstRoute.label);
