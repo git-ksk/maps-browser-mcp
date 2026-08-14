@@ -557,6 +557,27 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
+    "maps_open_place_photos",
+    {
+      description: "Open the visible Google Maps photo viewer for the currently selected place. expectedLabel is required and revalidated immediately before exactly one bounded photo control is activated. The previous place semantic state is invalidated after the verified viewer transition. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedLabel: expectedLabelText
+      })
+    },
+    async ({ expectedLabel }, ctx) => runToolWithHandoff({
+      toolName: "maps_open_place_photos",
+      args: { expectedLabel },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.openPlacePhotos(expectedLabel);
+      }
+    })
+  );
+
+  server.registerTool(
     "maps_select_route",
     {
       description: "Select a currently displayed route candidate by zero-based index. Pass expectedLabel from maps_read_route_summary when available to guard against UI reordering.",

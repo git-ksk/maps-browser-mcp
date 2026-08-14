@@ -53,7 +53,8 @@ Google Maps Web is dynamic and may vary by locale, viewport, experiment, geograp
 | Search-result list sharing | V4 high priority | Produce the Maps-generated share URL from the visible search state with identity/state validation. |
 | Open a place from results | implemented | `maps_select_result` transitions verified search state to place state. |
 | Read bounded place summary | implemented | Existing place summary covers visible place text without full-detail harvesting. |
-| Place photos / photo categories | V4 high priority | Open and navigate bounded photo surfaces semantically; no bulk image harvesting. |
+| Open place photos | implemented | `maps_open_place_photos(expectedLabel)` revalidates the active place, activates exactly one allow-listed photo entry control, verifies the Maps photo viewer and expected place heading, then invalidates the old place semantic state. No image harvesting. Interactive Assist is required. |
+| Photo category navigation | V4 high priority | Navigate only bounded, explicitly observed viewer categories with identity/postcondition checks; no bulk image harvesting. |
 | Place Overview / Reviews / About tabs | V4 normal priority | Tab selection may be exposed; review-body harvesting remains out of scope. |
 | Place → directions | V4 normal priority | Existing `maps_directions` covers the workflow structurally; add current-place convenience only if it preserves identity. |
 | Place → nearby search | implemented | `maps_search_nearby(expectedLabel, query)` revalidates the active place and activates exactly one allow-listed Nearby control. It then accepts only one bounded search-input state: a Nearby-labeled input or the uniquely focused empty Maps combobox produced by that action. The transition is accepted only when the requested query and a Maps search-result path are both verified. Interactive Assist is required. |
@@ -111,8 +112,9 @@ Priority order:
 
 1. place share link — implemented as `maps_get_place_share_link(expectedLabel)`,
 2. nearby search — implemented as `maps_search_nearby(expectedLabel, query)` from the verified active place,
-3. photo surface/category navigation,
-4. bounded place tabs/opening-hours interactions.
+3. place photo opener — implemented as `maps_open_place_photos(expectedLabel)` with verified viewer transition and stale place-state invalidation,
+4. photo category navigation — remaining; design from bounded observed viewer controls only,
+5. bounded place tabs/opening-hours interactions.
 
 ### V4-C — search and map viewport
 

@@ -33,7 +33,7 @@ const chrome = new ChromeProcess({ profileDir, headless: true });
 const policy = new PolicyEngine({
   interactiveAssist: true,
   maxActionsPerMinute: 10,
-  maxVisibleReadsPerHour: 6
+  maxVisibleReadsPerHour: 8
 });
 const runtime = new MapsBrowserRuntime(chrome, policy);
 const compiler = new MapsUrlCompiler();
@@ -67,6 +67,23 @@ async function searchAndSelectFirstPlace(placeQuery) {
 try {
   // Public, user-directed place workflow. No reviews, crawling, screenshots, or persistence.
   const placeQuery = "coffee near Tokyo Station";
+
+  // Exercise the V4-B photo opener through the public semantic controller, not a
+  // diagnostic CDP probe. The human-visible viewer is deliberately not retained as
+  // replayable place state after the verified transition.
+  const photoPlace = await searchAndSelectFirstPlace(placeQuery);
+  const photoEpochBefore = runtime.getResourceEpoch();
+  policy.consumeVisibleRead();
+  const photoSurface = await semantic.openPlacePhotos(photoPlace);
+  assert(photoSurface.opened === true, "Place photo surface did not report an opened viewer");
+  assert(photoSurface.source === "google_maps_photo_surface", "Unexpected place-photo result source");
+  assert(photoSurface.placeLabel === photoPlace, "Place photo surface lost the verified place label");
+  assert(runtime.getViewState() === "blank", "Photo viewer retained stale place semantic state");
+  assert(runtime.getLastAction() === undefined, "Photo viewer retained a stale replayable Maps action");
+  assert(runtime.getResourceEpoch() > photoEpochBefore, "Photo viewer did not advance the resource epoch");
+  console.log("Live Maps photo phase passed: verified active place -> bounded photo viewer -> stale state invalidated");
+
+  // Re-establish a verified place after the photo viewer invalidated the old state.
   const selectedPlace = await searchAndSelectFirstPlace(placeQuery);
 
   // Exercise the V4-B nearby operation before unrelated legacy live checks so its
@@ -129,7 +146,7 @@ try {
     "Route selection did not return a label"
   );
 
-  console.log("Live Maps E2E passed: nearby, bounded place share, transit read, and guarded route selection");
+  console.log("Live Maps E2E passed: photo opener, nearby, bounded place share, transit read, and guarded route selection");
 } finally {
   await runtime.close().catch(() => undefined);
   await fsp.rm(profileDir, {
