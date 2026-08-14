@@ -534,6 +534,29 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
+    "maps_search_nearby",
+    {
+      description: "Search near the currently selected Google Maps place using its visible Nearby workflow. expectedLabel is required and revalidated immediately before the scoped Nearby control is activated. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedLabel: expectedLabelText,
+        query: queryText
+      })
+    },
+    async ({ expectedLabel, query }, ctx) => runToolWithHandoff({
+      toolName: "maps_search_nearby",
+      args: { expectedLabel, query },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.assertSearchQuery(query);
+        policy.consumeVisibleRead();
+        return controller.searchNearby(expectedLabel, query);
+      }
+    })
+  );
+
+  server.registerTool(
     "maps_select_route",
     {
       description: "Select a currently displayed route candidate by zero-based index. Pass expectedLabel from maps_read_route_summary when available to guard against UI reordering.",
