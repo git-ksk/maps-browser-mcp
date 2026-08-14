@@ -64,7 +64,7 @@ async function bootstrap(
   return body.capability;
 }
 
-test("takeover link is a locator only and page creates a memory-only remote client binding", async () => {
+test("takeover link is locator-only and the external client stays nonce-bound and memory-only", async () => {
   const { broker, url, sessionId } = fixture();
   assert.equal(url.search, "");
   assert.equal(url.hash, "");
@@ -73,14 +73,45 @@ test("takeover link is a locator only and page creates a memory-only remote clie
   assert.equal(response.status, 200);
   assert.match(response.headers.get("cache-control") ?? "", /no-store/);
   assert.equal(response.headers.get("referrer-policy"), "no-referrer");
-  assert.match(response.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
+  const csp = response.headers.get("content-security-policy") ?? "";
+  assert.match(csp, /frame-ancestors 'none'/);
+  const nonce = /script-src 'nonce-([A-Za-z0-9_-]+)'/.exec(csp)?.[1];
+  assert.ok(nonce);
+  assert.doesNotMatch(csp, /script-src 'self'/);
+
   const html = await response.text();
   assert.doesNotMatch(html, /Takeover [A-Za-z0-9_-]{32,}/);
-  assert.match(html, /takeover\/api\/bootstrap/);
+  assert.match(
+    html,
+    new RegExp(`<script nonce="${nonce}" src="\\/takeover\\/client\\.js" defer><\\/script>`)
+  );
   assert.doesNotMatch(html, /sessionStorage|localStorage/);
-  assert.match(html, /crypto\.getRandomValues/);
-  assert.match(html, /const clientBinding=randomClientBinding\(\)/);
-  assert.match(html, /x-takeover-client/);
+  assert.doesNotMatch(html, /Maps human takeover|return to MCP/);
+
+  const scriptResponse = await broker.handle(new Request(`http://localhost/takeover/client.js`), PRINCIPAL_A);
+  assert.equal(scriptResponse.status, 200);
+  assert.match(scriptResponse.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(scriptResponse.headers.get("content-type") ?? "", /^text\/javascript/);
+  const script = await scriptResponse.text();
+  assert.match(script, /takeover\/api\/bootstrap/);
+  assert.match(script, /crypto\.getRandomValues/);
+  assert.match(script, /const clientBinding=randomClientBinding\(\)/);
+  assert.match(script, /x-takeover-client/);
+  assert.doesNotMatch(script, /sessionStorage|localStorage/);
+
+  const scriptHead = await broker.handle(new Request(`http://localhost/takeover/client.js`, {
+    method: "HEAD"
+  }), PRINCIPAL_A);
+  assert.equal(scriptHead.status, 200);
+  assert.equal(await scriptHead.text(), "");
+
+  const scriptPost = await broker.handle(new Request(`http://localhost/takeover/client.js`, {
+    method: "POST"
+  }), PRINCIPAL_A);
+  assert.equal(scriptPost.status, 405);
+
+  const scriptWithoutPrincipal = await broker.handle(new Request(`http://localhost/takeover/client.js`));
+  assert.equal(scriptWithoutPrincipal.status, 404);
 
   const crossSiteBootstrap = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
     headers: {
