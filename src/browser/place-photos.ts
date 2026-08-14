@@ -157,6 +157,7 @@ function verifyPhotoSurfaceExpression(expectedLabel: string): string {
     if (matching.length === 0) return { ok: false, reason: 'pending' };
     if (matching.length !== 1) return { ok: false, reason: 'ambiguous' };
     const closers = Array.from(document.querySelectorAll('button, [role="button"]')).filter(visible).slice(0, 80)
+      .filter((el) => !el.closest('[role="search"]'))
       .map(labelOf)
       .filter((label) => ['close', '閉じる'].includes(normalize(label)));
     if (closers.length !== 1) return { ok: false, reason: closers.length === 0 ? 'pending' : 'ambiguous' };
