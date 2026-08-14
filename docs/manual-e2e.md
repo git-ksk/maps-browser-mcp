@@ -42,6 +42,15 @@ The container path builds the repository Dockerfile and runs the same bounded sc
 
 Expected: one MCP call produces one Maps URL navigation.
 
+When validating the V4 Rating-filter slice with Interactive Assist enabled:
+
+1. Start from a fresh `maps_search({ query })` result view.
+2. Call `maps_set_search_rating({ expectedQuery: query, rating: "4.0" })`.
+3. Confirm the same visible query/search state is retained and the operation reports `alreadyApplied: false` on the first successful change.
+4. Repeat the same call and confirm `alreadyApplied: true` without another resource-epoch advance.
+5. A deliberately wrong `expectedQuery`, missing/duplicate Rating target, changed option/menu, unexpected navigation, or invalid selected-chip postcondition must fail closed. If the filter may already have changed before verification fails, the prior semantic context must be invalidated.
+6. Confirm no arbitrary filter text, raw DOM/AX payload, search-result harvesting, or URL-internal filter-token parsing is exposed.
+
 ## 2. Directions navigation
 
 1. Call `maps_directions` with a public origin/destination and `mode=transit`.

@@ -107,6 +107,16 @@ maps_search(...)
   -> maps_select_result({ index, expectedLabel: label })
 ```
 
+V4-Cのsearch filterでもsearch identity chainを明示的に維持します。
+
+```text
+maps_search({ query })
+  -> maps_set_search_rating({ expectedQuery: query, rating: "4.0" })
+  -> maps_read_place_summary()
+```
+
+`maps_set_search_rating` が公開するのはlive再観測できた `2.0|2.5|3.0|3.5|4.0|4.5` のRating optionだけです。各bounded UI action直前にvisible search queryを再検証し、選択後はrequested numeric rating chip（例: `4.0+`）がexact-oneでvisibleかつRating menuがclosedであることを確認してからresource epochを更新します。価格、時間、すべてのフィルタはgeneric filter APIへまとめず、引き続きobservation/design-gatedです。
+
 V4最初のbrowser-native workflowでは、このidentity chainをMaps生成のplace share URLまで延長します。
 
 ```text
@@ -141,6 +151,7 @@ maps_directions(...)
 ### Semantic Interaction
 
 - `maps_select_result`
+- `maps_set_search_rating` — V4、観測済みrating enum固定、Interactive Assist必須
 - `maps_get_place_share_link` — V4、Interactive Assist必須
 - `maps_search_nearby` — V4、Interactive Assist必須
 - `maps_open_place_photos` — V4、Interactive Assist必須

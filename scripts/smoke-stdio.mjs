@@ -3,6 +3,7 @@ import readline from "node:readline";
 
 const EXPECTED_TOOLS = [
   "maps_search",
+  "maps_set_search_rating",
   "maps_directions",
   "maps_show",
   "maps_streetview",

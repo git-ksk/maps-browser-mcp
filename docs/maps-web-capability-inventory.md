@@ -41,6 +41,8 @@ Google Maps Web is dynamic and may vary by locale, viewport, experiment, geograp
 
 A bounded 2026-08-15 re-observation across JA/EN place panels and standard/wide viewports found place-bound Overview/About tabs but did not reproduce a visible Reviews tab. Opening-hours controls were observed in both inline accordion and same-place detail-surface variants. The implementation below is intentionally limited to those re-observed shapes.
 
+A separate bounded 2026-08-15 V4-C re-observation found visible Price, Rating, Hours, and All filters outside the search result `role=main`, plus the explicit `Update results when map moves` checkbox. Rating was the smallest stable slice in both JA/EN: an exact `Rating` / `評価` button opens one labelled menu with fixed `menuitemradio` options `2.0` through `4.5`. Bounded observations also verified the selected trigger changing to numeric chips such as `2.0+`, `4.0+`, and `4.5+`; the implementation uses that selected-chip state plus a closed menu as its postcondition. Price and All filters use different surface shapes, and Hours expands into a larger day/time dialog, so they remain observation/design-gated.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -49,7 +51,7 @@ A bounded 2026-08-15 re-observation across JA/EN place panels and standard/wide 
 | Read bounded search/place results | implemented | `maps_read_place_summary` returns bounded visible labels/text and conservative annotations. |
 | Select a visible search result | implemented | `maps_select_result(index, expectedLabel)` revalidates identity and fails closed on reordering. |
 | Search autocomplete / suggestion selection | V4 high priority | Add bounded Maps-specific suggestion read/select semantics; never expose the raw combobox/DOM. |
-| Search result filters (price/rating/time/all filters) | V4 high priority | Model a bounded allow-listed filter surface with postcondition validation. |
+| Search result filters (price/rating/time/all filters) | partial / rating implemented | `maps_set_search_rating(expectedQuery, rating)` implements only the live-reobserved Rating menu with fixed `2.0`–`4.5` half-step options. It revalidates the exact visible query before each action and verifies the exact requested numeric rating chip with the Rating menu closed after selection. Price, Hours, and All filters remain observation/design-gated; there is no generic filter-string API. |
 | Search this area / update after map movement | V4 high priority | Preserve query identity and explicitly apply the visible-area search action. |
 | Root category discovery (restaurants/hotels/activities/etc.) | V4 normal priority | Semantic category search is useful, but overlaps normal search. |
 | Search-result list sharing | V4 high priority | Produce the Maps-generated share URL from the visible search state with identity/state validation. |
@@ -123,7 +125,7 @@ Priority order:
 
 Priority order:
 
-1. result filters,
+1. result filters — Rating implemented as `maps_set_search_rating(expectedQuery, rating)`; Price/Hours/All filters remain observation/design-gated,
 2. search-this-area / update-after-move,
 3. current-location permission-safe action,
 4. semantic layer toggles,

@@ -52,6 +52,15 @@ npm run smoke:browser
 
 期待結果: 1 MCP call → 1 Maps URL navigation。
 
+Interactive Assist有効でV4 Rating-filter sliceを検証する場合:
+
+1. Freshな `maps_search({ query })` result viewから開始
+2. `maps_set_search_rating({ expectedQuery: query, rating: "4.0" })` をcall
+3. 同じvisible query/search stateを維持し、初回の変更成功は `alreadyApplied: false` になることを確認
+4. 同じcallを再実行し、`alreadyApplied: true` かつresource epochが再更新されないことを確認
+5. 意図的に違う `expectedQuery`、missing/duplicate Rating target、option/menu変化、unexpected navigation、invalid selected-chip postconditionはfail closed。Filterが既に変わった可能性がある状態で検証失敗した場合、prior semantic contextを無効化すること
+6. arbitrary filter text、raw DOM/AX payload、search-result harvesting、URL内部filter token解析を公開しないことを確認
+
 ## 2. Directions Navigation
 
 1. 公開origin / destinationと `mode=transit` で `maps_directions`

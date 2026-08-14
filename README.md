@@ -105,6 +105,16 @@ maps_search(...)
   -> maps_select_result({ index, expectedLabel: label })
 ```
 
+A V4-C search filter keeps the same search identity chain explicit:
+
+```text
+maps_search({ query })
+  -> maps_set_search_rating({ expectedQuery: query, rating: "4.0" })
+  -> maps_read_place_summary()
+```
+
+`maps_set_search_rating` exposes only the live-reobserved `2.0|2.5|3.0|3.5|4.0|4.5` Rating options. It revalidates the visible search query before each bounded UI action, then verifies the exact requested selected chip (for example `4.0+`) with the Rating menu closed before advancing the resource epoch. Price, Hours, and All filters remain observation/design-gated rather than sharing a generic filter API.
+
 The first V4 browser-native workflow extends that identity chain to a Maps-generated place share URL:
 
 ```text
@@ -139,6 +149,7 @@ maps_directions(...)
 ### Semantic interaction
 
 - `maps_select_result`
+- `maps_set_search_rating` — V4, fixed observed rating enum, Interactive Assist required
 - `maps_get_place_share_link` — V4, Interactive Assist required
 - `maps_search_nearby` — V4, Interactive Assist required
 - `maps_open_place_photos` — V4, Interactive Assist required

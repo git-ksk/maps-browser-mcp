@@ -41,6 +41,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15にJA/ENのplace panelとstandard/wide viewportでbounded再観測した結果、place-boundな概要/OverviewとAbout tabは確認できましたが、visibleなReviews tabは再現しませんでした。営業時間controlはinline accordion型とsame-place detail-surface型の両方を確認しています。以下の実装は、その再観測済みshapeだけに意図的に限定しています。
 
+別の2026-08-15 V4-C bounded再観測では、search resultの `role=main` 外にvisibleな価格/Price、評価/Rating、時間/Hours、すべてのフィルタ/All filtersと、明示的な「地図の移動後に結果を更新」checkboxを確認しました。RatingがJA/ENとも最小かつ安定したsliceで、exact `評価` / `Rating` buttonからlabelled menuが開き、`2.0`〜`4.5` の固定 `menuitemradio` が見えます。Bounded再観測ではselected triggerが `2.0+`、`4.0+`、`4.5+` のようなnumeric chipへ変わることも確認できたため、実装はそのselected-chip stateとmenu closedをpostconditionにします。PriceとAll filtersは別surface、Hoursは曜日×時刻の大きいdialogなので引き続きobservation/design-gatedです。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -49,7 +51,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | search/place results を bounded に読む | implemented | `maps_read_place_summary` が bounded visible label/text と保守的annotationを返す。 |
 | visible search result を選択 | implemented | `maps_select_result(index, expectedLabel)` が identity を再検証し、並び替え時は fail closed。 |
 | search autocomplete / suggestion 選択 | V4 high priority | suggestion を bounded に read/select する Maps-specific semantics を追加。raw combobox/DOM は公開しない。 |
-| search result filter（価格/評価/時間/全フィルタ） | V4 high priority | allow-list された bounded filter surface と postcondition validation で実装。 |
+| search result filter（価格/評価/時間/全フィルタ） | partial / Rating implemented | `maps_set_search_rating(expectedQuery, rating)` でlive再観測済みRating menuだけを実装し、`2.0`〜`4.5` のhalf-step固定optionに限定する。各action前にexact visible queryを再検証し、選択後はexact requested numeric rating chipとRating menu closedをpostcondition確認する。価格/時間/全フィルタはobservation/design-gatedのままでgeneric filter string APIは公開しない。 |
 | このエリアを検索 / 地図移動後に更新 | V4 high priority | query identity を維持し、visible area に対する明示的 search action として実装。 |
 | 初期画面カテゴリ探索（レストラン/ホテル等） | V4 normal priority | semantic category search は有用だが通常 search と重なる。 |
 | search result list の共有 | V4 high priority | visible search state を再検証して Maps-generated share URL を返す。 |
@@ -123,7 +125,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 
 優先順:
 
-1. result filter
+1. result filter — Ratingは `maps_set_search_rating(expectedQuery, rating)` として実装。価格/時間/全フィルタはobservation/design-gated
 2. search-this-area / update-after-move
 3. permission-safe current-location action
 4. semantic layer toggle
