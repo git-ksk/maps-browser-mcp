@@ -15,107 +15,144 @@ function assert(condition, message) {
 }
 
 function boundedSummary(summary, maxChars) {
-  const totalChars = [...summary.items.map((item) => item.label), ...summary.lines]
-    .reduce((sum, value) => sum + value.length, 0);
+  const totalChars = [
+    ...summary.items.map((item) => item.label),
+    ...summary.lines
+  ].reduce((sum, value) => sum + value.length, 0);
+
   assert(summary.untrustedExternalText === true, "Reader must mark Maps text as untrusted");
   assert(summary.source === "google_maps_bounded_visible_ui", "Unexpected reader source");
-  assert(summary.items.length <= 8, "Reader returned too many indexed items");
+  assert(summary.items.length <= (summary.kind === "place" ? 8 : 6), "Reader returned too many indexed items");
   assert(summary.lines.length <= 12, "Reader returned too many UI lines");
   assert(totalChars <= maxChars, `Reader exceeded ${maxChars} character budget`);
-  assert(summary.items.length + summary.lines.length > 0, "No bounded place UI content was detected");
+  assert(summary.items.length + summary.lines.length > 0, `No bounded ${summary.kind} UI content was detected`);
 }
 
-async function openAndInspectPhotoSurface(runtime, expectedLabel) {
-  const client = await runtime.getClient();
-  const expected = JSON.stringify(expectedLabel.replace(/\s+/g, " ").trim().toLocaleLowerCase());
-  const opened = await client.Runtime.evaluate({
-    expression: `(() => {
-      const visible = (el) => {
-        const r = el.getBoundingClientRect();
-        const s = getComputedStyle(el);
-        return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-      };
-      const normalize = (value) => String(value || '')
-        .replace(/[\\uE000-\\uF8FF]/g, '')
-        .replace(/\\s+/g, ' ').trim().toLocaleLowerCase();
-      const labelOf = (el) => String(el.getAttribute('aria-label') || el.textContent || '').slice(0, 160);
-      const expected = ${expected};
-      const allowed = new Set(['see photos', 'all photos', 'photos', '写真', '写真を見る', '写真を表示', 'すべての写真']);
-      const mains = Array.from(document.querySelectorAll('[role="main"]')).filter(visible).slice(0, 8);
-      const matches = mains.filter((main) => Array.from(main.querySelectorAll('h1, [role="heading"]'))
-        .filter(visible).slice(0, 32).some((heading) => normalize(labelOf(heading)) === expected));
-      if (matches.length !== 1) return { ok: false, reason: matches.length === 0 ? 'place_missing' : 'place_ambiguous' };
-      const controls = Array.from(matches[0].querySelectorAll('button, [role="button"]'))
-        .filter(visible).slice(0, 120)
-        .map((el) => ({ el, label: normalize(labelOf(el)) }))
-        .filter((entry) => allowed.has(entry.label));
-      if (controls.length !== 1) {
-        return { ok: false, reason: controls.length === 0 ? 'photo_missing' : 'photo_ambiguous', labels: controls.map((entry) => entry.label).slice(0, 12) };
-      }
-      controls[0].el.click();
-      return { ok: true, label: controls[0].label };
-    })()`,
-    returnByValue: true,
-    awaitPromise: true
-  });
-  assert(opened.result.value?.ok === true, `Photo surface control was not unique: ${JSON.stringify(opened.result.value)}`);
-  await sleep(1_500);
-  const inspected = await client.Runtime.evaluate({
-    expression: `(() => {
-      const visible = (el) => {
-        const r = el.getBoundingClientRect();
-        const s = getComputedStyle(el);
-        return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-      };
-      const clean = (value) => String(value || '').replace(/[\\uE000-\\uF8FF]/g, '').replace(/\\s+/g, ' ').trim().slice(0, 160);
-      return {
-        pathname: location.pathname.slice(0, 360),
-        headings: Array.from(document.querySelectorAll('h1, h2, [role="heading"]')).filter(visible)
-          .map((el) => clean(el.getAttribute('aria-label') || el.textContent)).filter(Boolean).slice(0, 8),
-        controls: Array.from(document.querySelectorAll('button, [role="button"], [role="tab"]')).filter(visible)
-          .map((el) => ({
-            label: clean(el.getAttribute('aria-label') || el.textContent),
-            role: clean(el.getAttribute('role')),
-            pressed: clean(el.getAttribute('aria-pressed')),
-            selected: clean(el.getAttribute('aria-selected'))
-          }))
-          .filter((entry) => entry.label).slice(0, 20)
-      };
-    })()`,
-    returnByValue: true,
-    awaitPromise: true
-  });
-  return { opened: opened.result.value, surface: inspected.result.value };
-}
-
-const profileDir = await fsp.mkdtemp(path.join(os.tmpdir(), "maps-browser-mcp-photo-diagnostic-"));
+const profileDir = await fsp.mkdtemp(path.join(os.tmpdir(), "maps-browser-mcp-live-"));
 const chrome = new ChromeProcess({ profileDir, headless: true });
-const policy = new PolicyEngine({ interactiveAssist: true, maxActionsPerMinute: 6, maxVisibleReadsPerHour: 3 });
+const policy = new PolicyEngine({
+  interactiveAssist: true,
+  maxActionsPerMinute: 10,
+  maxVisibleReadsPerHour: 8
+});
 const runtime = new MapsBrowserRuntime(chrome, policy);
 const compiler = new MapsUrlCompiler();
 const reader = new VisibleStateReader(runtime, { maxNodes: 120, maxChars: 1800 });
 const semantic = new SemanticController(runtime, compiler);
 
-try {
-  const query = "coffee near Tokyo Station";
+async function searchAndSelectFirstPlace(placeQuery) {
   policy.consumeAction();
-  policy.assertSearchQuery(query);
-  const search = compiler.search(query);
-  await runtime.navigate(search.url, search.action);
+  policy.assertSearchQuery(placeQuery);
+  const search = compiler.search(placeQuery);
+  const searchNavigation = await runtime.navigate(search.url, search.action);
+  assert(searchNavigation.url.includes("/maps/"), "Search did not remain on Google Maps");
   await sleep(2_500);
 
   policy.consumeVisibleRead();
-  const summary = await reader.read("place");
-  boundedSummary(summary, 1800);
-  const first = summary.items[0];
-  assert(first, "No selectable place candidate was detected");
-  const selected = await semantic.selectResult(first.index, first.label);
+  const placeSummary = await reader.read("place");
+  boundedSummary(placeSummary, 1800);
+  assert(placeSummary.items.length > 0, "No selectable place candidates were detected");
+
+  const firstPlace = placeSummary.items[0];
+  assert(firstPlace, "No first place candidate was returned");
+  const selectedPlace = await semantic.selectResult(firstPlace.index, firstPlace.label);
+  assert(
+    typeof selectedPlace.selected === "string" && selectedPlace.selected.length > 0,
+    "Place selection did not return a label"
+  );
   await sleep(1_500);
+  return selectedPlace.selected;
+}
+
+try {
+  // Public, user-directed place workflow. No reviews, crawling, screenshots, or persistence.
+  const placeQuery = "coffee near Tokyo Station";
+
+  // Exercise the V4-B photo opener through the public semantic controller, not a
+  // diagnostic CDP probe. The human-visible viewer is deliberately not retained as
+  // replayable place state after the verified transition.
+  const photoPlace = await searchAndSelectFirstPlace(placeQuery);
+  const photoEpochBefore = runtime.getResourceEpoch();
+  policy.consumeVisibleRead();
+  const photoSurface = await semantic.openPlacePhotos(photoPlace);
+  assert(photoSurface.opened === true, "Place photo surface did not report an opened viewer");
+  assert(photoSurface.source === "google_maps_photo_surface", "Unexpected place-photo result source");
+  assert(photoSurface.placeLabel === photoPlace, "Place photo surface lost the verified place label");
+  assert(runtime.getViewState() === "blank", "Photo viewer retained stale place semantic state");
+  assert(runtime.getLastAction() === undefined, "Photo viewer retained a stale replayable Maps action");
+  assert(runtime.getResourceEpoch() > photoEpochBefore, "Photo viewer did not advance the resource epoch");
+  console.log("Live Maps photo phase passed: verified active place -> bounded photo viewer -> stale state invalidated");
+
+  // Re-establish a verified place after the photo viewer invalidated the old state.
+  const selectedPlace = await searchAndSelectFirstPlace(placeQuery);
+
+  // Exercise the V4-B nearby operation before unrelated legacy live checks so its
+  // compatibility result is independently observable in the workflow log.
+  const nearbyQuery = "coffee";
+  policy.consumeAction();
+  policy.assertSearchQuery(nearbyQuery);
+  policy.consumeVisibleRead();
+  const nearby = await semantic.searchNearby(selectedPlace, nearbyQuery);
+  assert(nearby.source === "google_maps_nearby_search", "Unexpected nearby-search result source");
+  assert(nearby.fromPlaceLabel.length > 0, "Nearby search lost the verified source-place label");
+  assert(nearby.query === nearbyQuery, "Nearby search did not preserve the requested query");
+  assert(new URL(nearby.url).pathname.startsWith("/maps/search/"), "Nearby search did not enter a Maps search result path");
+  await sleep(2_000);
 
   policy.consumeVisibleRead();
-  const diagnostic = await openAndInspectPhotoSurface(runtime, selected.selected);
-  console.log("Bounded verified photo-surface diagnostic:", JSON.stringify(diagnostic));
+  const nearbySummary = await reader.read("place");
+  boundedSummary(nearbySummary, 1800);
+  assert(nearbySummary.items.length > 0, "Nearby search returned no bounded place candidates");
+  console.log("Live Maps nearby phase passed: verified active place -> bounded nearby search");
+
+  // Re-establish a fresh verified place before the existing share check. This keeps
+  // nearby state transition validation independent from the share dialog lifecycle.
+  const sharePlace = await searchAndSelectFirstPlace(placeQuery);
+  policy.consumeAction();
+  policy.consumeVisibleRead();
+  const placeShare = await semantic.getPlaceShareLink(sharePlace);
+  assert(placeShare.placeLabel.length > 0, "Place share did not preserve a selected-place label");
+  assert(placeShare.source === "google_maps_share_dialog", "Unexpected place-share result source");
+  const shareUrl = new URL(placeShare.url);
+  assert(shareUrl.protocol === "https:", "Place share URL was not HTTPS");
+  assert(
+    shareUrl.hostname === "maps.app.goo.gl" ||
+      (shareUrl.hostname === "www.google.com" && (shareUrl.pathname === "/maps" || shareUrl.pathname.startsWith("/maps/"))),
+    "Place share URL left the allow-listed Google Maps origins"
+  );
+
+  // One public transit route. This is intentionally fixed and low-volume.
+  policy.consumeAction();
+  const directions = compiler.directions({
+    origin: "Tokyo Station",
+    destination: "Yokohama Station",
+    mode: "transit"
+  });
+  const routeNavigation = await runtime.navigate(directions.url, directions.action);
+  assert(routeNavigation.url.includes("/maps/"), "Directions did not remain on Google Maps");
+  await sleep(3_000);
+
+  policy.consumeVisibleRead();
+  const routeSummary = await reader.read("route");
+  boundedSummary(routeSummary, 1800);
+  assert(routeSummary.items.length > 0, "No selectable transit route candidates were detected");
+
+  // Verify the stale-index guard using exactly the label returned by the bounded reader.
+  const firstRoute = routeSummary.items[0];
+  assert(firstRoute, "No first route candidate was returned");
+  const selectedRoute = await semantic.selectRoute(firstRoute.index, firstRoute.label);
+  assert(
+    typeof selectedRoute.selected === "string" && selectedRoute.selected.length > 0,
+    "Route selection did not return a label"
+  );
+
+  console.log("Live Maps E2E passed: photo opener, nearby, bounded place share, transit read, and guarded route selection");
 } finally {
   await runtime.close().catch(() => undefined);
-  await fsp.rm(profileDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }).catch(() => undefined);
+  await fsp.rm(profileDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 8,
+    retryDelay: 150
+  }).catch(() => undefined);
 }
