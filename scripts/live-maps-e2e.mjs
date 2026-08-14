@@ -33,16 +33,14 @@ const chrome = new ChromeProcess({ profileDir, headless: true });
 const policy = new PolicyEngine({
   interactiveAssist: true,
   maxActionsPerMinute: 10,
-  maxVisibleReadsPerHour: 5
+  maxVisibleReadsPerHour: 6
 });
 const runtime = new MapsBrowserRuntime(chrome, policy);
 const compiler = new MapsUrlCompiler();
 const reader = new VisibleStateReader(runtime, { maxNodes: 120, maxChars: 1800 });
 const semantic = new SemanticController(runtime, compiler);
 
-try {
-  // One public, user-directed category search. No reviews, crawling, screenshots, or persistence.
-  const placeQuery = "coffee near Tokyo Station";
+async function searchAndSelectFirstPlace(placeQuery) {
   policy.consumeAction();
   policy.assertSearchQuery(placeQuery);
   const search = compiler.search(placeQuery);
@@ -63,29 +61,21 @@ try {
     "Place selection did not return a label"
   );
   await sleep(1_500);
+  return selectedPlace.selected;
+}
 
-  // One bounded V4 browser-native operation against the verified selected place.
-  // The operation itself restricts output to the selected label plus an allow-listed Maps share URL.
-  policy.consumeAction();
-  policy.consumeVisibleRead();
-  const placeShare = await semantic.getPlaceShareLink(selectedPlace.selected);
-  assert(placeShare.placeLabel.length > 0, "Place share did not preserve a selected-place label");
-  assert(placeShare.source === "google_maps_share_dialog", "Unexpected place-share result source");
-  const shareUrl = new URL(placeShare.url);
-  assert(shareUrl.protocol === "https:", "Place share URL was not HTTPS");
-  assert(
-    shareUrl.hostname === "maps.app.goo.gl" ||
-      (shareUrl.hostname === "www.google.com" && (shareUrl.pathname === "/maps" || shareUrl.pathname.startsWith("/maps/"))),
-    "Place share URL left the allow-listed Google Maps origins"
-  );
+try {
+  // Public, user-directed place workflow. No reviews, crawling, screenshots, or persistence.
+  const placeQuery = "coffee near Tokyo Station";
+  const selectedPlace = await searchAndSelectFirstPlace(placeQuery);
 
-  // Exercise the next V4-B browser-native operation from the same verified active place.
-  // This is one bounded query and does not enumerate or persist the surrounding dataset.
+  // Exercise the V4-B nearby operation before unrelated legacy live checks so its
+  // compatibility result is independently observable in the workflow log.
   const nearbyQuery = "coffee";
   policy.consumeAction();
   policy.assertSearchQuery(nearbyQuery);
   policy.consumeVisibleRead();
-  const nearby = await semantic.searchNearby(selectedPlace.selected, nearbyQuery);
+  const nearby = await semantic.searchNearby(selectedPlace, nearbyQuery);
   assert(nearby.source === "google_maps_nearby_search", "Unexpected nearby-search result source");
   assert(nearby.fromPlaceLabel.length > 0, "Nearby search lost the verified source-place label");
   assert(nearby.query === nearbyQuery, "Nearby search did not preserve the requested query");
@@ -96,6 +86,23 @@ try {
   const nearbySummary = await reader.read("place");
   boundedSummary(nearbySummary, 1800);
   assert(nearbySummary.items.length > 0, "Nearby search returned no bounded place candidates");
+  console.log("Live Maps nearby phase passed: verified active place -> bounded nearby search");
+
+  // Re-establish a fresh verified place before the existing share check. This keeps
+  // nearby state transition validation independent from the share dialog lifecycle.
+  const sharePlace = await searchAndSelectFirstPlace(placeQuery);
+  policy.consumeAction();
+  policy.consumeVisibleRead();
+  const placeShare = await semantic.getPlaceShareLink(sharePlace);
+  assert(placeShare.placeLabel.length > 0, "Place share did not preserve a selected-place label");
+  assert(placeShare.source === "google_maps_share_dialog", "Unexpected place-share result source");
+  const shareUrl = new URL(placeShare.url);
+  assert(shareUrl.protocol === "https:", "Place share URL was not HTTPS");
+  assert(
+    shareUrl.hostname === "maps.app.goo.gl" ||
+      (shareUrl.hostname === "www.google.com" && (shareUrl.pathname === "/maps" || shareUrl.pathname.startsWith("/maps/"))),
+    "Place share URL left the allow-listed Google Maps origins"
+  );
 
   // One public transit route. This is intentionally fixed and low-volume.
   policy.consumeAction();
@@ -122,7 +129,7 @@ try {
     "Route selection did not return a label"
   );
 
-  console.log("Live Maps E2E passed: bounded place read/select/share/nearby, transit read, and guarded route selection");
+  console.log("Live Maps E2E passed: nearby, bounded place share, transit read, and guarded route selection");
 } finally {
   await runtime.close().catch(() => undefined);
   await fsp.rm(profileDir, {
