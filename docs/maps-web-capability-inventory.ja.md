@@ -45,6 +45,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15のsearch-this-area bounded再観測では、専用Chrome profileのJA UIと明示的な `--lang=en-US` UIを使い、visible search queryを維持し、「地図の移動後に結果を更新 / Update results when map moves」をoffのまま手動panしました。map center/pathは変化しsearch identityも維持されましたが、どちらのUIでもone-shotの `このエリアを検索 / Search this area` controlはvisibleになりませんでした。残ったのはupdate-after-move checkboxだけです。このcheckboxは自動更新behaviorを変える設定であり、要求しているexplicit semantic actionの代替にはしません。したがって `maps_search_this_area` はselector/schemaを作らずobservation-gatedのままです。
 
+2026-08-15のcurrent-location bounded観測では、geolocation permissionを事前許可していないfreshな専用Chrome profileを使用しました。Mapsにはexact-oneのvisible `現在地を表示` / Show Your Location semantic buttonがあり、`aria-pressed=false` でした。そのexact controlをactivateするとChromeのbrowser-level位置情報permission promptへ到達し、permission choiceは一切行っていません。Prompt中もpage controlはunpressed、map pathは不変、`navigator.permissions` は `prompt` のままでした。ユーザーのpermission判断なしでは成功postconditionを観測できず、現行のpage-state Human Intervention境界自体もbrowser permission promptをauthorize/autoresumeする設計ではないため、current-location MCP actionはまだ公開しません。再開条件は、manualにauthorizedされたsessionでMaps-native success stateを観測できること、またはdedicated permission-handoff modelを設計できることです。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -86,7 +88,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | coordinates/zoomで map表示 | implemented | `maps_show` が documented coordinate-centered Maps URL を開く。 |
 | stateful zoom in/out | V4 normal priority | `maps_show` を超える価値がある範囲で追加。結果viewportを検証。 |
 | semantic map pan/recenter | V4 normal priority | Maps-specific viewport operation のみ。pointer座標やgeneric dragは公開しない。 |
-| 現在地 | V4 high priority | browser-native。permission/consent が必要なら Human Intervention で停止し bypass しない。 |
+| 現在地 | observation-gated / permission boundary observed | fresh profileでexact visible location buttonをactivateするとChrome geolocation permissionへ到達した。Permissionは意図的にgrantせずsafeなsuccess postconditionは未確立。Promptを出すだけのaction、自動grant、permission後のautomatic replayは公開せず、manual authorized session + verified Maps-native success state、またはdedicated permission-handoff設計が成立するまで保留する。 |
 | map layer / map type / traffic / transit / bicycling / terrain | V4 high priority | browser-native価値が高い。allow-list semantic layer model と verified toggle で実装。 |
 | coordinatesから Street View を開く | implemented | `maps_streetview` が documented Street View parameter を利用。 |
 | active place/map から Street View へ入る | V4 high priority | place/viewport identity を再検証してから遷移。 |
@@ -129,7 +131,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 
 1. result filter — Ratingは `maps_set_search_rating(expectedQuery, rating)` として実装。価格/時間/全フィルタはobservation/design-gated
 2. search-this-area / update-after-move — JA/en-US manual pan後もexplicit one-shot controlを再観測できず。auto-update checkboxを代替せずobservation-gated
-3. permission-safe current-location action
+3. permission-safe current-location action — browser permission boundaryを観測済み。manual authorized success postconditionまたはdedicated permission-handoff modelが成立するまでobservation-gated
 4. semantic layer toggle
 5. `maps_show` 以上の価値がある bounded viewport movement
 
