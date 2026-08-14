@@ -2,14 +2,13 @@ import { normalizeExpectedPlaceLabel } from "./place-share.js";
 import { BrowserRuntimeError, type MapsBrowserRuntime } from "./runtime.js";
 
 const MAX_QUERY_LENGTH = 500;
-const NEARBY_BUTTON_LABELS = ["nearby", "search nearby", "付近を検索", "周辺を検索"] as const;
-const MAPS_SEARCH_INPUT_LABELS = [
-  "search google maps",
-  "google マップを検索する",
+const NEARBY_LABELS = [
   "nearby",
   "search nearby",
+  "search nearby places",
   "付近を検索",
-  "周辺を検索"
+  "周辺を検索",
+  "近くを検索"
 ] as const;
 
 function sleep(ms: number): Promise<void> {
@@ -81,7 +80,7 @@ export function parseNearbyInputProbe(value: unknown): { inputLabel: string } | 
   if (probe?.reason === "ambiguous") {
     throw new BrowserRuntimeError(
       "UI_STATE_CHANGED",
-      "Google Maps exposed more than one plausible nearby-search input; refusing to guess"
+      "Google Maps exposed more than one nearby-mode search input; refusing to guess"
     );
   }
   if (probe?.reason === "missing") return undefined;
@@ -110,7 +109,7 @@ export function parseNearbyPostconditionProbe(value: unknown, query: string): bo
 
 function openNearbyExpression(expectedLabel: string): string {
   const expected = JSON.stringify(normalizeLabel(expectedLabel));
-  const allowedLabels = JSON.stringify(NEARBY_BUTTON_LABELS);
+  const allowedLabels = JSON.stringify(NEARBY_LABELS);
   return `(() => {
     const visible = (el) => {
       const r = el.getBoundingClientRect();
@@ -147,33 +146,9 @@ function openNearbyExpression(expectedLabel: string): string {
   })()`;
 }
 
-function focusNearbyInputExpression(): string {
-  const allowedLabels = JSON.stringify(MAPS_SEARCH_INPUT_LABELS);
-  return `(() => {
-    const visible = (el) => {
-      const r = el.getBoundingClientRect();
-      const s = getComputedStyle(el);
-      return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-    };
-    const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLocaleLowerCase();
-    const labelOf = (el) => el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
-    const allowed = new Set(${allowedLabels});
-    const inputs = Array.from(document.querySelectorAll('input, textarea, [role="searchbox"], [role="combobox"], [role="textbox"]'))
-      .filter(visible)
-      .slice(0, 24)
-      .filter((el) => allowed.has(normalize(labelOf(el))));
-    if (inputs.length === 0) return { ok: false, reason: 'missing' };
-    if (inputs.length !== 1) return { ok: false, reason: 'ambiguous' };
-    const target = inputs[0];
-    target.focus();
-    if (typeof target.select === 'function') target.select();
-    return { ok: true, inputLabel: String(labelOf(target)).slice(0, 160) };
-  })()`;
-}
-
-function verifyNearbyQueryExpression(query: string): string {
-  const expected = JSON.stringify(normalizeLabel(query));
-  const allowedLabels = JSON.stringify(MAPS_SEARCH_INPUT_LABELS);
+function nearbyInputExpression(query?: string): string {
+  const allowedLabels = JSON.stringify(NEARBY_LABELS);
+  const expected = query === undefined ? "null" : JSON.stringify(normalizeLabel(query));
   return `(() => {
     const visible = (el) => {
       const r = el.getBoundingClientRect();
@@ -187,11 +162,19 @@ function verifyNearbyQueryExpression(query: string): string {
     const inputs = Array.from(document.querySelectorAll('input, textarea, [role="searchbox"], [role="combobox"], [role="textbox"]'))
       .filter(visible)
       .slice(0, 24)
-      .filter((el) => allowed.has(normalize(labelOf(el))))
-      .filter((el) => normalize(el.value || el.textContent || '') === expected);
-    if (inputs.length === 0) return { ok: false, reason: 'pending' };
+      .filter((el) => allowed.has(normalize(labelOf(el))));
+    if (inputs.length === 0) return { ok: false, reason: expected === null ? 'missing' : 'pending' };
     if (inputs.length !== 1) return { ok: false, reason: 'ambiguous' };
-    return { ok: true, query: String(inputs[0].value || inputs[0].textContent || '').slice(0, 500) };
+    const target = inputs[0];
+    if (expected !== null) {
+      const value = String(target.value || target.textContent || '').slice(0, 500);
+      return normalize(value) === expected
+        ? { ok: true, query: value }
+        : { ok: false, reason: 'pending' };
+    }
+    target.focus();
+    if (typeof target.select === 'function') target.select();
+    return { ok: true, inputLabel: String(labelOf(target)).slice(0, 160) };
   })()`;
 }
 
@@ -240,7 +223,7 @@ export async function searchNearbyFromVerifiedPlace(
   while (Date.now() < inputDeadline) {
     await runtime.assertMapsSurface();
     const focused = await client.Runtime.evaluate({
-      expression: focusNearbyInputExpression(),
+      expression: nearbyInputExpression(),
       returnByValue: true,
       awaitPromise: true
     });
@@ -253,7 +236,7 @@ export async function searchNearbyFromVerifiedPlace(
   if (!inputReady) {
     throw new BrowserRuntimeError(
       "UI_ELEMENT_NOT_FOUND",
-      "Google Maps did not expose one bounded nearby-search input for the verified active place"
+      "Google Maps did not expose one explicit nearby-mode search input for the verified active place"
     );
   }
 
@@ -267,7 +250,7 @@ export async function searchNearbyFromVerifiedPlace(
   while (Date.now() < resultDeadline) {
     const observedUrl = await runtime.assertMapsSurface();
     const verified = await client.Runtime.evaluate({
-      expression: verifyNearbyQueryExpression(query),
+      expression: nearbyInputExpression(query),
       returnByValue: true,
       awaitPromise: true
     });
