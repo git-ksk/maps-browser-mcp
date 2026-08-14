@@ -43,6 +43,8 @@ A bounded 2026-08-15 re-observation across JA/EN place panels and standard/wide 
 
 A separate bounded 2026-08-15 V4-C re-observation found visible Price, Rating, Hours, and All filters outside the search result `role=main`, plus the explicit `Update results when map moves` checkbox. Rating was the smallest stable slice in both JA/EN: an exact `Rating` / `評価` button opens one labelled menu with fixed `menuitemradio` options `2.0` through `4.5`. Bounded observations also verified the selected trigger changing to numeric chips such as `2.0+`, `4.0+`, and `4.5+`; the implementation uses that selected-chip state plus a closed menu as its postcondition. Price and All filters use different surface shapes, and Hours expands into a larger day/time dialog, so they remain observation/design-gated.
 
+A bounded 2026-08-15 search-this-area re-observation used dedicated Chrome profiles with JA UI and explicit `--lang=en-US`, kept the search query visible, left `Update results when map moves` disabled, and manually panned the map. The map center/path changed while search identity remained stable, but no visible `Search this area` / `このエリアを検索` one-shot control appeared in either UI. Only the update-after-move checkbox remained visible. Because that checkbox changes automatic update behavior rather than representing the requested explicit semantic action, it is not treated as a substitute; `maps_search_this_area` remains observation-gated with no selector or schema.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -52,7 +54,7 @@ A separate bounded 2026-08-15 V4-C re-observation found visible Price, Rating, H
 | Select a visible search result | implemented | `maps_select_result(index, expectedLabel)` revalidates identity and fails closed on reordering. |
 | Search autocomplete / suggestion selection | V4 high priority | Add bounded Maps-specific suggestion read/select semantics; never expose the raw combobox/DOM. |
 | Search result filters (price/rating/time/all filters) | partial / rating implemented | `maps_set_search_rating(expectedQuery, rating)` implements only the live-reobserved Rating menu with fixed `2.0`–`4.5` half-step options. It revalidates the exact visible query before each action and verifies the exact requested numeric rating chip with the Rating menu closed after selection. Price, Hours, and All filters remain observation/design-gated; there is no generic filter-string API. |
-| Search this area / update after map movement | V4 high priority | Preserve query identity and explicitly apply the visible-area search action. |
+| Search this area / update after map movement | observation-gated | 2026-08-15 JA and explicit en-US manual-pan re-observation did not expose a visible one-shot `Search this area` control. The visible `Update results when map moves` checkbox is an automatic-update preference and is intentionally not substituted for the explicit semantic action. No `maps_search_this_area` selector/schema is exposed until the one-shot control is observed. |
 | Root category discovery (restaurants/hotels/activities/etc.) | V4 normal priority | Semantic category search is useful, but overlaps normal search. |
 | Search-result list sharing | V4 high priority | Produce the Maps-generated share URL from the visible search state with identity/state validation. |
 | Open a place from results | implemented | `maps_select_result` transitions verified search state to place state. |
@@ -126,7 +128,7 @@ Priority order:
 Priority order:
 
 1. result filters — Rating implemented as `maps_set_search_rating(expectedQuery, rating)`; Price/Hours/All filters remain observation/design-gated,
-2. search-this-area / update-after-move,
+2. search-this-area / update-after-move — explicit one-shot control not re-observed after JA/en-US manual pans; keep observation-gated and do not substitute the auto-update checkbox,
 3. current-location permission-safe action,
 4. semantic layer toggles,
 5. bounded viewport movement where it adds value beyond `maps_show`.
