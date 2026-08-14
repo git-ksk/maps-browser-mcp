@@ -17,8 +17,6 @@ on:
         options:
           - host
           - container
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -29,41 +27,37 @@ concurrency:
 
 jobs:
   live-maps:
-    if: >-
-      ${{
-        (github.event_name == 'workflow_dispatch' && inputs.confirm == 'run-live-check') ||
-        (github.event_name == 'pull_request' && github.head_ref == 'feat/v4-place-nearby')
-      }}
+    if: ${{ inputs.confirm == 'run-live-check' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node.js
-        if: ${{ github.event_name == 'pull_request' || inputs.runtime == 'host' }}
+        if: ${{ inputs.runtime == 'host' }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
-        if: ${{ github.event_name == 'pull_request' || inputs.runtime == 'host' }}
+        if: ${{ inputs.runtime == 'host' }}
         run: npm ci --ignore-scripts
 
       - name: Build host runtime
-        if: ${{ github.event_name == 'pull_request' || inputs.runtime == 'host' }}
+        if: ${{ inputs.runtime == 'host' }}
         run: npm run build
 
       - name: Run bounded live Maps E2E on host
-        if: ${{ github.event_name == 'pull_request' || inputs.runtime == 'host' }}
+        if: ${{ inputs.runtime == 'host' }}
         run: node scripts/live-maps-e2e.mjs
 
       - name: Build container image
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime == 'container' }}
+        if: ${{ inputs.runtime == 'container' }}
         run: docker build --tag maps-browser-mcp:live .
 
       - name: Run bounded live Maps E2E in sandbox-capable container
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime == 'container' }}
+        if: ${{ inputs.runtime == 'container' }}
         run: >-
           docker run --rm
           --cap-add=SYS_ADMIN
