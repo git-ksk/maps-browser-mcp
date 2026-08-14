@@ -90,14 +90,16 @@ Fail-closed probes:
 
 Do **not** intentionally trigger sign-in, consent, CAPTCHA, or another challenge to test this operation. If one occurs naturally, stop and use the Human Intervention checks below. After handoff completion, reissue the place workflow and revalidate identity; do not automatically replay the old share action.
 
-## 6. V4 selected-place tabs
+## 6. V4 selected-place tabs and opening hours
 
-Run this only from a freshly verified active place with Interactive Assist enabled.
+Run these only from a freshly verified active place with Interactive Assist enabled.
 
 1. Call `maps_select_place_tab({ expectedLabel, tab: "about" })`, then `maps_select_place_tab({ expectedLabel, tab: "overview" })`.
 2. Confirm each successful state-changing selection verifies the requested tab as selected, preserves the same place identity, and advances the resource epoch. An already-selected tab must be idempotent.
 3. Do not test a Reviews enum: it is intentionally absent until a current visible Reviews tab is re-observed.
-4. Wrong identity, missing/duplicate controls, unexpected navigation, or invalid postconditions must fail closed. After any click whose postcondition cannot be verified, prior semantic state must not remain usable.
+4. From a fresh Overview place, call `maps_expand_opening_hours({ expectedLabel })`. Confirm the result reports expansion state only and does not return the weekly-hours text.
+5. If `placeStateRetained` is `true`, a repeated expansion should report `alreadyExpanded: true` without another epoch change. If `placeStateRetained` is `false`, confirm the prior place semantic state was invalidated and reacquire the place before another semantic action.
+6. Wrong identity, missing/duplicate controls, unexpected navigation, or invalid postconditions must fail closed. After any click whose postcondition cannot be verified, prior semantic state must not remain usable.
 
 ## 7. Route read/select
 

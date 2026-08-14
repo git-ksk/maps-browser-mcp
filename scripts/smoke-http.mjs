@@ -139,12 +139,13 @@ try {
       : []
   );
   if (
-    toolNames.size !== 13 ||
+    toolNames.size !== 14 ||
     !toolNames.has("maps_search") ||
     !toolNames.has("maps_get_place_share_link") ||
     !toolNames.has("maps_search_nearby") ||
     !toolNames.has("maps_open_place_photos") ||
     !toolNames.has("maps_select_place_tab") ||
+    !toolNames.has("maps_expand_opening_hours") ||
     !toolNames.has("maps_read_route_summary")
   ) {
     throw new Error(`Unexpected modern tools/list response: ${JSON.stringify(modernTools)}`);
