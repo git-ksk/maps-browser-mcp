@@ -47,6 +47,8 @@ A bounded 2026-08-15 search-this-area re-observation used dedicated Chrome profi
 
 A bounded 2026-08-15 current-location observation used a fresh dedicated Chrome profile with no pre-granted geolocation permission. Maps exposed exactly one visible `現在地を表示` / Show Your Location semantic button with `aria-pressed=false`. Activating that exact control reached Chrome's browser-level location permission prompt; no permission choice was made. While the prompt was active, the page control remained unpressed, the map path was unchanged, and `navigator.permissions` still reported `prompt`. Because a successful location postcondition cannot be observed without a user permission decision, and the current page-state Human Intervention boundary does not itself authorize or auto-resume a browser permission prompt, no current-location MCP action is exposed yet. Re-open this slice only with a manually authorized session plus an observable Maps-native success state, or after a dedicated permission-handoff model is designed.
 
+A bounded 2026-08-15 map-layer observation used dedicated JA and explicit `--lang=en-US` Chrome profiles. The visible `レイヤ` / `Layers` entry point rendered as two overlapping nested `div` nodes with no `role`, `aria-label`, `tabindex`, or other semantic control state; a bounded accessibility-name query also returned no `レイヤ` / `Layers` control. Manual hover exposed strong semantic options: `地形` / Terrain, `交通状況` / Traffic, `公共交通機関` / Transit, and `自転車` / Biking were each visible `menuitemcheckbox` controls with `aria-checked=false`. A bounded exact-one Traffic toggle verified `aria-checked=false -> true`. The option postcondition is therefore viable once the surface is open, but the opener cannot currently be identified exactly without nested-DOM heuristics or pointer geometry. No map-layer MCP action is exposed until Maps provides an exact-one semantic/accessible Layers opener (or another equally bounded Maps-native way to expose the options).
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -89,7 +91,7 @@ A bounded 2026-08-15 current-location observation used a fresh dedicated Chrome 
 | Stateful zoom in/out | V4 normal priority | Add only if useful beyond `maps_show`; verify resulting viewport state. |
 | Semantic map pan/recenter | V4 normal priority | Maps-specific viewport operation only; never expose pointer coordinates or generic drag. |
 | Current location | observation-gated / permission boundary observed | A fresh-profile activation of the exact visible location button reached Chrome geolocation permission. Permission was deliberately not granted, so no safe success postcondition was established. Do not expose an action that merely opens the prompt, auto-grants permission, or auto-replays after it; require a manually authorized session plus a verified Maps-native success state or a dedicated permission-handoff design. |
-| Map layers / map type / traffic / transit / bicycling / terrain | V4 high priority | Strong browser-native value. Use an allow-listed semantic layer model with verified toggles. |
+| Map layers / map type / traffic / transit / bicycling / terrain | observation-gated / option toggles verified | JA/en-US observation found exact semantic `menuitemcheckbox` toggles for Terrain/Traffic/Transit/Biking, and Traffic verified `false -> true`. However the visible Layers opener itself is two overlapping non-semantic `div` nodes with no role/ARIA/AX identity, so opening it safely would require a DOM/geometry heuristic. Do not expose a layer action until an exact-one semantic/accessible opener or equivalent bounded Maps-native surface is observed. |
 | Street View open by coordinates | implemented | `maps_streetview` opens documented Street View parameters. |
 | Enter Street View from active place/map | V4 high priority | Preserve place/viewport identity before entering. |
 | Street View rotate/zoom/navigation | V4 high priority | Maps-specific movement semantics only; no raw pointer/CDP tool surface. |
@@ -132,7 +134,7 @@ Priority order:
 1. result filters — Rating implemented as `maps_set_search_rating(expectedQuery, rating)`; Price/Hours/All filters remain observation/design-gated,
 2. search-this-area / update-after-move — explicit one-shot control not re-observed after JA/en-US manual pans; keep observation-gated and do not substitute the auto-update checkbox,
 3. current-location permission-safe action — browser permission boundary observed; keep observation-gated until a manually authorized success postcondition or dedicated permission-handoff model is established,
-4. semantic layer toggles,
+4. semantic layer toggles — option toggles are verified, but the Layers opener is non-semantic/ambiguous; keep observation-gated until an exact-one semantic opener exists,
 5. bounded viewport movement where it adds value beyond `maps_show`.
 
 ### V4-D — directions UI

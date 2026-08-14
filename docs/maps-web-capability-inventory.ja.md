@@ -47,6 +47,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15のcurrent-location bounded観測では、geolocation permissionを事前許可していないfreshな専用Chrome profileを使用しました。Mapsにはexact-oneのvisible `現在地を表示` / Show Your Location semantic buttonがあり、`aria-pressed=false` でした。そのexact controlをactivateするとChromeのbrowser-level位置情報permission promptへ到達し、permission choiceは一切行っていません。Prompt中もpage controlはunpressed、map pathは不変、`navigator.permissions` は `prompt` のままでした。ユーザーのpermission判断なしでは成功postconditionを観測できず、現行のpage-state Human Intervention境界自体もbrowser permission promptをauthorize/autoresumeする設計ではないため、current-location MCP actionはまだ公開しません。再開条件は、manualにauthorizedされたsessionでMaps-native success stateを観測できること、またはdedicated permission-handoff modelを設計できることです。
 
+2026-08-15のmap-layer bounded観測では、専用JA profileと明示的な `--lang=en-US` profileを使用しました。Visibleな `レイヤ` / `Layers` entry pointはoverlapするnested `div` 2件としてrenderされ、`role`、`aria-label`、`tabindex`などのsemantic control stateがなく、bounded accessibility-name queryでも `レイヤ` / `Layers` controlは0件でした。一方、manual hover後には `地形` / Terrain、`交通状況` / Traffic、`公共交通機関` / Transit、`自転車` / Bikingがそれぞれvisibleな `menuitemcheckbox`、`aria-checked=false` として確認でき、Trafficはexact-oneで `false -> true` のpostconditionまで検証できました。つまりoption側は安全に表現可能ですが、surface openerはnested DOM heuristicまたはpointer geometryなしにexactly-oneへ限定できません。Maps側でexact-one semantic/accessible Layers opener、または同等にboundedなMaps-native surface openerを観測できるまでmap-layer MCP actionは公開しません。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -89,7 +91,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | stateful zoom in/out | V4 normal priority | `maps_show` を超える価値がある範囲で追加。結果viewportを検証。 |
 | semantic map pan/recenter | V4 normal priority | Maps-specific viewport operation のみ。pointer座標やgeneric dragは公開しない。 |
 | 現在地 | observation-gated / permission boundary observed | fresh profileでexact visible location buttonをactivateするとChrome geolocation permissionへ到達した。Permissionは意図的にgrantせずsafeなsuccess postconditionは未確立。Promptを出すだけのaction、自動grant、permission後のautomatic replayは公開せず、manual authorized session + verified Maps-native success state、またはdedicated permission-handoff設計が成立するまで保留する。 |
-| map layer / map type / traffic / transit / bicycling / terrain | V4 high priority | browser-native価値が高い。allow-list semantic layer model と verified toggle で実装。 |
+| map layer / map type / traffic / transit / bicycling / terrain | observation-gated / option toggles verified | JA/en-USでTerrain/Traffic/Transit/Bikingのexact semantic `menuitemcheckbox` とTraffic `false -> true` を確認した。一方、visible Layers openerはrole/ARIA/AX identityのないoverlap nested `div` 2件で、安全にopenするにはDOM/geometry heuristicが必要。exact-one semantic/accessible openerまたは同等のbounded Maps-native surfaceを観測できるまでlayer actionは公開しない。 |
 | coordinatesから Street View を開く | implemented | `maps_streetview` が documented Street View parameter を利用。 |
 | active place/map から Street View へ入る | V4 high priority | place/viewport identity を再検証してから遷移。 |
 | Street View rotate/zoom/navigation | V4 high priority | Maps-specific movement semantics のみ。raw pointer/CDP tool は公開しない。 |
@@ -132,7 +134,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 1. result filter — Ratingは `maps_set_search_rating(expectedQuery, rating)` として実装。価格/時間/全フィルタはobservation/design-gated
 2. search-this-area / update-after-move — JA/en-US manual pan後もexplicit one-shot controlを再観測できず。auto-update checkboxを代替せずobservation-gated
 3. permission-safe current-location action — browser permission boundaryを観測済み。manual authorized success postconditionまたはdedicated permission-handoff modelが成立するまでobservation-gated
-4. semantic layer toggle
+4. semantic layer toggle — option toggleはverifiedだがLayers openerがnon-semantic/ambiguous。exact-one semantic openerが成立するまでobservation-gated
 5. `maps_show` 以上の価値がある bounded viewport movement
 
 ### V4-D — directions UI
