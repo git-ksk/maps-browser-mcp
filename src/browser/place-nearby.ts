@@ -284,8 +284,22 @@ export async function searchNearbyFromVerifiedPlace(
 
   await runtime.assertMapsSurface();
   await client.Input.insertText({ text: query });
-  await client.Input.dispatchKeyEvent({ type: "keyDown", key: "Enter" });
-  await client.Input.dispatchKeyEvent({ type: "keyUp", key: "Enter" });
+  await client.Input.dispatchKeyEvent({
+    type: "keyDown",
+    key: "Enter",
+    code: "Enter",
+    text: "\r",
+    unmodifiedText: "\r",
+    windowsVirtualKeyCode: 13,
+    nativeVirtualKeyCode: 13
+  });
+  await client.Input.dispatchKeyEvent({
+    type: "keyUp",
+    key: "Enter",
+    code: "Enter",
+    windowsVirtualKeyCode: 13,
+    nativeVirtualKeyCode: 13
+  });
 
   let searchUrl: string | undefined;
   const resultDeadline = Date.now() + 4_000;
