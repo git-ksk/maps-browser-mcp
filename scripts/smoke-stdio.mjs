@@ -10,6 +10,7 @@ const EXPECTED_TOOLS = [
   "maps_get_place_share_link",
   "maps_search_nearby",
   "maps_open_place_photos",
+  "maps_select_place_tab",
   "maps_select_route",
   "maps_set_travel_mode",
   "maps_read_place_summary",

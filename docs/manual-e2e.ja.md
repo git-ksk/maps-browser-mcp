@@ -100,7 +100,16 @@ Fail-closed確認:
 
 Sign-in / consent / CAPTCHA / challengeをこのoperationのtest目的で意図的に発生させないでください。自然発生した場合だけ下記Human Intervention確認へ移行します。Handoff完了後はplace workflowをfreshにreissueし、identityを再検証します。旧share actionを自動replayしません。
 
-## 6. Route Read / Select
+## 6. V4 Selected-Place Tab
+
+Interactive Assist有効かつfreshにverifiedされたactive placeからだけ実行します。
+
+1. `maps_select_place_tab({ expectedLabel, tab: "about" })` の後に `maps_select_place_tab({ expectedLabel, tab: "overview" })` をcall
+2. State-changingな成功ごとにrequested tabのselected state、same-place identity、resource epoch更新を確認。既にselectedならidempotentであること
+3. Reviews enumはtestしない。current visible Reviews tabを再観測できるまで意図的にschemaへ含めない
+4. Wrong identity、missing/duplicate control、unexpected navigation、invalid postconditionはfail closed。Click後にpostconditionを検証できなければprior semantic stateを利用可能なまま残さない
+
+## 7. Route Read / Select
 
 1. `maps_directions` を1回実行
 2. `maps_read_route_summary`
@@ -108,7 +117,7 @@ Sign-in / consent / CAPTCHA / challengeをこのoperationのtest目的で意図�
 4. `index + expectedLabel` で1 routeを選択
 5. 意図したrouteが選択されることを確認
 
-## 7. Manual Navigation / Stale-State Guard
+## 8. Manual Navigation / Stale-State Guard
 
 1. MCP経由でMaps searchまたはdirectionsを開始
 2. 専用browserを人間が別Maps surfaceへmanual navigation
@@ -116,7 +125,7 @@ Sign-in / consent / CAPTCHA / challengeをこのoperationのtest目的で意図�
 
 期待結果: `UI_STATE_CHANGED`。適切なsemantic workflowを再実行するよう要求され、古いsemantic stateでは操作しません。
 
-## 8. Human Intervention Boundary
+## 9. Human Intervention Boundary
 
 同意、sign-in、CAPTCHA、その他access challengeが自然発生した場合:
 
@@ -127,7 +136,7 @@ Sign-in / consent / CAPTCHA / challengeをこのoperationのtest目的で意図�
 
 Test目的でaccess challengeを意図的に発生させないでください。Challenge URL / redirectのfail-closed境界はdeterministic repository testで確認し、live confirmationは自然発生時だけ行います。
 
-## 9. Bulk Policy Boundary
+## 10. Bulk Policy Boundary
 
 広範囲の全店舗・全review収集など、明らかなbulk-oriented search requestを送ります。
 
