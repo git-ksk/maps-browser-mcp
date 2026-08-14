@@ -39,7 +39,7 @@ Google Maps Platform / Google-managed Maps MCP と重なること自体は scope
 
 Google Maps Web は locale、viewport、experiment、地域、account state などで変化します。以下の表は semantic product decision と観測結果を記録するものであり、同じ label / DOM shape が恒久的に存在することを前提にしません。
 
-2026-08-15にJA/ENのplace panelとstandard/wide viewportでbounded再観測した結果、place-boundな概要/OverviewとAbout tabは確認できましたが、visibleなReviews tabは再現しませんでした。以下のtab実装は、その再観測済みshapeだけに意図的に限定しています。
+2026-08-15にJA/ENのplace panelとstandard/wide viewportでbounded再観測した結果、place-boundな概要/OverviewとAbout tabは確認できましたが、visibleなReviews tabは再現しませんでした。営業時間controlはinline accordion型とsame-place detail-surface型の両方を確認しています。以下の実装は、その再観測済みshapeだけに意図的に限定しています。
 
 ## Coverage table
 
@@ -61,7 +61,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | place → directions | V4 normal priority | `maps_directions` でworkflowは構造的にカバー済み。current-place convenience は identity を保てる場合のみ追加。 |
 | place → 付近を検索 | implemented | `maps_search_nearby(expectedLabel, query)` がactive placeを再検証し、allow-list済みのNearby controlを1つだけ操作する。その後はNearby label付きinput、またはその操作で生成された一意のfocused/empty Maps comboboxだけを受理し、requested queryとMaps search-result pathの両方を検証できた場合だけ遷移を受理する。Interactive Assist必須。 |
 | place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` がvisible Shareを1回操作する直前にactive placeを再検証し、boundedなallow-list済みGoogle Maps share URLだけを返す。Interactive Assist必須。 |
-| 営業時間展開 | V4 normal priority | bounded visible-place interaction。persistent place dataset は作らない。 |
+| 営業時間展開 | implemented | `maps_expand_opening_hours(expectedLabel)` がactive placeとlive観測済みhours controlのexact-oneを再検証する。inline展開はobserved expanded stateを検証してplace semanticsを維持し、JAで観測したdetail-surface variantはsame-place URL identityとbounded hours markerを検証後に古いplace stateを無効化する。週間営業時間harvestingは公開しない。 |
 | website / phone / address / Plus Code のcopy/open | lower priority / official overlap | panel action としては有用だが、data価値の多くは structured place interface と重なる。 |
 | place保存 / saved list | login required | 実ブラウザで未ログイン Save が Google Account sign-in へ遷移。V5。 |
 | recent/history のaccount同期 | login required | account-backed history はV5。ephemeral browser historyを public dataset にはしない。 |
@@ -117,7 +117,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 3. place photo opener — verified viewer transitionとstale place-state invalidation付きの `maps_open_place_photos(expectedLabel)` として実装済み
 4. photo category navigation — remaining。viewer上でbounded観測したcontrolからのみ設計
 5. place tab — `maps_select_place_tab(expectedLabel, tab)` で `overview|about` のみ実装。Reviewsはcurrent controlを再観測できていないためobservation-gated
-6. opening hours — remaining。bounded live observationでexact target/postconditionが成立した場合だけ実装
+6. opening hours — `maps_expand_opening_hours(expectedLabel)` として実装。inline/detail postconditionとstale-state invalidationを含む
 
 ### V4-C — search / map viewport
 

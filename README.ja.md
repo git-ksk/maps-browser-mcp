@@ -116,7 +116,7 @@ maps_search(...)
   -> maps_get_place_share_link({ expectedLabel: selectedPlaceLabel })
 ```
 
-`maps_get_place_share_link` はvisibleな「共有」controlを操作する直前にactive placeを再検証し、place/share targetが変化・曖昧化していればfail closedします。同じverified-place modelを `maps_search_nearby`、`maps_open_place_photos`、`maps_select_place_tab` でも使います。Place tabは今回live再観測できた `overview` / `about` だけを公開し、Reviewsは引き続きobservation-gatedです。
+`maps_get_place_share_link` はvisibleな「共有」controlを操作する直前にactive placeを再検証し、place/share targetが変化・曖昧化していればfail closedします。同じverified-place modelを `maps_search_nearby`、`maps_open_place_photos`、`maps_select_place_tab`、`maps_expand_opening_hours` でも使います。Place tabは今回live再観測できた `overview` / `about` だけを公開し、Reviewsは引き続きobservation-gatedです。営業時間展開はstate transitionだけを検証し、週間営業時間datasetを返したり収集したりしません。
 
 経路候補も同様です。
 
@@ -145,6 +145,7 @@ maps_directions(...)
 - `maps_search_nearby` — V4、Interactive Assist必須
 - `maps_open_place_photos` — V4、Interactive Assist必須
 - `maps_select_place_tab` — V4、`overview|about` のみ、Interactive Assist必須
+- `maps_expand_opening_hours` — V4、展開stateのみ検証、Interactive Assist必須
 - `maps_select_route`
 - `maps_set_travel_mode`
 

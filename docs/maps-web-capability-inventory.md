@@ -39,7 +39,7 @@ The session verified the following real UI surfaces before the dedicated browser
 
 Google Maps Web is dynamic and may vary by locale, viewport, experiment, geography, and account state. A capability marked below reflects a semantic product decision plus the observed UI, not a promise that the same label or DOM shape is permanently stable.
 
-A bounded 2026-08-15 re-observation across JA/EN place panels and standard/wide viewports found place-bound Overview/About tabs but did not reproduce a visible Reviews tab. The tab implementation below is intentionally limited to those re-observed shapes.
+A bounded 2026-08-15 re-observation across JA/EN place panels and standard/wide viewports found place-bound Overview/About tabs but did not reproduce a visible Reviews tab. Opening-hours controls were observed in both inline accordion and same-place detail-surface variants. The implementation below is intentionally limited to those re-observed shapes.
 
 ## Coverage table
 
@@ -61,7 +61,7 @@ A bounded 2026-08-15 re-observation across JA/EN place panels and standard/wide 
 | Place → directions | V4 normal priority | Existing `maps_directions` covers the workflow structurally; add current-place convenience only if it preserves identity. |
 | Place → nearby search | implemented | `maps_search_nearby(expectedLabel, query)` revalidates the active place and activates exactly one allow-listed Nearby control. It then accepts only one bounded search-input state: a Nearby-labeled input or the uniquely focused empty Maps combobox produced by that action. The transition is accepted only when the requested query and a Maps search-result path are both verified. Interactive Assist is required. |
 | Place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` revalidates the active place immediately before one visible Share action, then returns only a bounded allow-listed Google Maps share URL. Interactive Assist is required. |
-| Expand opening hours | V4 normal priority | Bounded visible-place interaction; do not build persistent place datasets. |
+| Expand opening hours | implemented | `maps_expand_opening_hours(expectedLabel)` revalidates the active place and exactly one live-observed hours control. Inline expansions verify the observed expanded state and retain place semantics; the observed JA detail-surface variant verifies same-place URL identity plus bounded hours markers and invalidates the stale place state. Weekly-hours harvesting is not exposed. |
 | Copy/open website, phone, address, Plus Code | lower priority / official overlap | Useful panel actions, but most data value overlaps structured place interfaces. |
 | Save place / saved lists | login required | Real unauthenticated Save action redirected to Google Account sign-in. V5 only. |
 | Recent/history synced to account | login required | Treat account-backed history as V5. Local ephemeral browser history is not a public MCP dataset. |
@@ -117,7 +117,7 @@ Priority order:
 3. place photo opener — implemented as `maps_open_place_photos(expectedLabel)` with verified viewer transition and stale place-state invalidation,
 4. photo category navigation — remaining; design from bounded observed viewer controls only,
 5. place tabs — `maps_select_place_tab(expectedLabel, tab)` implements only `overview|about`; Reviews remains observation-gated because the current control was not re-observed,
-6. opening hours — remaining; implement only after bounded live observation establishes exact target and postconditions.
+6. opening hours — implemented as `maps_expand_opening_hours(expectedLabel)` with inline/detail postcondition handling and stale-state invalidation.
 
 ### V4-C — search and map viewport
 

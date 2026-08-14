@@ -100,14 +100,16 @@ Fail-closed確認:
 
 Sign-in / consent / CAPTCHA / challengeをこのoperationのtest目的で意図的に発生させないでください。自然発生した場合だけ下記Human Intervention確認へ移行します。Handoff完了後はplace workflowをfreshにreissueし、identityを再検証します。旧share actionを自動replayしません。
 
-## 6. V4 Selected-Place Tab
+## 6. V4 Selected-Place Tab / Opening Hours
 
 Interactive Assist有効かつfreshにverifiedされたactive placeからだけ実行します。
 
 1. `maps_select_place_tab({ expectedLabel, tab: "about" })` の後に `maps_select_place_tab({ expectedLabel, tab: "overview" })` をcall
 2. State-changingな成功ごとにrequested tabのselected state、same-place identity、resource epoch更新を確認。既にselectedならidempotentであること
 3. Reviews enumはtestしない。current visible Reviews tabを再観測できるまで意図的にschemaへ含めない
-4. Wrong identity、missing/duplicate control、unexpected navigation、invalid postconditionはfail closed。Click後にpostconditionを検証できなければprior semantic stateを利用可能なまま残さない
+4. FreshなOverview placeから `maps_expand_opening_hours({ expectedLabel })` をcallし、返却が展開stateだけで週間営業時間textを返さないことを確認
+5. `placeStateRetained: true` なら再実行が `alreadyExpanded: true` かつepoch不変になることを確認。`placeStateRetained: false` ならprior place semantic stateが無効化され、次のsemantic action前にplaceを再取得すること
+6. Wrong identity、missing/duplicate control、unexpected navigation、invalid postconditionはfail closed。Click後にpostconditionを検証できなければprior semantic stateを利用可能なまま残さない
 
 ## 7. Route Read / Select
 

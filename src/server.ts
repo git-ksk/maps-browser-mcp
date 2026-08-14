@@ -579,6 +579,27 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
+    "maps_expand_opening_hours",
+    {
+      description: "Expand the visible opening-hours surface for the currently selected Google Maps place. expectedLabel is required and revalidated immediately before exactly one observed hours control is activated. The tool verifies only the expansion state and does not return or harvest the weekly hours data. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedLabel: expectedLabelText
+      })
+    },
+    async ({ expectedLabel }, ctx) => runToolWithHandoff({
+      toolName: "maps_expand_opening_hours",
+      args: { expectedLabel },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.expandOpeningHours(expectedLabel);
+      }
+    })
+  );
+
+  server.registerTool(
     "maps_open_place_photos",
     {
       description: "Open the visible Google Maps photo viewer for the currently selected place. expectedLabel is required and revalidated immediately before exactly one bounded photo control is activated. The previous place semantic state is invalidated after the verified viewer transition. Interactive Assist must be enabled.",
