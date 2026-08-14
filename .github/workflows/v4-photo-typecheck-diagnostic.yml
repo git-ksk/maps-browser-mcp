@@ -1,4 +1,4 @@
-name: V4 Photo Typecheck Diagnostic
+name: V4 Photo Test Diagnostic
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  typecheck:
+  test:
     if: ${{ github.head_ref == 'feat/v4-place-photos' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -19,19 +19,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Annotated typecheck
+      - name: Run tests with annotations
         shell: bash
         run: |
           set +e
-          npm run typecheck 2>&1 | tee /tmp/typecheck.log
+          npm test 2>&1 | tee /tmp/test.log
           status=${PIPESTATUS[0]}
-          while IFS= read -r line; do
-            if [[ "$line" =~ ^([^\(]+)\(([0-9]+),([0-9]+)\):\ error\ (TS[0-9]+):\ (.*)$ ]]; then
-              file="${BASH_REMATCH[1]}"
-              lineno="${BASH_REMATCH[2]}"
-              code="${BASH_REMATCH[4]}"
-              message="${BASH_REMATCH[5]}"
-              echo "::error file=$file,line=$lineno::$code: $message"
-            fi
-          done < /tmp/typecheck.log
+          if [ "$status" -ne 0 ]; then
+            echo "::error title=V4 photo test failure::$(tail -n 80 /tmp/test.log | tr '\n' ' ' | cut -c1-3000)"
+          fi
           exit "$status"
