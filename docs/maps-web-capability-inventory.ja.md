@@ -56,7 +56,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | place 写真 / photo category | V4 high priority | bounded photo surface を semantic に開く/移動する。bulk image harvesting はしない。 |
 | place の概要 / クチコミ / About tab | V4 normal priority | tab selection は候補。review body harvesting は引き続き out of scope。 |
 | place → directions | V4 normal priority | `maps_directions` でworkflowは構造的にカバー済み。current-place convenience は identity を保てる場合のみ追加。 |
-| place → 付近を検索 | V4 high priority | browser-native な place-context workflow。active place identity を再検証してから query を適用。 |
+| place → 付近を検索 | implemented | `maps_search_nearby(expectedLabel, query)` がactive placeを再検証し、allow-list済みのNearby controlを1つだけ操作する。Nearby専用search inputを確認し、requested queryとMaps search-result pathの両方を検証できた場合だけ遷移を受理する。Interactive Assist必須。 |
 | place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` がvisible Shareを1回操作する直前にactive placeを再検証し、boundedなallow-list済みGoogle Maps share URLだけを返す。Interactive Assist必須。 |
 | 営業時間展開 | V4 normal priority | bounded visible-place interaction。persistent place dataset は作らない。 |
 | website / phone / address / Plus Code のcopy/open | lower priority / official overlap | panel action としては有用だが、data価値の多くは structured place interface と重なる。 |
@@ -110,7 +110,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 優先順:
 
 1. place share link — `maps_get_place_share_link(expectedLabel)` として実装済み
-2. verified active place からの nearby search
+2. nearby search — verified active placeからの `maps_search_nearby(expectedLabel, query)` として実装済み
 3. photo surface / category navigation
 4. bounded place tab / opening-hours interaction
 
