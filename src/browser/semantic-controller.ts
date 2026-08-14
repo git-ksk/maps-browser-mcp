@@ -5,6 +5,7 @@ import { openVerifiedPlacePhotoSurface, type PlacePhotoSurfaceResult } from "./p
 import { getVerifiedPlaceShareLink, type PlaceShareLinkResult } from "./place-share.js";
 import { selectVerifiedPlaceTab, type PlaceTab, type PlaceTabSelectionResult } from "./place-tabs.js";
 import { expandVerifiedOpeningHours, type OpeningHoursExpansionResult } from "./place-opening-hours.js";
+import { setVerifiedSearchRating, type SearchRating, type SearchRatingFilterResult } from "./search-rating-filter.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 
 export class SemanticController {
@@ -45,6 +46,10 @@ export class SemanticController {
 
   async expandOpeningHours(expectedLabel: string): Promise<OpeningHoursExpansionResult> {
     return expandVerifiedOpeningHours(this.runtime, expectedLabel);
+  }
+
+  async setSearchRating(expectedQuery: string, rating: SearchRating): Promise<SearchRatingFilterResult> {
+    return setVerifiedSearchRating(this.runtime, expectedQuery, rating);
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {

@@ -46,6 +46,7 @@ import { currentRequestPrincipal, principalBinding } from "./request-principal.j
 import { ChromeProcess } from "./browser/chrome-process.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
+import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import { TakeoverBroker } from "./takeover-broker.js";
@@ -395,6 +396,28 @@ export function buildServer(): McpServer {
         const compiled = compiler.search(query);
         const result = await runtime.navigate(compiled.url, compiled.action);
         return { opened: true, url: result.url };
+      }
+    })
+  );
+
+  server.registerTool(
+    "maps_set_search_rating",
+    {
+      description: "Apply one bounded live-observed Google Maps Rating filter option to the active search result view. expectedQuery is required and revalidated immediately before each filter/menu action; rating is restricted to the observed 2.0–4.5 half-step options. After selection, the exact requested numeric rating chip (for example `4.0+`) and a closed Rating menu are verified while preserving the expected search query. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedQuery: queryText,
+        rating: z.enum(SEARCH_RATING_OPTIONS)
+      })
+    },
+    async ({ expectedQuery, rating }, ctx) => runToolWithHandoff({
+      toolName: "maps_set_search_rating",
+      args: { expectedQuery, rating },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.setSearchRating(expectedQuery, rating);
       }
     })
   );
