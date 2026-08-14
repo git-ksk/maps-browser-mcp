@@ -24,14 +24,12 @@ export type MapsAction =
       heading?: number;
       pitch?: number;
       fov?: number;
-    }
-  | { kind: "photos"; placeLabel: string };
+    };
 
 export type MapsViewState =
   | "blank"
   | "search"
   | "place"
-  | "photos"
   | "directions"
   | "route"
   | "show"
