@@ -53,7 +53,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | search result list の共有 | V4 high priority | visible search state を再検証して Maps-generated share URL を返す。 |
 | result から place を開く | implemented | `maps_select_result` が verified search state から place state へ遷移。 |
 | place summary を bounded に読む | implemented | full-detail harvesting をせず visible place text を扱う。 |
-| place 写真 / photo category | V4 high priority | bounded photo surface を semantic に開く/移動する。bulk image harvesting はしない。 |
+| place 写真を開く | implemented | `maps_open_place_photos(expectedLabel)` がactive placeを再検証し、allow-list済みphoto entry controlをちょうど1つだけ操作する。Maps photo viewerとexpected place headingを検証後、古いplace semantic stateを無効化する。image harvestingは行わない。Interactive Assist必須。 |
+| photo category navigation | V4 high priority | viewer上で実際にbounded観測したcategoryだけをidentity/postcondition付きで移動する。bulk image harvestingは行わない。 |
 | place の概要 / クチコミ / About tab | V4 normal priority | tab selection は候補。review body harvesting は引き続き out of scope。 |
 | place → directions | V4 normal priority | `maps_directions` でworkflowは構造的にカバー済み。current-place convenience は identity を保てる場合のみ追加。 |
 | place → 付近を検索 | implemented | `maps_search_nearby(expectedLabel, query)` がactive placeを再検証し、allow-list済みのNearby controlを1つだけ操作する。その後はNearby label付きinput、またはその操作で生成された一意のfocused/empty Maps comboboxだけを受理し、requested queryとMaps search-result pathの両方を検証できた場合だけ遷移を受理する。Interactive Assist必須。 |
@@ -111,8 +112,9 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 
 1. place share link — `maps_get_place_share_link(expectedLabel)` として実装済み
 2. nearby search — verified active placeからの `maps_search_nearby(expectedLabel, query)` として実装済み
-3. photo surface / category navigation
-4. bounded place tab / opening-hours interaction
+3. place photo opener — verified viewer transitionとstale place-state invalidation付きの `maps_open_place_photos(expectedLabel)` として実装済み
+4. photo category navigation — remaining。viewer上でbounded観測したcontrolからのみ設計
+5. bounded place tab / opening-hours interaction
 
 ### V4-C — search / map viewport
 
