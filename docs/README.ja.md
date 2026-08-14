@@ -10,6 +10,7 @@
 - [Container / headless Linux 日本語版](container.ja.md) — 標準Linuxコンテナ、headless Chromium、port/profile/sandboxの安全な設定
 - [Troubleshooting 日本語版](troubleshooting.ja.md) — エラーコード別の原因と安全な復旧手順
 - [ChatGPT 接続ガイド 日本語版](chatgpt.ja.md) — ChatGPT App / Remote MCP接続、認証境界、Tool再スキャン
+- [OAuth Gateway パターン 日本語版](oauth-gateway.ja.md) — browser runtimeへOAuth protocol責務を持ち込まずRemote MCPをOAuth保護する構成
 - [利用モードとユースケース](use-cases.ja.md) — Navigation-only / Interactive Assistの使い分け、Local / Remoteでの実例
 - [ロードマップ](roadmap.ja.md) — V4 Google Maps Web coverage、MCP Apps / Optional UI、残るportability作業
 - [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md) — 未ログインMaps Webのcanonical coverage表、優先順位、V4 slice、login-required境界、明示的non-goal
