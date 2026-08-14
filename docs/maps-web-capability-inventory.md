@@ -45,6 +45,8 @@ A separate bounded 2026-08-15 V4-C re-observation found visible Price, Rating, H
 
 A bounded 2026-08-15 search-this-area re-observation used dedicated Chrome profiles with JA UI and explicit `--lang=en-US`, kept the search query visible, left `Update results when map moves` disabled, and manually panned the map. The map center/path changed while search identity remained stable, but no visible `Search this area` / `このエリアを検索` one-shot control appeared in either UI. Only the update-after-move checkbox remained visible. Because that checkbox changes automatic update behavior rather than representing the requested explicit semantic action, it is not treated as a substitute; `maps_search_this_area` remains observation-gated with no selector or schema.
 
+A bounded 2026-08-15 current-location observation used a fresh dedicated Chrome profile with no pre-granted geolocation permission. Maps exposed exactly one visible `現在地を表示` / Show Your Location semantic button with `aria-pressed=false`. Activating that exact control reached Chrome's browser-level location permission prompt; no permission choice was made. While the prompt was active, the page control remained unpressed, the map path was unchanged, and `navigator.permissions` still reported `prompt`. Because a successful location postcondition cannot be observed without a user permission decision, and the current page-state Human Intervention boundary does not itself authorize or auto-resume a browser permission prompt, no current-location MCP action is exposed yet. Re-open this slice only with a manually authorized session plus an observable Maps-native success state, or after a dedicated permission-handoff model is designed.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -86,7 +88,7 @@ A bounded 2026-08-15 search-this-area re-observation used dedicated Chrome profi
 | Show map at coordinates/zoom | implemented | `maps_show` opens a documented coordinate-centered Maps URL. |
 | Stateful zoom in/out | V4 normal priority | Add only if useful beyond `maps_show`; verify resulting viewport state. |
 | Semantic map pan/recenter | V4 normal priority | Maps-specific viewport operation only; never expose pointer coordinates or generic drag. |
-| Current location | V4 high priority | Browser-native; permission/consent must stop at Human Intervention and never be bypassed. |
+| Current location | observation-gated / permission boundary observed | A fresh-profile activation of the exact visible location button reached Chrome geolocation permission. Permission was deliberately not granted, so no safe success postcondition was established. Do not expose an action that merely opens the prompt, auto-grants permission, or auto-replays after it; require a manually authorized session plus a verified Maps-native success state or a dedicated permission-handoff design. |
 | Map layers / map type / traffic / transit / bicycling / terrain | V4 high priority | Strong browser-native value. Use an allow-listed semantic layer model with verified toggles. |
 | Street View open by coordinates | implemented | `maps_streetview` opens documented Street View parameters. |
 | Enter Street View from active place/map | V4 high priority | Preserve place/viewport identity before entering. |
@@ -129,7 +131,7 @@ Priority order:
 
 1. result filters — Rating implemented as `maps_set_search_rating(expectedQuery, rating)`; Price/Hours/All filters remain observation/design-gated,
 2. search-this-area / update-after-move — explicit one-shot control not re-observed after JA/en-US manual pans; keep observation-gated and do not substitute the auto-update checkbox,
-3. current-location permission-safe action,
+3. current-location permission-safe action — browser permission boundary observed; keep observation-gated until a manually authorized success postcondition or dedicated permission-handoff model is established,
 4. semantic layer toggles,
 5. bounded viewport movement where it adds value beyond `maps_show`.
 
