@@ -134,6 +134,28 @@ The boundary is deliberately separate from semantic action approval:
 - reconnect/restart never automatically replays an older semantic operation,
 - V4 operation cleanup must test intervention state before sending any best-effort UI input.
 
+## MCP Apps render boundary
+
+`maps_render_directions` is intentionally outside the browser-controller path:
+
+```text
+MCP client / host
+   |
+   +-- maps_render_directions
+   |      +-- text + structured route data (always)
+   |      +-- optional ui://maps-browser-mcp/directions.html
+   |             -> sandboxed MCP Apps View
+   |             -> official Google Maps Embed iframe
+   |
+   +-- Maps browser tools
+          -> Policy / semantic controller
+          -> MapsBrowserRuntime / CDP
+```
+
+The display tool never calls `MapsBrowserRuntime`, never reads the dedicated browser state, and never mutates the Google Maps tab. The MCP Apps resource is advertised only when the Embed API key is configured; otherwise the same tool remains a plain text/structured result.
+
+The View follows the stable MCP Apps host-context lifecycle: theme/locale/style variables, safe-area insets, container dimensions, size-change notification, cancellation/error cleanup, and teardown. Nested-frame CSP is limited to `https://www.google.com`. See [MCP Apps portability and deployment](mcp-apps.md).
+
 ## HTTP transport
 
 The HTTP endpoint is backed by the official MCP TypeScript v2 server entry and supports both protocol eras handled by that entry:

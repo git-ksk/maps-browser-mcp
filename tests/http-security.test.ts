@@ -17,8 +17,8 @@ test("normalizes host headers including IPv6", () => {
 
 test("validates Origin against explicit origins or allowed hosts", () => {
   assert.equal(originAllowed(undefined, [], ["localhost"]), true);
-  assert.equal(originAllowed("https://chatgpt.com", ["https://chatgpt.com"], ["localhost"]), true);
-  assert.equal(originAllowed("https://evil.example", ["https://chatgpt.com"], ["localhost"]), false);
+  assert.equal(originAllowed("https://mcp-host.example", ["https://mcp-host.example"], ["localhost"]), true);
+  assert.equal(originAllowed("https://evil.example", ["https://mcp-host.example"], ["localhost"]), false);
   assert.equal(originAllowed("http://localhost:3000", [], ["localhost"]), true);
 });
 

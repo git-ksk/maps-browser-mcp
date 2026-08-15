@@ -14,6 +14,7 @@ import { loadConfig } from "./config.js";
 import {
   buildDirectionsAppHtml,
   MAP_DIRECTIONS_APP_RESOURCE_URI,
+  MAP_DIRECTIONS_FRAME_DOMAINS,
   MCP_APP_MIME_TYPE
 } from "./mcp-apps-map-embed.js";
 import {
@@ -912,9 +913,8 @@ export function buildServer(): McpServer {
     })
   );
 
-  if (config.mcpApps.googleMapsEmbedApiKey) {
-    const embedApiKey = config.mcpApps.googleMapsEmbedApiKey;
-
+  const embedApiKey = config.mcpApps.googleMapsEmbedApiKey;
+  if (embedApiKey) {
     server.registerResource(
       "maps_directions_app",
       MAP_DIRECTIONS_APP_RESOURCE_URI,
@@ -931,7 +931,7 @@ export function buildServer(): McpServer {
           _meta: {
             ui: {
               csp: {
-                frameDomains: ["https://www.google.com"]
+                frameDomains: [...MAP_DIRECTIONS_FRAME_DOMAINS]
               },
               prefersBorder: true
             }
@@ -939,39 +939,43 @@ export function buildServer(): McpServer {
         }]
       })
     );
+  }
 
-    server.registerTool(
-      "maps_render_directions",
-      {
-        title: "Render Google Maps directions",
-        description: "Render explicit origin/destination directions in an inline MCP Apps view. Display-only: this does not navigate or mutate the dedicated browser session. Text output remains useful on hosts without MCP Apps support.",
-        inputSchema: z.object({
-          origin: locationText,
-          destination: locationText,
-          mode: z.enum(TRAVEL_MODES).default("driving")
-        }),
-        annotations: {
-          readOnlyHint: true,
-          idempotentHint: true
-        },
+  server.registerTool(
+    "maps_render_directions",
+    {
+      title: "Render Google Maps directions",
+      description: "Return explicit origin/destination directions data and, when Google Maps Embed is configured, render it in an inline MCP Apps view. Display-only: this does not navigate or mutate the dedicated browser session.",
+      inputSchema: z.object({
+        origin: locationText,
+        destination: locationText,
+        mode: z.enum(TRAVEL_MODES).default("driving")
+      }),
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true
+      },
+      ...(embedApiKey ? {
         _meta: {
           ui: {
             resourceUri: MAP_DIRECTIONS_APP_RESOURCE_URI
           }
         }
-      },
-      async ({ origin, destination, mode }) => {
-        const route = { origin, destination, mode };
-        return {
-          content: [{
-            type: "text" as const,
-            text: `Inline map prepared for ${origin} → ${destination} (${mode}).`
-          }],
-          structuredContent: route
-        };
-      }
-    );
-  }
+      } : {})
+    },
+    async ({ origin, destination, mode }) => {
+      const route = { origin, destination, mode };
+      return {
+        content: [{
+          type: "text" as const,
+          text: embedApiKey
+            ? `Directions prepared for ${origin} → ${destination} (${mode}); an inline map is available on MCP Apps-capable hosts.`
+            : `Directions prepared for ${origin} → ${destination} (${mode}). Inline map rendering is disabled because GOOGLE_MAPS_EMBED_API_KEY is not configured.`
+        }],
+        structuredContent: route
+      };
+    }
+  );
 
   return server;
 }

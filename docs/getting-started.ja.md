@@ -167,6 +167,12 @@ MAPS_CHROME_EXECUTABLE="/custom/path/to/chrome" npm start
 
 既存CDP endpointへattachするのはisolation上の意味を理解している場合だけにしてください。`MAPS_CDP_PORT` を使うには `MAPS_ALLOW_EXTERNAL_CDP=true` も必要です。
 
+### Optional MCP Apps directions UI
+
+`maps_render_directions` は常にtext + structured route dataを返します。MCP Apps対応hostでoptionalなinline Google Maps Embed viewも使う場合だけ `GOOGLE_MAPS_EMBED_API_KEY` を設定してください。Key未設定でもtoolは残り、UI linkageだけが無効になります。
+
+Maps Embed API専用のrestricted keyをdeployment environment / secret configurationから渡し、repositoryへcommitしないでください。詳細は [MCP Apps portability / deployment](mcp-apps.ja.md) を参照してください。
+
 ## 8. Remote MCPクライアント
 
 Chrome DevTools port自体を公開しないでください。

@@ -20,7 +20,8 @@ const EXPECTED_TOOLS = [
   "maps_swap_route_endpoints",
   "maps_get_route_share_link",
   "maps_read_place_summary",
-  "maps_read_route_summary"
+  "maps_read_route_summary",
+  "maps_render_directions"
 ];
 const MCP_APPS_EXTENSION_ID = "io.modelcontextprotocol/ui";
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
@@ -131,8 +132,21 @@ await withStdioSession(async ({ request, send }) => {
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
   const listed = await request(2, "tools/list", {});
   assertTools(listed, "legacy");
-  if (listed?.result?.tools?.some((tool) => tool?.name === "maps_render_directions")) {
-    throw new Error(`MCP Apps tool exposed without API key: ${JSON.stringify(listed)}`);
+  const renderTool = listed?.result?.tools?.find((tool) => tool?.name === "maps_render_directions");
+  if (renderTool?._meta?.ui?.resourceUri) {
+    throw new Error(`MCP Apps UI linkage exposed without API key: ${JSON.stringify(renderTool)}`);
+  }
+  const called = await request(3, "tools/call", {
+    name: "maps_render_directions",
+    arguments: {
+      origin: "Tokyo Station",
+      destination: "Shibuya Station",
+      mode: "transit"
+    }
+  });
+  assertRenderFallback(called);
+  if (!called?.result?.content?.[0]?.text?.includes("GOOGLE_MAPS_EMBED_API_KEY is not configured")) {
+    throw new Error(`Missing explicit disabled-UI fallback state: ${JSON.stringify(called)}`);
   }
 }, { GOOGLE_MAPS_EMBED_API_KEY: "" });
 

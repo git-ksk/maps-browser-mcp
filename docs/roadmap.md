@@ -73,7 +73,7 @@ Departure/arrival time and transit preference controls are important unauthentic
 
 ## MCP Apps / optional interactive UI
 
-An MCP Apps proof of concept is validated for inline Google Maps directions rendering while the existing text/tool workflow remains available as the baseline. The UI remains experimental until the remaining portability work is complete.
+The MCP Apps directions proof of concept has progressed through the portability/hardening milestone. The existing text/structured tool result remains the baseline, the host-neutral UI path is hardened against the stable 2026-01-26 lifecycle, and the UI remains experimental until a second production host completes a real-key Google Maps Embed render.
 
 ### Standards position
 
@@ -129,15 +129,20 @@ Design requirements that remain in force:
 - Do not treat UI support as permission to widen scraping, crawling, persistence, or review collection.
 - Verify Google Maps Embed terms, CSP requirements, and host compatibility again at implementation time.
 
-### Remaining portability validation
+### Portability hardening status
 
-Before treating the UI as production-ready, complete the remaining checks:
+The portability baseline is now complete:
 
-1. Validate one additional MCP Apps-capable host where practical.
-2. Validate the text-only fallback in a second real non-MCP-Apps host where practical; the protocol-level fallback is already covered by smoke tests.
-3. Validate supported host layouts and container sizing beyond the successful ChatGPT Web PoC.
+1. `maps_render_directions` remains useful as text + structured data with no Embed key and no MCP Apps UI.
+2. UI resource/linkage/extension advertisement is conditional, so an optional UI configuration cannot remove the core display result.
+3. The View handles stable host context, safe areas/container dimensions, size changes, cancellation/error cleanup, and teardown.
+4. The official MCP Apps basic reference host exercised resource discovery, CSP propagation, sandbox/View lifecycle, tool input/result delivery, and the nested Google Embed frame path. A dummy key was intentionally used, so this is not claimed as a second real-key map render.
+5. The official MCP SDK client exercised the no-key, no-UI fallback as a real client.
+6. ChatGPT Web remains the project-verified production host with a successful real Google Maps Embed render. VS Code officially supports MCP Apps, but this repository does not yet claim a project-level real-key render there.
 
-The successful ChatGPT Web render closes the original feasibility question. MCP extension advertisement, negotiated-client smoke coverage, and the text/structured fallback are now covered; the remaining items are cross-host portability and hardening work.
+The remaining item is a **production-host re-validation gate**, not unfinished core portability work: when a suitable second production host and restricted key are available, verify a real Embed render and then reconsider the experimental label. Re-open sooner if the stable MCP Apps specification, Google Embed requirements, or host sandbox/CSP behavior changes materially.
+
+See [MCP Apps portability and deployment](mcp-apps.md) for the canonical contract, security rules, evidence, and completion criteria.
 
 ## Explicit non-goals for the roadmap
 

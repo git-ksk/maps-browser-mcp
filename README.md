@@ -199,6 +199,10 @@ maps_directions({ origin, destination, mode: "transit" })
 - `maps_read_place_summary`
 - `maps_read_route_summary`
 
+### Display-only / optional MCP Apps UI
+
+- `maps_render_directions` — always returns text + structured route data; when `GOOGLE_MAPS_EMBED_API_KEY` is configured, MCP Apps-capable hosts may additionally render `ui://maps-browser-mcp/directions.html`. This tool never navigates or mutates the dedicated browser session.
+
 Interactive Assist is **disabled by default**. Enable it only when required:
 
 ```bash
@@ -334,6 +338,7 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MAPS_HEADLESS` | `false` | Headless Chrome |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable bounded visible-state reading and V4 semantic UI operations that require it |
+| `GOOGLE_MAPS_EMBED_API_KEY` | unset | Optional restricted Maps Embed API key for the MCP Apps directions view; the text/structured render tool remains available without it |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent bounded visible-state/UI read budget |
 | `MAPS_MAX_AX_NODES` | `120` | Accessibility-node bound for bounded visible-state reading |
@@ -420,7 +425,8 @@ See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and err
 | [Architecture](docs/architecture.md) | Runtime, CDP, state, queue/watchdog, semantic UI operation model |
 | [Project positioning](docs/positioning.md) | Competitive category, Maps Web priority, official-interface overlap, and product direction |
 | [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.md) | Canonical unauthenticated capability coverage/status table and V4 slices |
-| [Roadmap](docs/roadmap.md) | V4 closeout baseline plus MCP Apps portability direction |
+| [MCP Apps portability](docs/mcp-apps.md) | Host-neutral UI contract, fallback, layout, security, deployment and compatibility evidence |
+| [Roadmap](docs/roadmap.md) | V4 closeout baseline plus MCP Apps portability status and future direction |
 | [Compliance](docs/compliance.md) | Intended-use and non-goal boundaries |
 | [Manual live E2E](docs/manual-e2e.md) | User-triggered Google Maps compatibility verification |
 | [Release checklist](docs/release.md) | Pre-release CI, live check, security and tagging procedure |
