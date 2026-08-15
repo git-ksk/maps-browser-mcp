@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TakeoverSessionError, TakeoverSessionManager } from "../src/takeover-session.js";
+import { TakeoverSessionError, TakeoverSessionManager } from "mcp-execution-handoff/browser-takeover";
 
 const PRINCIPAL_A = "principal-a";
 const PRINCIPAL_B = "principal-b";

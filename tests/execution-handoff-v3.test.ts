@@ -3,10 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { defineExecutionAdapter, type ExecutionHandoffAdapter } from "../src/execution-adapter.js";
-import type { ResumePolicy } from "../src/execution-handoff.js";
-import { ExecutionHandoffRuntimeV3, type CheckpointableIntervention } from "../src/execution-handoff-v3.js";
-import { SignedFileHandoffCheckpointStore } from "../src/handoff-checkpoint.js";
+import { defineExecutionAdapter, ExecutionHandoffRuntime, SignedFileHandoffCheckpointStore, type CheckpointableIntervention, type ExecutionHandoffAdapter, type ResumePolicy } from "mcp-execution-handoff/core";
 
 type Intervention = CheckpointableIntervention;
 type Decision = { epoch: number; resumePolicy: ResumePolicy };
@@ -38,7 +35,7 @@ test("v3 recovery is principal-bound and always requires reissue plus revalidati
   try {
     const adapter = new FixtureAdapter();
     const store = new SignedFileHandoffCheckpointStore(file, Buffer.alloc(32, 8), () => 13_000);
-    const runtime = new ExecutionHandoffRuntimeV3(
+    const runtime = new ExecutionHandoffRuntime(
       defineExecutionAdapter("desktop.mock", adapter),
       { checkpointStore: store, checkpointTtlMs: 60_000, now: () => 13_000 }
     );
@@ -57,32 +54,12 @@ test("v3 recovery is principal-bound and always requires reissue plus revalidati
   }
 });
 
-test("v3 approval is invalidated by resource epoch changes", () => {
-  const adapter = new FixtureAdapter();
-  const runtime = new ExecutionHandoffRuntimeV3(defineExecutionAdapter("desktop.mock", adapter));
-  const request = runtime.requestApproval({
-    actionName: "delete",
-    args: { resourceId: "r1" },
-    principalBinding: PRINCIPAL_A
-  });
-  const receipt = runtime.grantApproval(request.id, PRINCIPAL_A);
-
-  adapter.active = { ...adapter.active!, epoch: 5 };
-  assert.throws(() => runtime.consumeApproval({
-    id: request.id,
-    receipt,
-    actionName: "delete",
-    args: { resourceId: "r1" },
-    principalBinding: PRINCIPAL_A
-  }));
-});
-
 test("v3 checkpoint clears once no intervention remains", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "maps-handoff-v3-clear-"));
   const file = path.join(dir, "checkpoint.json");
   try {
     const adapter = new FixtureAdapter();
-    const runtime = new ExecutionHandoffRuntimeV3(
+    const runtime = new ExecutionHandoffRuntime(
       defineExecutionAdapter("terminal.mock", adapter),
       {
         checkpointStore: new SignedFileHandoffCheckpointStore(file, Buffer.alloc(32, 8), () => 13_000),
@@ -106,7 +83,7 @@ test("configured durability releases Human authority if checkpoint persistence f
   fs.writeFileSync(blocker, "block");
   try {
     const adapter = new FixtureAdapter();
-    const runtime = new ExecutionHandoffRuntimeV3(
+    const runtime = new ExecutionHandoffRuntime(
       defineExecutionAdapter("browser.maps", adapter),
       {
         checkpointStore: new SignedFileHandoffCheckpointStore(

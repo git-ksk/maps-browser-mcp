@@ -26,6 +26,14 @@ test("package, lockfile, and MCP server versions stay synchronized", () => {
   assert.equal(match[1], packageJson.version);
 });
 
+test("pre-release execution handoff upstream is pinned to an immutable commit", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
+  assert.equal(
+    pkg.dependencies?.["mcp-execution-handoff"],
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/8c7be8ede5ac5fa0b384713f5206373171ec060d.tar.gz"
+  );
+});
+
 test("GitHub Actions dependencies are pinned to immutable commit SHAs", () => {
   const workflows = [
     ".github/workflows/ci.yml",

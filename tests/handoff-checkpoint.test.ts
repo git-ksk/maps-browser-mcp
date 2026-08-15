@@ -7,7 +7,7 @@ import {
   HandoffCheckpointError,
   SignedFileHandoffCheckpointStore,
   type HandoffCheckpoint
-} from "../src/handoff-checkpoint.js";
+} from "mcp-execution-handoff/core";
 
 function fixture(now = 10_000) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "maps-handoff-checkpoint-"));

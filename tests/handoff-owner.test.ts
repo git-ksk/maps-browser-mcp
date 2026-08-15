@@ -5,7 +5,7 @@ import {
   createHandoffOwner,
   handoffOwnerMatches,
   type HandoffOwner
-} from "../src/handoff-owner.js";
+} from "mcp-execution-handoff/core";
 
 const ARGS = { destination: "Tokyo Station", mode: "transit" };
 

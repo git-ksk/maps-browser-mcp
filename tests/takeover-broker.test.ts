@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AuthPrincipal } from "../src/auth-provider.js";
-import { TakeoverBroker, type TakeoverBrowserAdapter } from "../src/takeover-broker.js";
+import { principalBinding } from "../src/request-principal.js";
+import { TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
 
 const PRINCIPAL_A: AuthPrincipal = { subject: "user-a", email: "a@example.test" };
 const PRINCIPAL_B: AuthPrincipal = { subject: "user-b", email: "b@example.test" };
@@ -38,7 +39,7 @@ function fixture() {
     publicBaseUrl: "https://takeover.example",
     ttlMs: 60_000
   });
-  const link = broker.createLink({ id: "intervention-a", epoch: 7 }, PRINCIPAL_A);
+  const link = broker.createLink({ id: "intervention-a", epoch: 7 }, principalBinding(PRINCIPAL_A));
   assert.ok(link);
   const url = new URL(link);
   const sessionId = url.pathname.split("/").at(-1);
@@ -57,7 +58,7 @@ async function bootstrap(
       "sec-fetch-site": "same-origin",
       "x-takeover-client": clientBinding
     }
-  }), principal);
+  }), principalBinding(principal));
   assert.equal(response.status, 200);
   const body = await response.json() as { capability?: string };
   assert.ok(body.capability);
@@ -69,7 +70,7 @@ test("takeover link is locator-only and the external client stays nonce-bound an
   assert.equal(url.search, "");
   assert.equal(url.hash, "");
 
-  const response = await broker.handle(new Request(`http://localhost${url.pathname}`), PRINCIPAL_A);
+  const response = await broker.handle(new Request(`http://localhost${url.pathname}`), principalBinding(PRINCIPAL_A));
   assert.equal(response.status, 200);
   assert.match(response.headers.get("cache-control") ?? "", /no-store/);
   assert.equal(response.headers.get("referrer-policy"), "no-referrer");
@@ -88,7 +89,7 @@ test("takeover link is locator-only and the external client stays nonce-bound an
   assert.doesNotMatch(html, /sessionStorage|localStorage/);
   assert.doesNotMatch(html, /Maps human takeover|return to MCP/);
 
-  const scriptResponse = await broker.handle(new Request(`http://localhost/takeover/client.js`), PRINCIPAL_A);
+  const scriptResponse = await broker.handle(new Request(`http://localhost/takeover/client.js`), principalBinding(PRINCIPAL_A));
   assert.equal(scriptResponse.status, 200);
   assert.match(scriptResponse.headers.get("cache-control") ?? "", /no-store/);
   assert.match(scriptResponse.headers.get("content-type") ?? "", /^text\/javascript/);
@@ -101,13 +102,13 @@ test("takeover link is locator-only and the external client stays nonce-bound an
 
   const scriptHead = await broker.handle(new Request(`http://localhost/takeover/client.js`, {
     method: "HEAD"
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(scriptHead.status, 200);
   assert.equal(await scriptHead.text(), "");
 
   const scriptPost = await broker.handle(new Request(`http://localhost/takeover/client.js`, {
     method: "POST"
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(scriptPost.status, 405);
 
   const scriptWithoutPrincipal = await broker.handle(new Request(`http://localhost/takeover/client.js`));
@@ -118,13 +119,13 @@ test("takeover link is locator-only and the external client stays nonce-bound an
       "sec-fetch-site": "cross-site",
       "x-takeover-client": CLIENT_A
     }
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(crossSiteBootstrap.status, 403);
 });
 
 test("different or missing principal cannot open or bootstrap another takeover", async () => {
   const { broker, url, sessionId } = fixture();
-  const wrongPage = await broker.handle(new Request(`http://localhost${url.pathname}`), PRINCIPAL_B);
+  const wrongPage = await broker.handle(new Request(`http://localhost${url.pathname}`), principalBinding(PRINCIPAL_B));
   assert.equal(wrongPage.status, 404);
 
   const wrongBootstrap = await broker.handle(new Request(`http://localhost/takeover/api/bootstrap/${sessionId}`, {
@@ -132,7 +133,7 @@ test("different or missing principal cannot open or bootstrap another takeover",
       "sec-fetch-site": "same-origin",
       "x-takeover-client": CLIENT_A
     }
-  }), PRINCIPAL_B);
+  }), principalBinding(PRINCIPAL_B));
   assert.equal(wrongBootstrap.status, 404);
 
   const missing = await broker.handle(new Request(`http://localhost${url.pathname}`));
@@ -148,7 +149,7 @@ test("same principal cannot claim one takeover from two remote clients", async (
       "sec-fetch-site": "same-origin",
       "x-takeover-client": CLIENT_A
     }
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(retryBySameClient.status, 200);
   const retried = await retryBySameClient.json() as { capability?: string };
   assert.equal(retried.capability, capability);
@@ -158,7 +159,7 @@ test("same principal cannot claim one takeover from two remote clients", async (
       "sec-fetch-site": "same-origin",
       "x-takeover-client": CLIENT_B
     }
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(secondClient.status, 404);
 });
 
@@ -172,10 +173,10 @@ test("frame and bounded inputs require matching principal, client lease, capabil
 
   const denied = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
     headers: { "x-takeover-client": CLIENT_A }
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(denied.status, 404);
 
-  const wrongPrincipal = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, { headers: auth }), PRINCIPAL_B);
+  const wrongPrincipal = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, { headers: auth }), principalBinding(PRINCIPAL_B));
   assert.equal(wrongPrincipal.status, 404);
 
   const wrongClient = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
@@ -183,10 +184,10 @@ test("frame and bounded inputs require matching principal, client lease, capabil
       authorization: `Takeover ${capability}`,
       "x-takeover-client": CLIENT_B
     }
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(wrongClient.status, 404);
 
-  const frame = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, { headers: auth }), PRINCIPAL_A);
+  const frame = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, { headers: auth }), principalBinding(PRINCIPAL_A));
   assert.equal(frame.status, 200);
   assert.equal(frame.headers.get("x-takeover-width"), "390");
   assert.equal(frame.headers.get("x-takeover-height"), "844");
@@ -196,14 +197,14 @@ test("frame and bounded inputs require matching principal, client lease, capabil
     method: "POST",
     headers: { ...auth, origin: "https://evil.example", "content-type": "application/json" },
     body: JSON.stringify({ kind: "tap", x: 10, y: 20 })
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(wrongOrigin.status, 403);
 
   const accepted = await broker.handle(new Request(`http://localhost/takeover/api/input/${sessionId}`, {
     method: "POST",
     headers: { ...auth, origin: "https://takeover.example", "content-type": "application/json" },
     body: JSON.stringify({ kind: "tap", x: 10, y: 20 })
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(accepted.status, 200);
   assert.deepEqual(calls.at(-1), ["tap", "intervention-a", 7, 10, 20]);
 });
@@ -219,7 +220,7 @@ test("done revokes remote capability and client lease without approving the MCP 
   const done = await broker.handle(new Request(`http://localhost/takeover/api/done/${sessionId}`, {
     method: "POST",
     headers: auth
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(done.status, 200);
   assert.deepEqual(await done.json(), { done: true });
 
@@ -228,6 +229,6 @@ test("done revokes remote capability and client lease without approving the MCP 
       authorization: `Takeover ${capability}`,
       "x-takeover-client": CLIENT_A
     }
-  }), PRINCIPAL_A);
+  }), principalBinding(PRINCIPAL_A));
   assert.equal(stale.status, 404);
 });
