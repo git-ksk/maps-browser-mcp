@@ -57,6 +57,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15のV4-D route-swap bounded観測では、freshなJA/en-US transit directionsでexact-oneのvisible `出発地と目的地を入れ替える / Reverse starting point and destination` buttonを確認しました。1回だけactivateし、resolved visible endpoint値がexactに A/B -> B/A へ変化することを検証しました。一方、追加settle後もdocumented current URLとruntime canonical actionはA→Bのままで、UI clickをそのまま公開するとsemantic stateがstaleになります。そこで `maps_swap_route_endpoints(expectedOrigin, expectedDestination)` はUI controlをclickせず、同じsemantic intentをdocumented Maps directions parameterの再構築で実装します。Fresh simple route・explicit origin・waypointなしに限定し、expected canonical endpointを再検証、modeとbounded avoidを維持し、既存navigation pathでresource epoch更新と旧route candidate無効化を行います。Stateful stop editingは別sliceのままで、bounded documented waypoint自体は既存 `maps_directions` で対応済みです。
 
+2026-08-15のstateful-stop bounded観測では、waypointなし/1件ありのfresh JA/en-US driving routeを使用しました。`目的地を追加 / Add destination` はexact-one visibleでしたが、これは新しいdestination entry workflowを開くだけで、boundedな値自体は既存 `maps_directions(..., waypoints)` でdocumentedに対応済みです。Waypoint 1件のrouteではvisibleな `この目的地を削除 / Remove this destination` が同一semantic labelで2件あり、特定waypointとfinal destinationを区別するにはposition/DOM heuristicが必要でした。Exact semanticなreorder controlも観測できず、並べ替えを公開するにはgeneric drag/pointer geometryが必要になります。Stateful stop-edit MCP actionは追加しません。Target-specificなremove/reorder semanticsをexactに識別できるUIを観測した場合だけ再開し、現状はdocumented bounded waypointをsafe supported pathとします。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -88,7 +90,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | travel mode変更 | implemented | `maps_set_travel_mode` が driving/walking/bicycling/transit と既存制約を維持。 |
 | おすすめ/automatic travel mode | V4 normal priority | UI固有mode chooser。heuristic guessなしでpostcondition検証可能な場合のみ追加。 |
 | 出発地/目的地入れ替え | documented URL再構築で実装済み | `maps_swap_route_endpoints(expectedOrigin, expectedDestination)` がfresh simple canonical directions requestを再検証し、origin省略/waypointを拒否、mode/avoidを維持してdocumented Maps URL parameterを逆順に再構築する。Live UI swapはcanonical URL/actionがstaleに残るため自動化しない。 |
-| waypoint追加/並び替え/削除 | V4 normal priority | bounded waypoints は URL path で既に利用可能。stateful UI editing は次段。 |
+| waypoint追加/並び替え/削除 | observation/design-gated / documented waypoint overlap | JA/en-USでexact Add destinationは観測したが、1-waypoint routeでは同一labelのRemove destinationが2件あり、exact semantic reorder controlも未観測。position heuristic/generic dragは使わず、既存 `maps_directions(..., waypoints)` をbounded supported pathとする。 |
 | driving avoid（ferries/highways/tolls） | implemented | bounded documented route option を実装済み。mode変更時も維持。 |
 | 出発/到着時刻・transit preference | partial / 当日transit time実装済み | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` はfresh simple transit routeの `mode=depart_at|arrive_by` と当日24時間 `HH:MM` のみ実装。Mutation前にdocumented route identityを再検証し、exact localized time controlとvisible resolved endpoint値不変をpostcondition確認後、staleなreplayable navigation actionだけを破棄してroute read/selectを維持する。日付、終電、transit preference optionはobservation/design-gated。 |
 | route detail / step expansion | V4 normal priority | bounded route-detail interaction。bulk itinerary extraction はしない。 |
