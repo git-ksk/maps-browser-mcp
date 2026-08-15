@@ -63,6 +63,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15のroute-detail bounded観測では、guarded `maps_select_route(index, expectedLabel)` 自体がselected route detail viewへ入ることを確認しました。Candidate側の `詳細 / Details` controlは消え、遷移後surfaceにはexactなBack、route-share、Print、`詳細を切り替える / Toggle details` controlが現れます。追加のToggle-details controlはJA/en-USともexact-oneでしたが、bounded activate前後でlabelは不変、selected/pressed/expanded semantic stateもありませんでした。URLは同等のまま、またはopaque Maps `data=` stateだけが変化し、これは意図的にparseしません。Activate後にvisible semantic control数が増えることは確認できましたが、control-count差や新しく見えたstep本文をpostconditionにするのはheuristic/content harvestingになります。追加details-toggle MCP actionは公開しません。Route-detail entryはguarded `maps_select_route` でcoveredとし、explicit semanticなexpanded/collapsed stateを観測できた場合だけtoggle sliceを再開します。
 
+2026-08-15のdestination-nearby bounded観測では、route destination shortcutとdriving-onlyのalong-route stop controlを分離しました。FreshなJA/en-US transit/driving directionsで `レストラン / Restaurants` はexact-oneでした。Activateすると最初にexactなnearby-search state（`付近の検索をキャンセル / Cancel search nearby` とRestaurants query）が現れ、その後Maps search pathへ遷移しました。en-USではsettle後に `Explore nearby Yokohama Station` headingもvisibleになり、期待destination scopeを確認できました。一方JAではbounded settle後も `結果` と `付近の検索をキャンセル` だけで、visible semanticなdestination identityがありませんでした。Opaque Maps URL `data=` stateにはrouting/destination情報が含まれますが、これは意図的にparseしません。「nearby searchが開始した」だけでは「期待destination付近」より弱いため、destination-nearby MCP actionはまだ公開しません。Supportedな観測locale shapeでdestination-bound visible identity/postconditionが成立した場合だけ再開します。Drivingの `経路沿いの経由地を検索 / Search stops along the route` やgas/EV/hotel actionは別workflowであり代替しません。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -99,7 +101,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | 出発/到着時刻・transit preference | partial / 当日transit time実装済み | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` はfresh simple transit routeの `mode=depart_at|arrive_by` と当日24時間 `HH:MM` のみ実装。Mutation前にdocumented route identityを再検証し、exact localized time controlとvisible resolved endpoint値不変をpostcondition確認後、staleなreplayable navigation actionだけを破棄してroute read/selectを維持する。日付、終電、transit preference optionはobservation/design-gated。 |
 | route detail / step expansion | partial / detail entry covered・extra toggle gated | Guarded `maps_select_route(index, expectedLabel)` でselected route detail viewへ入れる。JA/en-USの `Toggle details` はexact-oneだがselected/pressed/expanded postconditionがなくlabelも不変。Opaque URL data、revealed step本文、control-count差から成功を推測せず、explicit semanticなexpanded/collapsed stateを観測するまで追加toggle actionは公開しない。 |
 | route link copy/share | partial / selected transit route実装済み | `maps_get_route_share_link(expectedOrigin, expectedDestination)` はlive観測済みsimple transitのselected-route `Share directions` dialogだけを使い、selected Send-link tabとexact-one visible allow-listed Maps URLを検証後dialogをcloseする。Clipboard内容は読まない。未選択Copy linkとdriving/その他modeはobservation-gated。 |
-| route view から目的地周辺shortcut | V4 normal priority | current destination をscopeにしたcategory search。 |
+| route view から目的地周辺shortcut | observation-gated / destination postcondition不完全 | JA/en-USのexact Restaurants shortcutでnearby-search stateへ入る。en-USでは `Explore nearby <destination>` を確認できたが、JAはgeneric Results/Cancel-nearbyだけで期待destinationをvisibleに再検証できない。Opaque URL dataはparseせず、drivingのalong-route stop controlも代替しない。観測localeでdestination-bound visible identityが揃うまで保留。 |
 | route を mobile に送信 | login required | account/device-linked workflow はV5。 |
 | coordinates/zoomで map表示 | implemented | `maps_show` が documented coordinate-centered Maps URL を開く。 |
 | stateful zoom in/out | partial / verified search zoom implemented | `maps_zoom_search(expectedQuery, direction)` はactive search-resultの `in|out` のみ対応。Mutation直前にexact visible query + exact-one visible enabled Zoom buttonを再検証し、same search/query + public Maps pathのexact 1-level zoom changeをpostcondition確認する。Center完全一致は要求しない。root/place zoomは未実装。 |
@@ -159,7 +161,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 2. route link share — selected simple transit routeは `maps_get_route_share_link` として実装。未選択Copy linkとdriving/その他modeはobservation-gated
 3. origin/destination swap・stop edit — endpoint swapは `maps_swap_route_endpoints` として実装。stateful stop editはobservation/design-gated（bounded waypointは既存 `maps_directions` で対応済み）
 4. bounded route detail expansion — guarded `maps_select_route` でroute detailへ入る。追加Toggle-detailsはsemantic postcondition不在のためobservation-gated
-5. destination-nearby shortcut
+5. destination-nearby shortcut — exact nearby category actionは観測したが、JAでdestination-bound visible postconditionがないためobservation-gated。driving along-route stop searchは代替しない
 
 ### V4-E — Street View
 
