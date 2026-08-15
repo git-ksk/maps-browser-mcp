@@ -20,7 +20,7 @@ From GitHub Actions:
 
 Use `container` before a release that materially changes the Dockerfile, headless Chromium startup, browser profile paths, container filesystem assumptions, or container-specific Chrome flags. Do not run both modes merely for routine activity; keep live checks low-volume and purpose-driven.
 
-The fixed workflow now verifies the established search/read/select path, exactly one V4 selected-place share-link operation, and the established transit route read/select path. It does not broaden into result crawling, screenshots, review harvesting, or persistence.
+The fixed workflow verifies one bounded autocomplete read/select, one search-share check, the established bounded place workflow (including representative photo/nearby/place-share checks), and one fresh simple transit route with Recommended/Best followed by bounded route read/select. It does not broaden into result crawling, capability-by-capability probing, screenshots, review harvesting, or persistence.
 
 The container path builds the repository Dockerfile and runs the same bounded script inside that image. It uses a sandbox-capable container configuration and does not enable `MAPS_ALLOW_UNSANDBOXED_CHROMIUM`. No artifact upload step exists in either path.
 

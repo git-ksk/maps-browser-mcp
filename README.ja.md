@@ -425,7 +425,7 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 | [Architecture](docs/architecture.ja.md) | runtime、CDP、state、queue/watchdog、semantic UI operation model |
 | [Project positioning](docs/positioning.ja.md) | 競合category、Maps Web priority、公式interface重複、product direction |
 | [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md) | 未ログインcapabilityのcanonical coverage/status表とV4 slice |
-| [Roadmap](docs/roadmap.ja.md) | V4実装順とMCP Apps portability direction |
+| [Roadmap](docs/roadmap.ja.md) | V4 closeout baselineとMCP Apps portability direction |
 | [Compliance / Safety](docs/compliance.ja.md) | 利用目的・非目的・規約境界 |
 | [Manual Live E2E](docs/manual-e2e.ja.md) | 実Google Maps user-triggered互換性確認 |
 | [Release Checklist](docs/release.ja.md) | release前CI、Live check、security、tag手順 |
@@ -440,7 +440,7 @@ Project scope内のcontributionは歓迎です。PR前に **[Contributing 日本
 
 ## Release Status
 
-`main` のrepository metadata上のversionは現在 `0.1.1` です。公開済みGitHub Releaseが未リリースの`main`より古い状態はあり得ます。Releaseでnpm package公開が明示されるまでは、npm install可能と仮定しないでください。
+v0.2.0 release baselineのrepository metadataは `0.2.0` です。公開済みGitHub Releaseが未リリースの`main`より古い状態はあり得ます。Releaseでnpm package公開が明示されるまでは、npm install可能と仮定しないでください。
 
 Tag / publish前は **[Release Checklist 日本語版](docs/release.ja.md)** を参照してください。
 

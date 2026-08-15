@@ -195,4 +195,4 @@ Normal CI never waits for human takeover and does not intentionally trigger CAPT
 
 ## Current upstream status
 
-The generic control-plane implementation has been extracted to `git-ksk/mcp-execution-handoff`. Maps-specific URLs/surface classification, postcondition verification, and CDP execution remain in this repository. Japan Cinema is the second real-adapter validation; the upstream stays pre-release with no `v0.1.0` or npm publication until both consumers are green.
+The generic control-plane implementation has been extracted to `git-ksk/mcp-execution-handoff`. Maps-specific URLs/surface classification, postcondition verification, and CDP execution remain in this repository. The Japan Cinema second-adapter validation is complete, the upstream is the formal source of truth, and `v0.1.0` exists as a source release. npm publication remains intentionally disabled; Maps consumes an immutable source-release commit.

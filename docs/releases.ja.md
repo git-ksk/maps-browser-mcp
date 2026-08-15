@@ -6,15 +6,14 @@
 
 ## 最新安定版
 
-現在の最新公開GitHub Releaseは **v0.1.1** です。
+この文書で扱うrelease baselineは **v0.2.0** です。Exact tested release commitはGitHub tag / Releaseを正本とします。
 
-- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.1.1
-- Release commit: `27ab7c82e13f19730bb765b5bd6f2dd76c92ba89`
+- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.2.0
 - Draft: いいえ
 - Prerelease: いいえ
 - npm: **未公開**
 
-v0.1.1ではprovider非依存のcontainer / headless Linux対応に加え、runtime、CI、readiness、Chromium sandbox、challenge境界のhardeningを追加しています。
+v0.2.0では現行未認証Google Maps Web scopeのV4をcloseoutし、Mapsを検証済み `mcp-execution-handoff` v0.1.0 source-release baselineへ同期します。ExperimentalなMCP Apps directions rendering PoCもprogressive enhancementとして含みます。UI依存operationは引き続きcompatibility-sensitiveです。
 
 詳細な変更履歴は [CHANGELOG 日本語版](../CHANGELOG.ja.md) を参照してください。
 
@@ -23,7 +22,7 @@ v0.1.1ではprovider非依存のcontainer / headless Linux対応に加え、runt
 検証・公開されたsourceをそのまま使う場合はrelease tagをcheckoutしてください。
 
 ```bash
-git clone --branch v0.1.1 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
+git clone --branch v0.2.0 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm ci --ignore-scripts
 npm run build
@@ -50,6 +49,12 @@ Release tagを指定すると、今後 `main` に未releaseの変更が入った
 `main` はprotected branchで、変更はrequired CI / CodeQL経由でmergeされます。ただし、将来の `main` は最新公開tagより先行する可能性があります。`main` のcommitがGitHub Releaseとして公開済みとは限りません。
 
 Contributorは特別な指示がない限り現在の `main` からbranchを作成してください。
+
+## v0.2.0 検証記録
+
+v0.2.0では、exact release commitに対してNode.js 20/22/24 required CI、macOS / Windows browser smoke、CodeQL、package / repository policy check、fixedなmanual-only Live Maps E2E代表pathを通すrelease procedureを要求します。Protected branch merge前にはexact commitが存在しないため、commitとworkflow runはこの文書へ先書きせずGitHub Releaseを正本として記録します。
+
+代表live pathは意図的にboundedです。Autocomplete read/select 1回、search-share 1回、representative place workflow 1組、Recommended/Best後のguarded route read/selectを含むfresh simple transit 1件だけを確認し、crawlerやcapability-by-capability sweepにはしません。
 
 ## v0.1.1 検証記録
 

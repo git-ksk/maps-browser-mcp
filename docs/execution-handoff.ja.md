@@ -195,4 +195,4 @@ Remote takeover時のtrusted pathはphone、authenticated HTTPS gateway、local 
 
 ## Upstream化の現在地
 
-generic control-plane実装は `git-ksk/mcp-execution-handoff` へ切り出しました。Maps固有URL/surface classification、postcondition verification、CDP executionはこのrepositoryに残します。Japan Cinemaをsecond real adapterとして検証し、2 consumerがgreenになるまではpre-release扱いで、`v0.1.0` / npm publishは行いません。
+generic control-plane実装は `git-ksk/mcp-execution-handoff` へ切り出しました。Maps固有URL/surface classification、postcondition verification、CDP executionはこのrepositoryに残します。Japan Cinemaをsecond real adapterとして検証済みで、upstreamはformal source of truthになりました。`v0.1.0` はsource releaseとして作成済みですが、npm publishは意図的に無効のままです。Mapsはimmutableなsource-release commitをconsumeします。

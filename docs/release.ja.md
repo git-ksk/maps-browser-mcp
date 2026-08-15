@@ -99,16 +99,20 @@ Node base imageはdigest固定を維持し、Docker dependencyはDependabot監�
 
 Workflowは意図的に `workflow_dispatch` onlyかつ低ボリュームです。通常runner pathは `host` を選択します。Dockerfile、headless Chromium startup、container profile / filesystem前提、container固有Chrome flagを実質的に変更したreleaseでは `container` を選び、同じbounded live scriptをbuild済みimage内でChromium sandboxを有効にしたまま実行します。具体的な互換性理由がない限り、両modeを同時に繰り返し実行しません。
 
-期待path:
+V4全体releaseでの代表live path:
 
 ```text
-place search
-  -> bounded place read
-  -> index + expectedLabel place selection
-  -> transit directions
+bounded autocomplete read
+  -> guarded suggestion selection
+  -> search result 1件 + bounded search-share link
+  -> bounded place read/select + representative place workflow 1件
+  -> fresh simple transit directions
+  -> Recommended/Best semantic selection
   -> bounded route read
   -> index + expectedLabel route selection
 ```
+
+V4 toolが増えたことを理由にcapability-by-capability crawlerへ広げず、fixed / low-volumeを維持してください。
 
 記録するのはpass / failと選択runtimeだけ。Repositoryへscreenshot、DOM dump、cookie、browser profile、review、location-result artifactを追加しないでください。
 
@@ -170,7 +174,7 @@ TagはPR headではなく、実際にtestedされた `main` commitへ作成し�
 Release noteに含める内容:
 
 - Projectが何をするか
-- V1 / V2 / V3のstatus
+- V1 / V2 / V3 / V4のstatus
 - 主なsafety boundary
 - Supported Node version
 - Chrome / Chromium requirement

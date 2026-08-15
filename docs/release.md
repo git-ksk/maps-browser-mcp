@@ -93,16 +93,20 @@ Before a release that changes any of these areas, run **Live Maps E2E (manual)**
 
 The workflow is deliberately `workflow_dispatch`-only and low-volume. Choose `host` for the normal runner path. If the release materially changes the Dockerfile, headless Chromium startup, container profile/filesystem behavior, or container-specific Chrome flags, choose `container` so the same bounded live script runs inside the built image with Chromium sandboxing enabled. Do not run both modes without a concrete compatibility reason.
 
-Expected live path:
+Expected representative live path for a V4-wide release:
 
 ```text
-place search
-  -> bounded place read
-  -> index + expectedLabel place selection
-  -> transit directions
+bounded autocomplete read
+  -> guarded suggestion selection
+  -> one search result + bounded search-share link
+  -> bounded place read/select + one representative place workflow
+  -> fresh simple transit directions
+  -> Recommended/Best semantic selection
   -> bounded route read
   -> index + expectedLabel route selection
 ```
+
+Keep this fixed and low-volume. Do not expand it into capability-by-capability crawling merely because more V4 tools exist.
 
 Record pass/fail and the selected runtime only. Do not add screenshots, DOM dumps, cookies, browser profiles, reviews, or location-result artifacts to the repository.
 
@@ -163,7 +167,7 @@ Create the tag from the exact tested `main` commit, not from an earlier PR head.
 Release notes should include:
 
 - what the project does,
-- status of V1/V2/V3,
+- status of V1/V2/V3/V4,
 - notable safety boundaries,
 - supported Node versions,
 - Chrome/Chromium requirement,

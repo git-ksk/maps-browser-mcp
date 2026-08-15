@@ -4,15 +4,14 @@ This page explains how to choose between a stable release and the current `main`
 
 ## Latest stable release
 
-The latest published GitHub Release is **v0.1.1**.
+The release baseline documented here is **v0.2.0**. The GitHub tag/Release is the authoritative record for the exact tested release commit.
 
-- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.1.1
-- Release commit: `27ab7c82e13f19730bb765b5bd6f2dd76c92ba89`
+- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.2.0
 - Draft: no
 - Prerelease: no
 - npm: **not published**
 
-The release includes provider-neutral container/headless Linux support and additional runtime, CI, readiness, sandbox, and challenge-boundary hardening.
+v0.2.0 closes out V4 for the current unauthenticated Google Maps Web scope, synchronizes Maps to the validated `mcp-execution-handoff` v0.1.0 source-release baseline, and carries the experimental MCP Apps directions-rendering PoC as a progressive enhancement. UI-dependent operations remain compatibility-sensitive.
 
 For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 
@@ -21,7 +20,7 @@ For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 If you want the exact source that was validated and released, check out the release tag:
 
 ```bash
-git clone --branch v0.1.1 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
+git clone --branch v0.2.0 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm ci --ignore-scripts
 npm run build
@@ -48,6 +47,12 @@ Use `main` when you intentionally want the newest merged development state.
 `main` is protected and changes land through required CI/CodeQL checks, but it may move ahead of the latest public tag. Do not assume that a commit on `main` has been published as a GitHub Release.
 
 For contributors, branch from the current `main` unless a maintainer explicitly asks for a release-branch fix.
+
+## v0.2.0 validation record
+
+The release procedure requires the exact v0.2.0 release commit to pass Node.js 20/22/24 required CI, macOS/Windows browser smoke, CodeQL, package/repository policy checks, and the fixed manual-only Live Maps E2E representative path. The exact commit and workflow run are recorded in the GitHub Release rather than hard-coded here before the protected-branch merge exists.
+
+The representative live path is intentionally bounded: one autocomplete read/select, one search-share check, a representative place workflow, and one fresh simple transit route with Recommended/Best followed by guarded route read/select. It is not a crawler or a capability-by-capability sweep.
 
 ## v0.1.1 validation record
 

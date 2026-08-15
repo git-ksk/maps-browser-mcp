@@ -118,7 +118,8 @@ GitHub側障害等でprivate reportingが一時利用できない場合、privat
 
 | Version | Security support |
 | --- | --- |
-| `0.1.1` | 現在のstable releaseとしてsupport |
+| `0.2.0` | 現在のstable releaseとしてsupport |
+| `0.1.1` | routine backportなし |
 | `0.1.0` | routine backportなし |
 | `main` | development branch。fixはまずここへ入る |
 

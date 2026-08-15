@@ -80,12 +80,12 @@ MFA完了 != message承認
 
 ## Two-adapter extraction status
 
-`mcp-execution-handoff` はまだpre-releaseです。次の2つのreal consumerがgreenになって初めてformal upstream扱いにします。
+two-real-adapter extraction gateは完了済みです。
 
-1. `maps-browser-mcp` の `browser.maps`
-2. `japan-cinema-browser-mcp` のsecond real adapter
+1. `maps-browser-mcp` の `browser.maps` がgreen
+2. second real adapterの `japan-cinema-browser-mcp` もgreen
 
-検証完了までは `v0.1.0` release / npm publishを行いません。
+`mcp-execution-handoff` はformal upstreamとなり、**v0.1.0 source release** も作成済みです。Consumerは引き続きimmutable source pinを使用し、npm publishは意図的に無効のままです。
 
 ## V2.2 manual mobile verification
 

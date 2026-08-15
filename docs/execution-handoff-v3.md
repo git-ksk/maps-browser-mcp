@@ -80,12 +80,12 @@ MFA complete != message approved
 
 ## Two-adapter extraction status
 
-`mcp-execution-handoff` is intentionally pre-release. The extraction is accepted as the formal upstream only after both real consumers are green:
+The two-real-adapter extraction gate is complete:
 
-1. `maps-browser-mcp` as `browser.maps`, and
-2. `japan-cinema-browser-mcp` as the second real adapter.
+1. `maps-browser-mcp` is green as `browser.maps`, and
+2. `japan-cinema-browser-mcp` is green as the second real adapter.
 
-Until that verification is complete, there is no `v0.1.0` release and no npm publication.
+`mcp-execution-handoff` is now the formal upstream and has a versioned **v0.1.0 source release**. Consumers still use immutable source pins; npm publication remains intentionally disabled.
 
 ## V2.2 manual mobile verification
 

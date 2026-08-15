@@ -420,7 +420,7 @@ See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and err
 | [Architecture](docs/architecture.md) | Runtime, CDP, state, queue/watchdog, semantic UI operation model |
 | [Project positioning](docs/positioning.md) | Competitive category, Maps Web priority, official-interface overlap, and product direction |
 | [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.md) | Canonical unauthenticated capability coverage/status table and V4 slices |
-| [Roadmap](docs/roadmap.md) | V4 implementation order plus MCP Apps portability direction |
+| [Roadmap](docs/roadmap.md) | V4 closeout baseline plus MCP Apps portability direction |
 | [Compliance](docs/compliance.md) | Intended-use and non-goal boundaries |
 | [Manual live E2E](docs/manual-e2e.md) | User-triggered Google Maps compatibility verification |
 | [Release checklist](docs/release.md) | Pre-release CI, live check, security and tagging procedure |
@@ -435,7 +435,7 @@ Contributions are welcome within the project's constrained scope. Read **[CONTRI
 
 ## Release status
 
-The repository metadata on `main` is currently versioned as `0.1.1`. The latest published GitHub release may intentionally lag unreleased `main`. Do not assume npm installation is available until a release explicitly documents a published npm package.
+The repository metadata for the v0.2.0 release baseline is versioned as `0.2.0`. The latest published GitHub release may intentionally lag unreleased `main`. Do not assume npm installation is available until a release explicitly documents a published npm package.
 
 See **[Release checklist](docs/release.md)** before tagging or publishing.
 

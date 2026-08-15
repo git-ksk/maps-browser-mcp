@@ -135,7 +135,7 @@ V4-Fでは残りhigh/normal priorityもunsafe convenience APIを増やさず解�
 
 ## V4 implementation slices
 
-V4 は大きな DOM automation 1本ではなく、小さくreview可能なまとまりで進めます。
+V4 は大きな DOM automation 1本ではなく、小さくreview可能なまとまりで実装・closeoutしました。
 
 ### V4-A — inventory / semantic identity primitives
 

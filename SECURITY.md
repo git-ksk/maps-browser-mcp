@@ -90,7 +90,8 @@ The project is pre-1.0 and does not promise long-term backports.
 
 | Version | Security support |
 | --- | --- |
-| `0.1.1` | Supported as the current stable release |
+| `0.2.0` | Supported as the current stable release |
+| `0.1.1` | No routine backports |
 | `0.1.0` | No routine backports |
 | `main` | Development branch; fixes land here first |
 
