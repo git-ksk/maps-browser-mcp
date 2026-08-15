@@ -51,6 +51,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15のviewport bounded観測では、1440×1000のJA search-result viewと1280×800のexplicit en-US search-result viewを使用しました。両UIでZoom in/outはexact-oneのvisible enabled `button`（hidden duplicateはvisible-only境界で除外）、visible queryはexactに維持され、public Maps search pathにはsettled integer zoom levelが現れました。1往復だけのbounded観測でJA `17z -> 18z -> 17z`、EN `16z -> 17z -> 16z` を確認しています。Results pane geometryの影響でzoom animation中にlongitudeが少し変化したため、map center完全一致はpostconditionにしません。`maps_zoom_search(expectedQuery, direction)` はactive verified search state限定の1-level `in|out` とし、same query + exact ±1 zoom transitionだけを成功条件にします。Generic pan/recenterとroot/place zoomはこのsliceへ含めません。
 
+2026-08-15のV4-D transit-time bounded観測では、freshなsimple Tokyo Station -> Yokohama Station transit requestをJAとexplicit en-USで使用しました。`すぐに出発 / Leave now` はexact visible buttonで、menuには `出発時刻 / Depart at` と `到着時刻 / Arrive by` がexact `menuitemradio` として現れました。どちらかを選ぶとexact-oneのvisible `input[name="transit-time"]` が出現します。13:30へのbounded editではJA `13:30`、EN `1:30 PM` を確認し、visibleなresolved origin/destination input値はbyte-for-byteで不変、pageも `/maps/dir/` を維持しました。Time mode選択後にtransit-mode radio群が消えるUI変種があるため、radio stateはpostconditionにしません。`maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` はfresh simple documented transit requestからの当日 `depart_at|arrive_by` + 24時間 `HH:MM` のみに限定します。日付指定、`終電 / Last available`、transit preference optionは引き続きobservation/design-gatedです。UI-only scheduleは元のdocumented navigation actionだけでは完全表現できないため、成功時はresource epochを更新してreplayable actionを破棄しつつ、same sessionのcurrent directions viewはbounded route read/select用に維持します。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -84,7 +86,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | 出発地/目的地入れ替え | V4 normal priority | stateful route edit。old candidate state は無効化する。 |
 | waypoint追加/並び替え/削除 | V4 normal priority | bounded waypoints は URL path で既に利用可能。stateful UI editing は次段。 |
 | driving avoid（ferries/highways/tolls） | implemented | bounded documented route option を実装済み。mode変更時も維持。 |
-| 出発/到着時刻・transit preference | V4 high priority | documented Maps URL parameter では表現できない重要UI操作。visible semantic control 経由で実装し、推測したweb parameterは使わない。 |
+| 出発/到着時刻・transit preference | partial / 当日transit time実装済み | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` はfresh simple transit routeの `mode=depart_at|arrive_by` と当日24時間 `HH:MM` のみ実装。Mutation前にdocumented route identityを再検証し、exact localized time controlとvisible resolved endpoint値不変をpostcondition確認後、staleなreplayable navigation actionだけを破棄してroute read/selectを維持する。日付、終電、transit preference optionはobservation/design-gated。 |
 | route detail / step expansion | V4 normal priority | bounded route-detail interaction。bulk itinerary extraction はしない。 |
 | route link copy/share | V4 high priority | verified active route の Maps-generated link を返す。raw clipboard access は使わない。 |
 | route view から目的地周辺shortcut | V4 normal priority | current destination をscopeにしたcategory search。 |
@@ -143,7 +145,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 
 優先順:
 
-1. departure/arrival time / transit option
+1. departure/arrival time / transit option — 当日 `depart_at|arrive_by` は `maps_set_transit_time` として実装。日付/終電/preferencesはobservation/design-gated
 2. route link share
 3. origin/destination swap・stop edit
 4. bounded route detail expansion

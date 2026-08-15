@@ -16,6 +16,7 @@ const EXPECTED_TOOLS = [
   "maps_expand_opening_hours",
   "maps_select_route",
   "maps_set_travel_mode",
+  "maps_set_transit_time",
   "maps_read_place_summary",
   "maps_read_route_summary"
 ];

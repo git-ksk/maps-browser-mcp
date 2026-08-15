@@ -120,6 +120,16 @@ Run these only from a freshly verified active place with Interactive Assist enab
 
 ## 7. Route read/select
 
+When validating the V4-D same-day transit-time slice, begin from a fresh simple `maps_directions({ origin, destination, mode: "transit" })` request with Interactive Assist enabled:
+
+1. Call `maps_set_transit_time({ expectedOrigin: origin, expectedDestination: destination, mode: "depart_at", time: "13:30" })`. Repeat separately with `mode: "arrive_by"` only when that compatibility path needs checking.
+2. Confirm wrong expected origin/destination fails before UI mutation and does not advance the resource epoch.
+3. Confirm success preserves the visible resolved origin/destination values, verifies the localized selected time mode plus exact transit-time input, stays in the directions view, and advances the resource epoch once.
+4. Confirm the original replayable navigation action is cleared after success; do not automatically apply `maps_set_travel_mode` or another UI-only route mutation from stale pre-time state.
+5. After the route list settles, `maps_read_route_summary` and guarded `maps_select_route(index, expectedLabel)` must remain usable in the same browser session. Do not require at least one route candidate as the time-setting postcondition because a valid requested time may have no service.
+6. Missing/duplicate controls, stale route endpoints, unexpected navigation, invalid time postcondition, or Human Intervention must fail closed. Never parse the opaque `/data=` route payload, and do not expose generic text entry.
+7. Date selection, Last available, and transit preference options are not part of this slice.
+
 1. Call one `maps_directions`.
 2. Call `maps_read_route_summary`.
 3. Confirm only a small bounded set of route-related labels/lines is returned.

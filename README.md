@@ -131,11 +131,19 @@ maps_search(...)
 For routes:
 
 ```text
-maps_directions(...)
+maps_directions({ origin, destination, mode: "transit" })
+  -> maps_set_transit_time({
+       expectedOrigin: origin,
+       expectedDestination: destination,
+       mode: "depart_at",
+       time: "13:30"
+     })
   -> maps_read_route_summary()
   -> choose items[{ index, label }]
   -> maps_select_route({ index, expectedLabel: label })
 ```
+
+`maps_set_transit_time` is intentionally limited to the same-day live-reobserved `depart_at|arrive_by` flow with a 24-hour `HH:MM` input. It requires a fresh simple `maps_directions` transit request, revalidates the documented origin/destination identity before mutation, then verifies the localized mode trigger, the exact `transit-time` input, unchanged visible route endpoints, and the directions view. Because the resulting UI-only time state is not represented by the original documented navigation action, the successful operation clears that replayable action while keeping the current route results readable/selectable in the same browser session. Date selection, last-available service, and transit preference options remain separate observation/design-gated slices.
 
 `expectedLabel` is important: if Google Maps dynamically reorders or replaces the target, the runtime refuses stale interaction with `UI_STATE_CHANGED` instead of acting on a different target.
 
@@ -160,6 +168,7 @@ maps_directions(...)
 - `maps_expand_opening_hours` — V4, expansion-state verification only, Interactive Assist required
 - `maps_select_route`
 - `maps_set_travel_mode`
+- `maps_set_transit_time` — V4-D, same-day `depart_at|arrive_by`, Interactive Assist required
 
 ### Optional bounded visible-state reading
 

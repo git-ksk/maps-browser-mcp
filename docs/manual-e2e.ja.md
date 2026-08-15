@@ -130,6 +130,16 @@ Interactive Assist有効かつfreshにverifiedされたactive placeからだけ�
 
 ## 7. Route Read / Select
 
+V4-Dの当日transit-time sliceを検証する場合、Interactive Assist有効でfreshなsimple `maps_directions({ origin, destination, mode: "transit" })` requestから開始します。
+
+1. `maps_set_transit_time({ expectedOrigin: origin, expectedDestination: destination, mode: "depart_at", time: "13:30" })` をcall。`arrive_by` pathの互換性確認が必要な場合だけ別fresh routeで実行
+2. Wrong expected origin/destinationはUI mutation前にfailし、resource epochを更新しないことを確認
+3. Successではvisible resolved origin/destination値不変、localized selected time mode + exact transit-time input、directions view維持を検証し、resource epochが1回だけ進むことを確認
+4. Success後は元のreplayable navigation actionが破棄されることを確認。staleなpre-time stateから `maps_set_travel_mode` や別UI-only route mutationを自動適用しない
+5. Route list settle後、same browser sessionで `maps_read_route_summary` とguarded `maps_select_route(index, expectedLabel)` が使えることを確認。Requested timeに運行がないケースは正当なのでroute candidate 1件以上をtime-setting postconditionにはしない
+6. Missing/duplicate control、stale route endpoint、unexpected navigation、invalid time postcondition、Human Interventionはfail closed。Opaque `/data=` route payloadを解析せず、generic text entryも公開しない
+7. 日付指定、終電、transit preference optionはこのsliceに含めない
+
 1. `maps_directions` を1回実行
 2. `maps_read_route_summary`
 3. Boundedな少数route-related label / lineだけ返ることを確認
