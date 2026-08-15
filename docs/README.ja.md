@@ -13,6 +13,7 @@
 - [OAuth Gateway パターン 日本語版](oauth-gateway.ja.md) — browser runtimeへOAuth protocol責務を持ち込まずRemote MCPをOAuth保護する構成
 - [利用モードとユースケース](use-cases.ja.md) — Navigation-only / Interactive Assistの使い分け、Local / Remoteでの実例
 - [MCP Apps portability](mcp-apps.ja.md) — host-neutral contract、fallback behavior、layout/lifecycle hardening、deployment security、compatibility evidence
+- [V5 authenticated workflows](v5-authenticated-workflows.ja.md) — design-only account boundary、staged saved-state scope、approval gate、authenticated non-goal
 - [ロードマップ](roadmap.ja.md) — 完了済みV4 Google Maps Web baseline、MCP Apps portability status、future direction
 - [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md) — 未ログインMaps Webのcanonical coverage表、優先順位、V4 slice、login-required境界、明示的non-goal
 

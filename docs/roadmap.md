@@ -144,6 +144,24 @@ The remaining item is a **production-host re-validation gate**, not unfinished c
 
 See [MCP Apps portability and deployment](mcp-apps.md) for the canonical contract, security rules, evidence, and completion criteria.
 
+## V5 — authenticated Google Maps Web workflows (design only)
+
+V5 is now defined at the design level as **bounded authenticated Google Maps Web workflows, starting with read-oriented and low-consequence reversible account state**. No V5 implementation is enabled yet.
+
+Current ordering:
+
+1. **V5-A authenticated-session foundation** — Human-only sign-in/account selection, coarse account readiness if safely observable, single-user/per-principal browser isolation, fresh reissue after Human Intervention.
+2. **V5-B bounded saved-state reads** — selected-place save membership / existing list identities only; no Saved-library crawl.
+3. **V5-C save to an existing list** — add one revalidated place to one existing list with an exact postcondition; no new-list text entry and no unsave/remove in the first mutation slice.
+4. **V5-D Send to phone** — only after the existing principal+epoch+exact-action `ActionApprovalManager` is integrated into a real approval flow; Human Intervention completion remains separate from send approval.
+5. **V5-E Maps history** — separate privacy/browser-surface gate, read-only first if ever reopened.
+
+Timeline is removed from the V5 Web candidate set because current Google Maps documentation states that Timeline is not available in Maps on a computer. Review/rating/edit/public-photo contribution workflows remain outside the initial V5 direction.
+
+The MCP authorization principal and the Google Account active in the dedicated browser are distinct identities. Until per-principal browser/profile isolation exists, V5 account-backed tools are designed only for a single-user deployment/profile. No raw Google account identifier is required in MCP output merely to prove sign-in.
+
+See [V5 authenticated workflows — design baseline](v5-authenticated-workflows.md) for the entry gate, proposed semantic shapes, logging/privacy rules, test plan, and explicit deferrals.
+
 ## Explicit non-goals for the roadmap
 
 V4 coverage and future UI work do not change these project boundaries:

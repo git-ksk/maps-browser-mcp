@@ -146,6 +146,24 @@ Portability baselineはcompleteです。
 
 Canonical contract / security rule / evidence / completion criteriaは [MCP Apps portability / deployment](mcp-apps.ja.md) を参照してください。
 
+## V5 — Authenticated Google Maps Web Workflows（Design Only）
+
+V5はdesign levelで **bounded authenticated Google Maps Web workflow。最初はread-orientedかつlow-consequenceなreversible account stateを優先** と定義します。V5 implementationはまだ有効化しません。
+
+Current ordering:
+
+1. **V5-A authenticated-session foundation** — Human-only sign-in/account selection、安全に観測できる場合のcoarse account readiness、single-user/per-principal browser isolation、Human Intervention後fresh reissue
+2. **V5-B bounded saved-state reads** — selected-place save membership / existing list identityだけ。Saved-library crawlなし
+3. **V5-C existing listへのSave** — revalidated place 1件をexisting list 1件へexact postcondition付きで追加。First mutation sliceではnew-list text entry / unsave/removeなし
+4. **V5-D Send to phone** — 既存principal + epoch + exact-action `ActionApprovalManager` をreal approval flowへ統合した後だけ。Human Intervention completionとsend approvalを分離
+5. **V5-E Maps history** — separate privacy/browser-surface gate。Re-openする場合もread-only first
+
+Timelineは、現行Google Maps公式情報でcomputer版Mapsでは利用不可のためV5 Web candidateから外します。Review/rating/edit/public-photo contribution workflowもinitial V5方向には含めません。
+
+MCP authorization principalとdedicated browserでactiveなGoogle Accountは別identityです。Per-principal browser/profile isolationができるまではV5 account-backed toolをsingle-user deployment/profileだけで扱うdesignとします。Sign-in確認だけのためにraw Google account identifierをMCP outputへ返しません。
+
+Entry gate、proposed semantic shape、logging/privacy rule、test plan、explicit deferralは [V5 authenticated workflows — design baseline](v5-authenticated-workflows.ja.md) を参照してください。
+
 ## ロードマップでも維持する非ゴール
 
 V4 coverageやUI追加でも、次の境界は変えません。

@@ -38,7 +38,7 @@ V4 is intentionally broader than V1–V3 but keeps the same constrained architec
 
 Priority order is browser-native/UI-dependent behavior first; search/directions/place operations required to complete the browser workflow second; and capabilities that mostly duplicate official structured interfaces third.
 
-The canonical per-capability status table is **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**. Login-required features are deferred to V5. V4 does not expose raw DOM, raw Accessibility Tree, raw CDP, generic browser actions, desktop actions, or shell execution through MCP.
+The canonical per-capability status table is **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**. Login-required features are deferred to V5; the current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.md)** is design-only and starts with account isolation plus bounded saved-state work rather than broad signed-in automation. V4 does not expose raw DOM, raw Accessibility Tree, raw CDP, generic browser actions, desktop actions, or shell execution through MCP.
 
 ## 5-minute quick start
 
@@ -426,6 +426,7 @@ See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and err
 | [Project positioning](docs/positioning.md) | Competitive category, Maps Web priority, official-interface overlap, and product direction |
 | [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.md) | Canonical unauthenticated capability coverage/status table and V4 slices |
 | [MCP Apps portability](docs/mcp-apps.md) | Host-neutral UI contract, fallback, layout, security, deployment and compatibility evidence |
+| [V5 authenticated workflows](docs/v5-authenticated-workflows.md) | Design-only authenticated boundary, staged saved-state scope and approval gates |
 | [Roadmap](docs/roadmap.md) | V4 closeout baseline plus MCP Apps portability status and future direction |
 | [Compliance](docs/compliance.md) | Intended-use and non-goal boundaries |
 | [Manual live E2E](docs/manual-e2e.md) | User-triggered Google Maps compatibility verification |
