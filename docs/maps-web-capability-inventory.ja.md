@@ -14,11 +14,12 @@ Google Maps Web に表示される control を無条件に全て再現するこ�
 
 ## 優先順位・分類
 
-status は次の6分類を使います。
+status column は次のprimary class / tagを使います。`partial`、`observation-gated`、`design-gated`、`structural overlap` などのqualifierは、専用public toolより意図的に狭い理由を記録します。
 
-- **implemented** — 現在の public MCP surface で主要操作をすでにカバーしている
-- **V4 high priority** — browser-native / UI-dependent で、Google Maps Web を直接操作する価値が高い
-- **V4 normal priority** — browser workflow 完結には有用だが、browser 固有価値が比較的小さい、または既存実装で一部カバー済み
+- **implemented** — 現在の public MCP surface で主要操作を直接、または明示したstructural overlapとしてカバーしている
+- **partial** — verified bounded subsetを実装済みで、残りsurfaceには明示的なgate / 再開条件がある
+- **observation/design-gated** — heuristicなしでstable semantic target + postconditionを観測/設計できるまでpublic actionを出さない
+- **V4 high priority / V4 normal priority** — V4進行中に未解決項目へ使ったpriority tag。V4-F closeout後は該当rowを残さない
 - **lower priority / official overlap** — 有用だが、公式 structured interface と価値がほぼ重なり browser 固有価値が薄い
 - **login required** — V4 では実装せず V5 候補。credential 境界は既存 Human Intervention を維持する
 - **out of scope** — Web UI に存在しても意図的に MCP surface へ出さない
@@ -69,6 +70,12 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 続く2026-08-15 Street View control bounded観測では、existing documented `maps_streetview` entryを明示heading/pitch/FOV付きで使用しました。Times Square viewpointはJA/en-USともactual panoramaへresolveし、requested orientationがvisible Maps panorama stateへ反映されました。JAではexact Zoom in/out buttonを確認しましたが、同じpanoramaのen-USではequivalent visible Zoom controlを確認できず、exact semanticなturnまたはadjacent-panorama navigation controlも両shapeで未観測でした。別のviewpointは正当にno-panorama surfaceとなり、coordinate entryがimagery availabilityを仮定できないことも確認しました。`maps_streetview` はすでにdocumented bounded `heading`、`pitch`、`fov` を公開しているため、explicitなturn/look/zoom orientationはlocale-fragileなUI control追加なしでstructurally coveredです。Statefulなforward/adjacent-panorama navigationは現状canvas/pointer geometryまたはundocumented panorama-link dataが必要になるためobservation-gatedに残します。Bounded panorama surfaceではstable visibleなhistorical-imagery/date selectorも観測できなかったためimagery/date choiceもobservation-gatedとし、image contentからdateを推測したりhistorical panoramaをharvestしません。
 
+2026-08-15のV4-F autocomplete bounded観測では、freshなJAとexplicit en-US Maps rootを使用しました。Visible search comboboxはexact-oneで、`aria-controls` によりvisible `role="grid"` suggestion surfaceへ結び付いていました。Rowは `公共交通機関 — Tokyo Station — 住所` / `Transit — Tokyo Station — address` のようなbounded visible/ARIA identityを持ちます。Primary nameは重複し得るため、実装はprimary textだけを使わずbounded composite identityを構成し、duplicate composite identityはfail closed、返却は最大6件に制限します。`maps_read_search_suggestions(query)` がそのbounded suggestion stateを確立し、`maps_select_search_suggestion(query, index, expectedLabel)` はsame active query + `index + expectedLabel` をactivate直前に再検証し、controlled gridのcloseとMaps search/place stateへのsettleを確認してからsemantic stateをadoptします。Wrong/reordered labelではrowをactivateせずresource epochも進めません。Raw combobox/DOMは公開しません。
+
+同じV4-F観測でbrowser-native gapをさらに2件閉じました。JA/en-US search-result viewはexact-oneの `共有 / Share` を公開し、そのdialogでは `リンクを送信する / Send a link` tabがselected、exact-oneのvisible allow-listed `https://maps.app.goo.gl/...` fieldを確認できました。`maps_get_search_share_link(expectedQuery)` はcanonical + visible search identityを再検証し、clipboardを読まずそのMaps-generated URLだけを返してsemantic Closeまで検証します。Fresh simple transit directionsではexact-one `おすすめ / Best` radioを観測しました。Activate後もresolved origin/destinationは不変、directions surfaceも維持されましたが、元のdocumented `travelmode=transit` URLはstaleなままでした。そのため `maps_set_recommended_travel_mode(expectedOrigin, expectedDestination)` はfresh simple transitだけに限定し、exact radio checked + endpoint不変をpostcondition確認後、resource epochを進めてstale replayable actionを破棄しつつbounded route read/select stateを維持します。
+
+V4-Fでは残りhigh/normal priorityもunsafe convenience APIを増やさず解決しました。Root Mapsではレストラン/ホテル/アクティビティ/美術館・博物館/交通機関/薬局/ATMのsemantic buttonを再観測しましたが、category intentは既存user-directed `maps_search` で構造的にcoveredしているためlocalized/dynamic root-chip専用APIは追加しません。Place→directionsもverified place identityを `maps_directions` に渡す既存workflowでcoveredです。`maps_open_place_photos` 後のJA/en-US bounded viewer観測ではstable visibleなcategory tab/menu/radioを確認できなかったため、photo category navigationはimage位置やopaque URL dataを使わずobservation-gatedに残します。Coordinate-centered/root mapではvisible Share controlを確認できなかったためcurrent-map shareもobservation-gatedとし、browser current URLやclipboardをMaps-generated share stateの代替にはしません。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -76,17 +83,17 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | user-directed search を開く | implemented | `maps_search` が documented Maps search URL を開く。 |
 | search/place results を bounded に読む | implemented | `maps_read_place_summary` が bounded visible label/text と保守的annotationを返す。 |
 | visible search result を選択 | implemented | `maps_select_result(index, expectedLabel)` が identity を再検証し、並び替え時は fail closed。 |
-| search autocomplete / suggestion 選択 | V4 high priority | suggestion を bounded に read/select する Maps-specific semantics を追加。raw combobox/DOM は公開しない。 |
+| search autocomplete / suggestion 選択 | implemented | `maps_read_search_suggestions(query)` がexact combobox-controlled gridから最大6件のunique bounded composite identityを返す。`maps_select_search_suggestion(query, index, expectedLabel)` はcurrent suggestion state・index・exact labelをactivate直前に再検証し、verified search/place postconditionだけをadoptする。raw combobox/DOMは公開しない。 |
 | search result filter（価格/評価/時間/全フィルタ） | partial / Rating implemented | `maps_set_search_rating(expectedQuery, rating)` でlive再観測済みRating menuだけを実装し、`2.0`〜`4.5` のhalf-step固定optionに限定する。各action前にexact visible queryを再検証し、選択後はexact requested numeric rating chipとRating menu closedをpostcondition確認する。価格/時間/全フィルタはobservation/design-gatedのままでgeneric filter string APIは公開しない。 |
 | このエリアを検索 / 地図移動後に更新 | observation-gated | 2026-08-15のJA / explicit en-US manual-pan再観測ではone-shotの `このエリアを検索 / Search this area` controlを確認できなかった。visibleな「地図の移動後に結果を更新 / Update results when map moves」checkboxは自動更新設定でありexplicit semantic actionの代替にしない。one-shot controlを観測できるまで `maps_search_this_area` selector/schemaは公開しない。 |
-| 初期画面カテゴリ探索（レストラン/ホテル等） | V4 normal priority | semantic category search は有用だが通常 search と重なる。 |
-| search result list の共有 | V4 high priority | visible search state を再検証して Maps-generated share URL を返す。 |
+| 初期画面カテゴリ探索（レストラン/ホテル等） | implemented / structural overlap | Root category buttonは再観測済みだが、semantic category intentはuser-directed `maps_search` でcoveredする。localized/dynamic category-chip専用APIはV4では追加しない。 |
+| search result list の共有 | implemented | `maps_get_search_share_link(expectedQuery)` がcanonical + exact visible search identityを再検証し、exact-one Share、selected Send-link tab、exact-one visible allow-listed Maps URLを検証後semanticにdialogを閉じる。Clipboardは読まずsearch epoch/actionも維持する。 |
 | result から place を開く | implemented | `maps_select_result` が verified search state から place state へ遷移。 |
 | place summary を bounded に読む | implemented | full-detail harvesting をせず visible place text を扱う。 |
 | place 写真を開く | implemented | `maps_open_place_photos(expectedLabel)` がactive placeを再検証し、allow-list済みphoto entry controlをちょうど1つだけ操作する。Maps photo viewerとexpected place headingを検証後、古いplace semantic stateを無効化する。image harvestingは行わない。Interactive Assist必須。 |
-| photo category navigation | V4 high priority | viewer上で実際にbounded観測したcategoryだけをidentity/postcondition付きで移動する。bulk image harvestingは行わない。 |
+| photo category navigation | observation-gated / category surface未再観測 | `maps_open_place_photos` 後のJA/en-US bounded viewerでstable visibleなcategory tab/menu/radioを確認できなかった。Image位置やopaque URL dataからcategoryを推測せず、bulk image harvestingも行わない。 |
 | place の概要 / クチコミ / About tab | partial / observation-gated | `maps_select_place_tab(expectedLabel, tab)` はlive再観測できた `overview` / `about` enumのみ実装し、place-bound tab identityと `aria-selected` postconditionを検証する。2026-08-15のJA/EN再観測ではReviews tabがvisibleでなかったため、Reviews selector/schemaは公開しない。review body harvestingは引き続きout of scope。 |
-| place → directions | V4 normal priority | `maps_directions` でworkflowは構造的にカバー済み。current-place convenience は identity を保てる場合のみ追加。 |
+| place → directions | implemented / structural overlap | Verified place identityを既存 `maps_directions` に渡すworkflowでcoveredする。Documented directions operationを重複するplace-panel convenience clickはV4では追加しない。 |
 | place → 付近を検索 | implemented | `maps_search_nearby(expectedLabel, query)` がactive placeを再検証し、allow-list済みのNearby controlを1つだけ操作する。その後はNearby label付きinput、またはその操作で生成された一意のfocused/empty Maps comboboxだけを受理し、requested queryとMaps search-result pathの両方を検証できた場合だけ遷移を受理する。Interactive Assist必須。 |
 | place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` がvisible Shareを1回操作する直前にactive placeを再検証し、boundedなallow-list済みGoogle Maps share URLだけを返す。Interactive Assist必須。 |
 | 営業時間展開 | implemented | `maps_expand_opening_hours(expectedLabel)` がactive placeとlive観測済みhours controlのexact-oneを再検証する。inline展開はobserved expanded stateを検証してplace semanticsを維持し、JAで観測したdetail-surface variantはsame-place URL identityとbounded hours markerを検証後に古いplace stateを無効化する。週間営業時間harvestingは公開しない。 |
@@ -98,7 +105,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | route candidate を bounded に読む | implemented | `maps_read_route_summary`。 |
 | route candidate を選択 | implemented | `maps_select_route(index, expectedLabel)` が current route identity を検証。 |
 | travel mode変更 | implemented | `maps_set_travel_mode` が driving/walking/bicycling/transit と既存制約を維持。 |
-| おすすめ/automatic travel mode | V4 normal priority | UI固有mode chooser。heuristic guessなしでpostcondition検証可能な場合のみ追加。 |
+| おすすめ/automatic travel mode | implemented / fresh simple transit限定 | `maps_set_recommended_travel_mode(expectedOrigin, expectedDestination)` がfresh simple canonical transit requestを再検証し、exact-one `おすすめ / Best`、checked state、visible endpoint不変、directions viewを検証後epochを進めてstale replayable actionを破棄する。Origin省略・waypoint・avoid・non-transit startはfail closed。 |
 | 出発地/目的地入れ替え | documented URL再構築で実装済み | `maps_swap_route_endpoints(expectedOrigin, expectedDestination)` がfresh simple canonical directions requestを再検証し、origin省略/waypointを拒否、mode/avoidを維持してdocumented Maps URL parameterを逆順に再構築する。Live UI swapはcanonical URL/actionがstaleに残るため自動化しない。 |
 | waypoint追加/並び替え/削除 | observation/design-gated / documented waypoint overlap | JA/en-USでexact Add destinationは観測したが、1-waypoint routeでは同一labelのRemove destinationが2件あり、exact semantic reorder controlも未観測。position heuristic/generic dragは使わず、既存 `maps_directions(..., waypoints)` をbounded supported pathとする。 |
 | driving avoid（ferries/highways/tolls） | implemented | bounded documented route option を実装済み。mode変更時も維持。 |
@@ -116,7 +123,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | active place/map から Street View へ入る | observation-gated / browse-vs-pano ambiguity | JA/en-US place/root-mapでexactな `Browse Street View images` は観測したが、これはverified panorama entryではなくimage browsing。Businessのdirect `Street View` controlは観測shapeでduplicate/ambiguous化した。Browse imageをindex/geometryで選ばず、existing documented coordinate `maps_streetview` をsupported entryとする。Exact-one direct control + panorama postconditionを観測できるまで保留。 |
 | Street View rotate/zoom/navigation | partial / documented orientation covered | `maps_streetview` はbounded documented `heading` / `pitch` / `fov` でexplicit turn/look/zoom orientationを既に対応。Live panoramaではJA Zoom controlを観測したがen-US同等controlは未観測、exact semanticなturn/adjacent-panorama navigation targetもない。pointer/canvas navigationやundocumented panorama link解析は追加せず、forward/adjacent movementはobservation-gated。 |
 | Street View imagery/date選択 | observation-gated | Actual-panorama bounded観測でstable visibleなhistorical-imagery/date selectorを確認できず、valid viewpointでもno-panorama stateがあり得る。Image contentからdateを推測せずhistorical imageryもharvestしない。Exact visible date/image control + verifiable postconditionを観測できた場合だけ再開。 |
-| current map/view の共有URL | V4 high priority | generic browser URL/clipboard tool ではなく Maps-generated share state として扱う。 |
+| current map/view の共有URL | observation-gated / visible Maps share surfaceなし | JA/en-USのcoordinate/root-map bounded観測でvisible Share controlを確認できなかった。Browser current URLやclipboardを未観測のMaps-generated share stateに代用せず、bounded visible semantic share surfaceを観測できた場合だけ再開する。 |
 | sign-in / account切替 / credential入力 | login required | 自然発生したsign-inは Human Intervention へhandoff可能だが、MCPはcredentialを扱わない。 |
 | Timeline / account list / synced saved place | login required | V5。 |
 | contribution / rating / review / edit / public photo upload | login required | account-backed state-changing contribution はV4外。 |
@@ -143,7 +150,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 1. place share link — `maps_get_place_share_link(expectedLabel)` として実装済み
 2. nearby search — verified active placeからの `maps_search_nearby(expectedLabel, query)` として実装済み
 3. place photo opener — verified viewer transitionとstale place-state invalidation付きの `maps_open_place_photos(expectedLabel)` として実装済み
-4. photo category navigation — remaining。viewer上でbounded観測したcontrolからのみ設計
+4. photo category navigation — observation-gated。JA/en-USのverified viewerでstable category controlを再観測できず、position/image heuristicは追加しない
 5. place tab — `maps_select_place_tab(expectedLabel, tab)` で `overview|about` のみ実装。Reviewsはcurrent controlを再観測できていないためobservation-gated
 6. opening hours — `maps_expand_opening_hours(expectedLabel)` として実装。inline/detail postconditionとstale-state invalidationを含む
 
@@ -151,35 +158,43 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 
 優先順:
 
-1. result filter — Ratingは `maps_set_search_rating(expectedQuery, rating)` として実装。価格/時間/全フィルタはobservation/design-gated
-2. search-this-area / update-after-move — JA/en-US manual pan後もexplicit one-shot controlを再観測できず。auto-update checkboxを代替せずobservation-gated
-3. permission-safe current-location action — browser permission boundaryを観測済み。manual authorized success postconditionまたはdedicated permission-handoff modelが成立するまでobservation-gated
-4. semantic layer toggle — option toggleはverifiedだがLayers openerがnon-semantic/ambiguous。exact-one semantic openerが成立するまでobservation-gated
-5. bounded viewport movement — search-result one-level zoomを `maps_zoom_search(expectedQuery, direction)` として実装。root/place zoomとsemantic pan/recenterは別途observation/design-gated
+1. autocomplete — `maps_read_search_suggestions(query)` + guarded `maps_select_search_suggestion(query, index, expectedLabel)` として実装。最大6件・composite visible identityでbounded化
+2. search result list share — `maps_get_search_share_link(expectedQuery)` として実装。visible query再検証 + clipboard-free dialog extraction
+3. result filter — Ratingは `maps_set_search_rating(expectedQuery, rating)` として実装。価格/時間/全フィルタはobservation/design-gated
+4. search-this-area / update-after-move — JA/en-US manual pan後もexplicit one-shot controlを再観測できず。auto-update checkboxを代替せずobservation-gated
+5. permission-safe current-location action — browser permission boundaryを観測済み。manual authorized success postconditionまたはdedicated permission-handoff modelが成立するまでobservation-gated
+6. semantic layer toggle — option toggleはverifiedだがLayers openerがnon-semantic/ambiguous。exact-one semantic openerが成立するまでobservation-gated
+7. bounded viewport movement — search-result one-level zoomを `maps_zoom_search(expectedQuery, direction)` として実装。root/place zoomとsemantic pan/recenterは別途observation/design-gated
 
 ### V4-D — directions UI
 
 優先順:
 
-1. departure/arrival time / transit option — 当日 `depart_at|arrive_by` は `maps_set_transit_time` として実装。日付/終電/preferencesはobservation/design-gated
-2. route link share — selected simple transit routeは `maps_get_route_share_link` として実装。未選択Copy linkとdriving/その他modeはobservation-gated
-3. origin/destination swap・stop edit — endpoint swapは `maps_swap_route_endpoints` として実装。stateful stop editはobservation/design-gated（bounded waypointは既存 `maps_directions` で対応済み）
-4. bounded route detail expansion — guarded `maps_select_route` でroute detailへ入る。追加Toggle-detailsはsemantic postcondition不在のためobservation-gated
-5. destination-nearby shortcut — exact nearby category actionは観測したが、JAでdestination-bound visible postconditionがないためobservation-gated。driving along-route stop searchは代替しない
+1. recommended/automatic mode — fresh simple transit限定の `maps_set_recommended_travel_mode` として実装。Best/おすすめを検証しstale replayable route actionを破棄
+2. departure/arrival time / transit option — 当日 `depart_at|arrive_by` は `maps_set_transit_time` として実装。日付/終電/preferencesはobservation/design-gated
+3. route link share — selected simple transit routeは `maps_get_route_share_link` として実装。未選択Copy linkとdriving/その他modeはobservation-gated
+4. origin/destination swap・stop edit — endpoint swapは `maps_swap_route_endpoints` として実装。stateful stop editはobservation/design-gated（bounded waypointは既存 `maps_directions` で対応済み）
+5. bounded route detail expansion — guarded `maps_select_route` でroute detailへ入る。追加Toggle-detailsはsemantic postcondition不在のためobservation-gated
+6. destination-nearby shortcut — exact nearby category actionは観測したが、JAでdestination-bound visible postconditionがないためobservation-gated。driving along-route stop searchは代替しない
 
 ### V4-E — Street View
 
-- active place/map からenter
+- active place/map entry — 観測したBrowse surfaceはimage browsingでdirect Street View controlもambiguousだったためobservation-gated。Documented coordinate entryの `maps_streetview` は引き続きsupported
 - semantic turn/zoom/navigation — explicit orientationはdocumented `maps_streetview` heading/pitch/fovでcovered。stateful forward/adjacent navigationはobservation-gated
 - bounded imagery/date choice — stable visible selectorを再観測できず。historical-image harvestingなしでobservation-gated
 
 ### V4-F — coverage closeout
 
-- user-directed compatibility確認に必要な範囲だけ low-frequency / bounded live E2E を再実行
-- 残る V4 high/normal priority gap を閉じる
-- login-required はV5へ送る
-- official overlap は browser workflow 完結に必要な場合を除いて lower priority のまま維持
-- 最終 implemented/remaining coverage をこの文書へ反映
+2026-08-15、low-frequencyなJA/en-US live checkとExecution Handoff upstream組み込み後のregression gateを通して完了:
+
+- autocomplete read/selectをbounded composite identity + stale/reordered fail-closed付きで実装
+- search-result list shareをclipboard accessなしで実装
+- Recommended/Best modeをverified fresh-simple-transit surface限定で実装しstale canonical actionをfence
+- root category discoveryとplace→directionsは既存semantic operationとのstructural overlapとしてclose
+- photo category navigationとcurrent-map shareはbounded negative observationを根拠に明示observation-gated
+- login-requiredはV5、generic/raw browser surfaceは引き続きout of scope
+
+V4 high/normal priorityの未解決rowは0件。残るpartial/observation-gated rowは、guessしたselector/postconditionではなく明示的な観測根拠と再開条件を持たせる。
 
 ## 新規V4 operationの必須invariant
 

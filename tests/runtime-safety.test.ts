@@ -76,6 +76,20 @@ test("UI-only semantic mutation can drop the replay action while preserving the 
   assert.equal(runtime.getResourceEpoch(), before + 1);
 });
 
+test("verified search suggestion adoption replaces transient suggestion state and advances epoch once", () => {
+  const runtime = makeRuntime();
+  const mutable = runtime as unknown as { lastAction?: MapsAction; viewState: "suggestions" | "place" | "blank" };
+  mutable.lastAction = { kind: "suggestions", query: "Tokyo Station" };
+  mutable.viewState = "suggestions";
+  const before = runtime.getResourceEpoch();
+
+  runtime.adoptSearchSuggestionResult("Tokyo Station", "place");
+
+  assert.deepEqual(runtime.getLastAction(), { kind: "search", query: "Tokyo Station" });
+  assert.equal(runtime.getViewState(), "place");
+  assert.equal(runtime.getResourceEpoch(), before + 1);
+});
+
 test("challenge handoff preserves the canonical Maps action and invalidates stale state", () => {
   const runtime = makeRuntime();
   const boundary = runtime as unknown as {

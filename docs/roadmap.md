@@ -21,6 +21,8 @@ V4 is defined as:
 
 The canonical feature-by-feature scope and coverage table is [Google Maps Web Capability Inventory](maps-web-capability-inventory.md).
 
+**V4-F coverage closeout completed on 2026-08-15.** The current unauthenticated high/normal-priority rows are either implemented, structurally covered by an existing semantic operation, or explicitly observation/design-gated with a recorded re-open condition. UI-dependent operations remain experimental compatibility surfaces rather than permanent-selector guarantees.
+
 Priority order:
 
 1. browser-native / UI-dependent Maps Web capabilities,
@@ -40,7 +42,7 @@ V4 is split into reviewable slices:
 
 Login-required capability stays out of V4 and moves to V5. Consent, sign-in, CAPTCHA, or access challenges that occur naturally continue to stop at the existing Human Intervention boundary; they are never bypassed and completing human intervention does not approve a different semantic action.
 
-Execution Handoff upstream validation now runs as a separate two-adapter track (`mcp-execution-handoff` + Maps + Japan Cinema). It does not generalize this server into a browser/desktop/shell MCP.
+Maps now consumes the extracted `mcp-execution-handoff` upstream at an immutable pre-release commit; the full two-adapter upstream-validation track with Japan Cinema remains separate. This integration does not generalize the Maps server into a browser/desktop/shell MCP.
 
 ### First V4 implementation slice
 

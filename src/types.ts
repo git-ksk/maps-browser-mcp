@@ -8,6 +8,7 @@ export type RouteAvoid = (typeof ROUTE_AVOID_OPTIONS)[number];
 
 export type MapsAction =
   | { kind: "search"; query: string }
+  | { kind: "suggestions"; query: string }
   | {
       kind: "directions";
       origin?: string;
@@ -28,6 +29,7 @@ export type MapsAction =
 
 export type MapsViewState =
   | "blank"
+  | "suggestions"
   | "search"
   | "place"
   | "directions"

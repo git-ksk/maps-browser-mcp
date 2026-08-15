@@ -36,6 +36,8 @@ function actionToView(action: MapsAction): MapsViewState {
   switch (action.kind) {
     case "search":
       return "search";
+    case "suggestions":
+      return "suggestions";
     case "directions":
       return "directions";
     case "show":
@@ -191,6 +193,13 @@ export class MapsBrowserRuntime {
   markSemanticMutationWithoutReplayAction(): void {
     this.assertAgentAuthority();
     this.lastAction = undefined;
+    this.handoff.advanceResourceEpoch();
+  }
+
+  adoptSearchSuggestionResult(query: string, view: "search" | "place"): void {
+    this.assertAgentAuthority();
+    this.lastAction = { kind: "search", query };
+    this.viewState = view;
     this.handoff.advanceResourceEpoch();
   }
 

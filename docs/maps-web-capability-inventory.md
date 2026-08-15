@@ -12,11 +12,12 @@ The inventory is a product/engineering boundary, not a commitment to reproduce e
 
 ## Priority model
 
-The status column uses exactly these classes:
+The status column uses these primary classes/tags. Qualifiers such as `partial`, `observation-gated`, `design-gated`, or `structural overlap` record why a capability is intentionally narrower than a dedicated public tool:
 
-- **implemented** — the current public MCP surface already covers the core operation.
-- **V4 high priority** — browser-native or UI-dependent behavior where controlling Google Maps Web is the main value.
-- **V4 normal priority** — useful to complete a Maps Web workflow but less browser-specific or already partially covered.
+- **implemented** — the current public MCP surface already covers the core operation, directly or through an explicitly documented structural overlap.
+- **partial** — a verified bounded subset is implemented; the remaining surface has an explicit gate/re-open condition.
+- **observation/design-gated** — no public action is exposed until a stable semantic target and postcondition are observed/designed without heuristics.
+- **V4 high priority / V4 normal priority** — unresolved implementation priority tags used during active V4 work; V4-F closeout leaves no row in either state.
 - **lower priority / official overlap** — useful, but an official structured interface provides most of the same value and the browser adds little.
 - **login required** — keep out of V4; reconsider in V5 only behind the existing Human Intervention/credential boundary.
 - **out of scope** — intentionally not exposed even if the web UI contains it.
@@ -69,6 +70,12 @@ A bounded 2026-08-15 V4-E Street View entry observation separated Maps-native im
 
 A bounded 2026-08-15 Street View control observation then used the existing documented `maps_streetview` entry with explicit heading/pitch/FOV. A Times Square viewpoint resolved to an actual panorama in both JA/en-US and preserved the requested orientation in the visible Maps panorama state. JA exposed exact Zoom in/out buttons, while the same panorama in en-US did not expose equivalent visible Zoom controls; no exact semantic turn or adjacent-panorama navigation control was observed in either shape. Other tested viewpoints legitimately produced no-panorama surfaces, reinforcing that coordinate entry cannot assume imagery availability. Because `maps_streetview` already exposes documented bounded `heading`, `pitch`, and `fov`, explicit turn/look/zoom orientation is structurally covered without adding locale-fragile UI controls. Stateful forward/adjacent-panorama navigation remains observation-gated because it would currently require canvas/pointer geometry or undocumented panorama-link data. No stable visible historical-imagery/date selector was observed in the bounded panorama surfaces, so imagery/date choice also remains observation-gated; do not infer dates from image content or harvest historical panorama data.
 
+A bounded 2026-08-15 V4-F autocomplete observation used fresh JA and explicit en-US Maps roots. Exactly one visible search combobox controlled a visible `role="grid"` suggestion surface; rows exposed bounded visible/ARIA identities such as `Transit — Tokyo Station — 1 Chome-9 ...`. Primary names can repeat, so the implementation does not use primary text alone: it builds a bounded composite visible identity, rejects duplicate composite identities, returns at most six suggestions, and requires the same active query plus `index + expectedLabel` immediately before selection. `maps_read_search_suggestions(query)` establishes that bounded suggestion state, and `maps_select_search_suggestion(query, index, expectedLabel)` accepts only the current state, verifies the controlled grid closes, and requires Maps to settle to a search or place view before adopting the new semantic state. A wrong/reordered label does not activate a row or advance the resource epoch. Raw combobox/DOM access is not exposed.
+
+The same V4-F observation closed two other browser-native gaps. Search-result views in JA/en-US exposed exact-one `共有 / Share`; its dialog had selected `リンクを送信する / Send a link` and exactly one visible allow-listed `https://maps.app.goo.gl/...` field. `maps_get_search_share_link(expectedQuery)` therefore revalidates both canonical and visible search identity, reads only that visible Maps-generated URL, and semantically closes the dialog without clipboard access or resource-epoch mutation. Fresh simple transit directions exposed exact-one `おすすめ / Best` radio. Selecting it preserved resolved origin/destination values and the directions surface while the original documented `travelmode=transit` URL remained stale, so `maps_set_recommended_travel_mode(expectedOrigin, expectedDestination)` is intentionally limited to fresh simple transit requests, verifies exact radio state plus unchanged endpoints, then advances the resource epoch and drops the replayable canonical action while retaining bounded route read/select state.
+
+V4-F also resolved the remaining high/normal-priority items without forcing unsafe convenience APIs. Root Maps exposed semantic Restaurants/Hotels/Activities/Museums/Transit/Pharmacies/ATM category buttons, but category intent is already covered by user-directed `maps_search`; a separate localized/dynamic root-chip API would add no required workflow. Place-to-directions is likewise structurally covered by `maps_directions` using the verified place identity. In bounded JA/en-US photo-viewer observations after `maps_open_place_photos`, no stable category tab/menu/radio surface was present, so photo-category navigation remains observation-gated rather than using image position or opaque URL data. Coordinate-centered/root map views exposed no visible Share control in the bounded observation, so current-map sharing remains observation-gated; the current browser URL and clipboard are not substituted for an unobserved Maps-generated share state.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -76,17 +83,17 @@ A bounded 2026-08-15 Street View control observation then used the existing docu
 | Open a user-directed search | implemented | `maps_search` opens a documented Maps search URL. |
 | Read bounded search/place results | implemented | `maps_read_place_summary` returns bounded visible labels/text and conservative annotations. |
 | Select a visible search result | implemented | `maps_select_result(index, expectedLabel)` revalidates identity and fails closed on reordering. |
-| Search autocomplete / suggestion selection | V4 high priority | Add bounded Maps-specific suggestion read/select semantics; never expose the raw combobox/DOM. |
+| Search autocomplete / suggestion selection | implemented | `maps_read_search_suggestions(query)` returns at most six unique bounded composite suggestion identities from the exact combobox-controlled grid. `maps_select_search_suggestion(query, index, expectedLabel)` requires that current suggestion state, revalidates index + exact label immediately before activation, and adopts only a verified search/place postcondition. Raw combobox/DOM is never exposed. |
 | Search result filters (price/rating/time/all filters) | partial / rating implemented | `maps_set_search_rating(expectedQuery, rating)` implements only the live-reobserved Rating menu with fixed `2.0`–`4.5` half-step options. It revalidates the exact visible query before each action and verifies the exact requested numeric rating chip with the Rating menu closed after selection. Price, Hours, and All filters remain observation/design-gated; there is no generic filter-string API. |
 | Search this area / update after map movement | observation-gated | 2026-08-15 JA and explicit en-US manual-pan re-observation did not expose a visible one-shot `Search this area` control. The visible `Update results when map moves` checkbox is an automatic-update preference and is intentionally not substituted for the explicit semantic action. No `maps_search_this_area` selector/schema is exposed until the one-shot control is observed. |
-| Root category discovery (restaurants/hotels/activities/etc.) | V4 normal priority | Semantic category search is useful, but overlaps normal search. |
-| Search-result list sharing | V4 high priority | Produce the Maps-generated share URL from the visible search state with identity/state validation. |
+| Root category discovery (restaurants/hotels/activities/etc.) | implemented / structural overlap | Root category buttons were re-observed, but their semantic category intent is already covered by user-directed `maps_search`. No separate localized/dynamic category-chip API is needed for V4. |
+| Search-result list sharing | implemented | `maps_get_search_share_link(expectedQuery)` revalidates canonical + exact visible search identity, activates exact-one Share, verifies the selected Send-link tab plus exactly one visible allow-listed Maps URL, and closes the dialog semantically. Clipboard contents are never read and search epoch/action state is preserved. |
 | Open a place from results | implemented | `maps_select_result` transitions verified search state to place state. |
 | Read bounded place summary | implemented | Existing place summary covers visible place text without full-detail harvesting. |
 | Open place photos | implemented | `maps_open_place_photos(expectedLabel)` revalidates the active place, activates exactly one allow-listed photo entry control, verifies the Maps photo viewer and expected place heading, then invalidates the old place semantic state. No image harvesting. Interactive Assist is required. |
-| Photo category navigation | V4 high priority | Navigate only bounded, explicitly observed viewer categories with identity/postcondition checks; no bulk image harvesting. |
+| Photo category navigation | observation-gated / category surface not re-observed | Bounded JA/en-US runs through `maps_open_place_photos` entered the verified viewer/image surface but exposed no stable visible category tab/menu/radio control. Do not infer categories from image position or opaque URL data; no bulk image harvesting. |
 | Place Overview / Reviews / About tabs | partial / observation-gated | `maps_select_place_tab(expectedLabel, tab)` implements only the live-reobserved `overview` / `about` enum with exact place-bound tab identity and `aria-selected` postconditions. Reviews was not visible in the 2026-08-15 JA/EN re-observation, so no Reviews selector/schema is exposed. Review-body harvesting remains out of scope. |
-| Place → directions | V4 normal priority | Existing `maps_directions` covers the workflow structurally; add current-place convenience only if it preserves identity. |
+| Place → directions | implemented / structural overlap | The workflow is already covered by using the verified place identity with `maps_directions`; V4 does not add a second place-panel convenience click that would duplicate the documented directions operation. |
 | Place → nearby search | implemented | `maps_search_nearby(expectedLabel, query)` revalidates the active place and activates exactly one allow-listed Nearby control. It then accepts only one bounded search-input state: a Nearby-labeled input or the uniquely focused empty Maps combobox produced by that action. The transition is accepted only when the requested query and a Maps search-result path are both verified. Interactive Assist is required. |
 | Place share / Maps share URL | implemented | `maps_get_place_share_link(expectedLabel)` revalidates the active place immediately before one visible Share action, then returns only a bounded allow-listed Google Maps share URL. Interactive Assist is required. |
 | Expand opening hours | implemented | `maps_expand_opening_hours(expectedLabel)` revalidates the active place and exactly one live-observed hours control. Inline expansions verify the observed expanded state and retain place semantics; the observed JA detail-surface variant verifies same-place URL identity plus bounded hours markers and invalidates the stale place state. Weekly-hours harvesting is not exposed. |
@@ -98,7 +105,7 @@ A bounded 2026-08-15 Street View control observation then used the existing docu
 | Read bounded route candidates | implemented | `maps_read_route_summary`. |
 | Select route candidate | implemented | `maps_select_route(index, expectedLabel)` validates current route identity. |
 | Change travel mode | implemented | `maps_set_travel_mode` supports driving/walking/bicycling/transit while preserving route constraints. |
-| Recommended/automatic travel mode | V4 normal priority | UI-specific mode chooser; expose only if postcondition can be verified without heuristic mode guessing. |
+| Recommended/automatic travel mode | implemented / fresh simple transit only | `maps_set_recommended_travel_mode(expectedOrigin, expectedDestination)` revalidates a fresh simple canonical transit request, activates exact-one live-observed `Best` / `おすすめ`, verifies it checked plus unchanged visible endpoints/directions view, then advances epoch and drops the stale replayable action. Omitted origins, waypoints, avoid constraints, and non-transit starts fail closed. |
 | Swap origin and destination | implemented via documented URL rebuild | `maps_swap_route_endpoints(expectedOrigin, expectedDestination)` revalidates a fresh simple canonical directions request, rejects omitted origins/waypoints, preserves mode/avoid constraints, and rebuilds documented Maps URL parameters with endpoints reversed. Live UI swap was observed but is not automated because it leaves canonical URL/action stale. |
 | Add/reorder/remove route stops | observation/design-gated / documented waypoint overlap | JA/en-US observation found exact Add destination, but one-waypoint routes exposed duplicate indistinguishable Remove destination buttons and no exact semantic reorder control. Do not use positional heuristics or generic drag. Existing `maps_directions(..., waypoints)` remains the supported bounded route-stop path. |
 | Driving avoid options (ferries/highways/tolls) | implemented | Bounded documented route options are supported and preserved across mode changes. |
@@ -116,7 +123,7 @@ A bounded 2026-08-15 Street View control observation then used the existing docu
 | Enter Street View from active place/map | observation-gated / browse-vs-pano ambiguity | JA/en-US place/root-map observation found exact `Browse Street View images` controls, but that surface is image browsing rather than verified panorama entry. Direct business `Street View` controls became duplicate/ambiguous in an observed shape. Do not select browse images by index/geometry. Existing documented coordinate `maps_streetview` remains the supported entry until an exact-one direct control plus panorama postcondition is observable. |
 | Street View rotate/zoom/navigation | partial / documented orientation covered | `maps_streetview` already supports bounded documented `heading`, `pitch`, and `fov` for explicit turn/look/zoom orientation. Live panorama observation found JA Zoom controls but not equivalent en-US controls, and no exact semantic turn/adjacent-panorama navigation target. Do not add pointer/canvas navigation or parse undocumented panorama links; forward/adjacent movement remains observation-gated. |
 | Street View imagery/date selection | observation-gated | Bounded actual-panorama observations did not expose a stable visible historical-imagery/date selector, and some valid viewpoints produced no-panorama state. Do not infer dates from image content or harvest historical imagery. Re-open only with an exact visible date/image control plus verifiable postcondition. |
-| Share current map/view URL | V4 high priority | Produce Maps-generated/shareable state, not a generic browser URL/clipboard tool. |
+| Share current map/view URL | observation-gated / no visible Maps share surface | Bounded JA/en-US coordinate/root-map observations exposed no visible Share control. Do not substitute the browser current URL or clipboard for an unobserved Maps-generated share state; re-open only when a bounded visible semantic share surface is observed. |
 | Sign-in, account switching, credential entry | login required | Existing Human Intervention can hand off naturally occurring sign-in, but MCP never handles credentials. |
 | Timeline, account lists, synced saved places | login required | V5. |
 | Contributions, ratings, reviews, edits, public photo upload | login required | State-changing/account-backed contribution workflows are not part of V4. |
@@ -143,7 +150,7 @@ Priority order:
 1. place share link — implemented as `maps_get_place_share_link(expectedLabel)`,
 2. nearby search — implemented as `maps_search_nearby(expectedLabel, query)` from the verified active place,
 3. place photo opener — implemented as `maps_open_place_photos(expectedLabel)` with verified viewer transition and stale place-state invalidation,
-4. photo category navigation — remaining; design from bounded observed viewer controls only,
+4. photo category navigation — observation-gated; bounded JA/en-US verified-viewer observations did not expose a stable category control, so no positional/image heuristic is added,
 5. place tabs — `maps_select_place_tab(expectedLabel, tab)` implements only `overview|about`; Reviews remains observation-gated because the current control was not re-observed,
 6. opening hours — implemented as `maps_expand_opening_hours(expectedLabel)` with inline/detail postcondition handling and stale-state invalidation.
 
@@ -151,35 +158,43 @@ Priority order:
 
 Priority order:
 
-1. result filters — Rating implemented as `maps_set_search_rating(expectedQuery, rating)`; Price/Hours/All filters remain observation/design-gated,
-2. search-this-area / update-after-move — explicit one-shot control not re-observed after JA/en-US manual pans; keep observation-gated and do not substitute the auto-update checkbox,
-3. current-location permission-safe action — browser permission boundary observed; keep observation-gated until a manually authorized success postcondition or dedicated permission-handoff model is established,
-4. semantic layer toggles — option toggles are verified, but the Layers opener is non-semantic/ambiguous; keep observation-gated until an exact-one semantic opener exists,
-5. bounded viewport movement — search-result one-level zoom implemented as `maps_zoom_search(expectedQuery, direction)`; root/place zoom and semantic pan/recenter remain separately observation/design-gated.
+1. autocomplete — implemented as `maps_read_search_suggestions(query)` + guarded `maps_select_search_suggestion(query, index, expectedLabel)`, with a six-item bound and composite visible identity,
+2. result-list share — implemented as `maps_get_search_share_link(expectedQuery)` with visible query revalidation and clipboard-free dialog extraction,
+3. result filters — Rating implemented as `maps_set_search_rating(expectedQuery, rating)`; Price/Hours/All filters remain observation/design-gated,
+4. search-this-area / update-after-move — explicit one-shot control not re-observed after JA/en-US manual pans; keep observation-gated and do not substitute the auto-update checkbox,
+5. current-location permission-safe action — browser permission boundary observed; keep observation-gated until a manually authorized success postcondition or dedicated permission-handoff model is established,
+6. semantic layer toggles — option toggles are verified, but the Layers opener is non-semantic/ambiguous; keep observation-gated until an exact-one semantic opener exists,
+7. bounded viewport movement — search-result one-level zoom implemented as `maps_zoom_search(expectedQuery, direction)`; root/place zoom and semantic pan/recenter remain separately observation/design-gated.
 
 ### V4-D — directions UI
 
 Priority order:
 
-1. departure/arrival time and transit options — same-day `depart_at|arrive_by` implemented as `maps_set_transit_time`; date/Last available/preferences remain observation/design-gated,
-2. route link sharing — selected simple transit-route sharing implemented as `maps_get_route_share_link`; unselected Copy link and driving/other modes remain observation-gated,
-3. swap/edit stops — endpoint swap implemented as `maps_swap_route_endpoints`; stateful stop editing remains observation/design-gated (bounded waypoints are already supported by `maps_directions`),
-4. bounded route detail expansion — guarded `maps_select_route` already enters route detail; extra Toggle-details remains observation-gated for lack of a semantic postcondition,
-5. destination-nearby shortcuts — exact nearby category action observed, but JA lacks a visible destination-bound postcondition; keep observation-gated and do not substitute driving along-route stop search.
+1. recommended/automatic mode — implemented as fresh-simple-transit `maps_set_recommended_travel_mode`; success verifies Best/おすすめ and clears the stale replayable route action,
+2. departure/arrival time and transit options — same-day `depart_at|arrive_by` implemented as `maps_set_transit_time`; date/Last available/preferences remain observation/design-gated,
+3. route link sharing — selected simple transit-route sharing implemented as `maps_get_route_share_link`; unselected Copy link and driving/other modes remain observation-gated,
+4. swap/edit stops — endpoint swap implemented as `maps_swap_route_endpoints`; stateful stop editing remains observation/design-gated (bounded waypoints are already supported by `maps_directions`),
+5. bounded route detail expansion — guarded `maps_select_route` already enters route detail; extra Toggle-details remains observation-gated for lack of a semantic postcondition,
+6. destination-nearby shortcuts — exact nearby category action observed, but JA lacks a visible destination-bound postcondition; keep observation-gated and do not substitute driving along-route stop search.
 
 ### V4-E — Street View
 
-- enter from active place/map,
+- active place/map entry — observation-gated because the observed Browse surface is image browsing and direct Street View controls were ambiguous; documented coordinate entry through `maps_streetview` remains supported,
 - semantic turn/zoom/navigation — explicit orientation is already covered by documented `maps_streetview` heading/pitch/fov; stateful forward/adjacent navigation remains observation-gated,
 - bounded imagery/date choice — no stable visible selector re-observed; keep observation-gated without historical-image harvesting.
 
 ### V4-F — coverage closeout
 
-- rerun low-frequency, bounded live E2E only for user-directed compatibility checks,
-- close gaps that remain V4 high/normal priority,
-- leave login-required items for V5,
-- leave official-overlap items lower priority unless needed to complete a browser workflow,
-- publish the final implemented/remaining coverage table in this document.
+Completed on 2026-08-15 after low-frequency JA/en-US live checks and the upstream Execution Handoff integration regression gate:
+
+- autocomplete read/select implemented with bounded composite identities and stale/reordered fail-closed behavior,
+- search-result list sharing implemented without clipboard access,
+- Recommended/Best mode implemented for the verified fresh-simple-transit surface with stale canonical action fencing,
+- root category discovery and place-to-directions closed as structural overlap with existing semantic operations,
+- photo-category navigation and current-map share explicitly observation-gated from bounded negative observations,
+- login-required capabilities remain V5 and generic/raw browser surfaces remain out of scope.
+
+No V4 high/normal-priority row remains unresolved; remaining partial/observation-gated rows have explicit evidence and re-open conditions rather than guessed selectors or postconditions.
 
 ## Safety invariants for every new V4 operation
 

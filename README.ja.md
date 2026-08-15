@@ -4,7 +4,7 @@
 
 Google Mapsのuser-visible Web UIを、専用Chrome / Chromiumセッションから限定的に操作する、制約重視・ExperimentalなMCP browser controllerです。
 
-> **ステータス:** V1〜V3実装済み。**V4開発中:** 認証なしで利用できる主要なGoogle Maps Web capabilityをMaps-specificなsemantic operationとして広くカバーします。実UI依存のsemantic interactionとbounded visible-state readingは、UI変更の影響を受けるためExperimentalです。
+> **ステータス:** 現行の未認証scopeではV1〜V4 coverageを実装・closeout済みです。残るpartial capabilityはguessで埋めずcanonical inventory上で明示的にobservation/design-gatedとしています。実UI依存のsemantic interactionとbounded visible-state readingは、UI変更の影響を受けるためExperimentalです。
 
 ## このプロジェクトの狙い
 
@@ -117,6 +117,18 @@ maps_search({ query })
 
 `maps_set_search_rating` が公開するのはlive再観測できた `2.0|2.5|3.0|3.5|4.0|4.5` のRating optionだけです。各bounded UI action直前にvisible search queryを再検証し、選択後はrequested numeric rating chip（例: `4.0+`）がexact-oneでvisibleかつRating menuがclosedであることを確認してからresource epochを更新します。価格、時間、すべてのフィルタはgeneric filter APIへまとめず、引き続きobservation/design-gatedです。
 
+Autocompleteもgeneric browser inputにはせずboundedに扱います。
+
+```text
+maps_read_search_suggestions({ query: "Tokyo Station" })
+  -> items[{ index, label }] から選ぶ
+  -> maps_select_search_suggestion({ query: "Tokyo Station", index, expectedLabel: label })
+```
+
+`maps_read_search_suggestions` はfreshなMaps suggestion surfaceを開き、exact combobox-controlled gridからuniqueなcomposite visible identityを最大6件だけ返します。Primary nameは重複し得るため、`maps_select_search_suggestion` はsame active query + exact returned index/labelをactivate直前に再検証し、stale/reordered/duplicate identityはfail closedします。Suggestion gridがcloseしMapsがverified search/place viewへsettleした場合だけsuccessを受理します。Raw combobox/DOMは公開しません。
+
+Active search-result listでは `maps_get_search_share_link({ expectedQuery })` がcanonical + exact visible queryを再検証し、live観測済みexact-one Shareをactivate、selected Send-link tabのallow-listed Maps-generated URLを1件だけ読み、semanticにdialogを閉じます。Clipboardは読まず、successでもsearch resource epochは変えません。
+
 `maps_zoom_search({ expectedQuery, direction })` は `maps_show` を超えるstateful viewport valueとして安全に再観測できた最小sliceだけを追加します。`direction` は `"in" | "out"` 固定で、active search result限定です。Click直前にexact visible queryとexact-one visible enabled Zoom controlを再検証し、同じsearch/queryを維持したままpublic Maps viewport pathのzoom levelがちょうど1段変化したことをpostcondition確認します。Map center座標はstable identity扱いせず、generic pan/recenterやroot/place zoomは公開しません。
 
 V4最初のbrowser-native workflowでは、このidentity chainをMaps生成のplace share URLまで延長します。
@@ -147,6 +159,8 @@ maps_directions({ origin, destination, mode: "transit" })
 
 `maps_set_transit_time` はlive再観測できた当日 `depart_at|arrive_by` と24時間 `HH:MM` だけに限定します。Freshなsimple `maps_directions` transit requestを必須とし、mutation前にdocumented origin/destination identityを再検証します。その後、localized mode trigger、exact `transit-time` input、visible route endpoint値の不変、directions viewをpostcondition確認します。UI-onlyな時刻stateは元のdocumented navigation actionでは表現できないため、成功後はそのreplayable actionだけを破棄し、same browser sessionのcurrent route resultsはread/select可能なまま維持します。日付指定、終電、transit preference optionは別のobservation/design-gated sliceです。
 
+`maps_set_recommended_travel_mode({ expectedOrigin, expectedDestination })` はlive観測済み `おすすめ / Best` radioをfresh simple **transit** request限定で扱います。Origin省略、waypoint、avoid、non-transit startは拒否し、exact radio + resolved endpoint不変 + directions surfaceを検証してからresource epochを進め、staleな `travelmode=transit` replayable actionだけを破棄します。Current route resultsはbounded read/select可能なまま維持し、元のdocumented URLがRecommended UI stateまで表現しているとは扱いません。
+
 `maps_swap_route_endpoints({ expectedOrigin, expectedDestination })` は観測済みの出発地/目的地swap semanticsを、Mapsのswap buttonを自動操作せずに実装します。JA/en-US live観測ではexact semantic swap controlとvisible endpointの A/B -> B/A 遷移を確認できましたが、UI click後もcanonical URL/actionがA→Bのまま残ることも確認しました。そのためMCP operationはfresh simple documented directions requestだけを受け付け、expected canonical endpointを再検証し、origin省略/waypoint routeを拒否、travel modeとbounded avoidを維持したままdocumented Maps URLをB→Aで再構築します。
 
 `maps_get_route_share_link({ expectedOrigin, expectedDestination })` はguarded `maps_select_route` 後のselected **transit** route share dialogからMaps-generated short linkを返します。Expected simple canonical transit identityを再検証し、live観測済みのexact `ルートを共有 / Share directions` を1回activate、selected `リンクを送信する / Send a link` tabとexact-oneのallow-listed visible Maps URL fieldを検証してから、semanticなCloseでdialogを閉じて返却します。Clipboard内容は一切読みません。未選択viewの `リンクをコピー / Copy link` surfaceは引き続き使わず、driving/その他modeはbounded再観測でvisible link fieldが安定しなかったためobservation-gatedです。
@@ -165,6 +179,9 @@ maps_directions({ origin, destination, mode: "transit" })
 ### Semantic Interaction
 
 - `maps_select_result`
+- `maps_read_search_suggestions` — V4-F、最大6件のcomposite suggestion identity・bounded suggestion state、Interactive Assist必須
+- `maps_select_search_suggestion` — V4-F、same active query + guarded `index/expectedLabel`、Interactive Assist必須
+- `maps_get_search_share_link` — V4-F、active search-result Share dialog・clipboard-free、Interactive Assist必須
 - `maps_set_search_rating` — V4、観測済みrating enum固定、Interactive Assist必須
 - `maps_zoom_search` — V4、search限定1-level `in|out`、Interactive Assist必須
 - `maps_get_place_share_link` — V4、Interactive Assist必須
@@ -174,6 +191,7 @@ maps_directions({ origin, destination, mode: "transit" })
 - `maps_expand_opening_hours` — V4、展開stateのみ検証、Interactive Assist必須
 - `maps_select_route`
 - `maps_set_travel_mode`
+- `maps_set_recommended_travel_mode` — V4-F、fresh simple transit -> Best/おすすめ限定、Interactive Assist必須
 - `maps_set_transit_time` — V4-D、当日 `depart_at|arrive_by`、Interactive Assist必須
 - `maps_swap_route_endpoints` — V4-D、fresh simple route限定・documented URL再構築
 - `maps_get_route_share_link` — V4-D、selected simple transit route share dialog、Interactive Assist必須
@@ -387,7 +405,7 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 ## 現在の制限
 
 - Google Maps UI変更でExperimentalなsemantic selectorが壊れる可能性があります。
-- V4 coverageは開発中で、canonical inventoryにimplemented / remaining capabilityを記録します。
+- 現行未認証scopeのV4 coverage closeoutは完了済みで、canonical inventoryにimplemented / partial / 明示observation/design-gated capabilityと再開条件を記録します。
 - bounded visible-state/UI interactionはExperimentalかつOpt-inです。
 - 1processは1人・1local browser session向けで、multi-tenant hosting向けではありません。
 - CAPTCHA、同意、ログインflowを自動突破しません。

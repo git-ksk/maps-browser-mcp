@@ -4,6 +4,12 @@ import { MapsUrlCompiler } from "../src/maps/url-compiler.js";
 
 const compiler = new MapsUrlCompiler();
 
+test("builds a bounded Maps root suggestion action without putting query text in the URL", () => {
+  const { url, action } = compiler.suggestions("Tokyo Station");
+  assert.equal(url, "https://www.google.com/maps");
+  assert.deepEqual(action, { kind: "suggestions", query: "Tokyo Station" });
+});
+
 test("builds an official Maps search URL", () => {
   const { url, action } = compiler.search("横浜駅 カフェ");
   const parsed = new URL(url);

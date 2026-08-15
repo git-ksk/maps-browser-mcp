@@ -3,6 +3,13 @@ import { MapsUrlCompiler } from "../maps/url-compiler.js";
 import { searchNearbyFromVerifiedPlace, type NearbySearchResult } from "./place-nearby.js";
 import { openVerifiedPlacePhotoSurface, type PlacePhotoSurfaceResult } from "./place-photos.js";
 import { getVerifiedPlaceShareLink, type PlaceShareLinkResult } from "./place-share.js";
+import { getVerifiedSearchShareLink, type SearchShareLinkResult } from "./search-share.js";
+import {
+  readVerifiedSearchSuggestions,
+  selectVerifiedSearchSuggestion,
+  type SearchSuggestionSelectionResult,
+  type SearchSuggestionsResult
+} from "./search-suggestions.js";
 import { selectVerifiedPlaceTab, type PlaceTab, type PlaceTabSelectionResult } from "./place-tabs.js";
 import { expandVerifiedOpeningHours, type OpeningHoursExpansionResult } from "./place-opening-hours.js";
 import { setVerifiedSearchRating, type SearchRating, type SearchRatingFilterResult } from "./search-rating-filter.js";
@@ -10,6 +17,7 @@ import { zoomVerifiedSearch, type SearchZoomDirection, type SearchZoomResult } f
 import { setVerifiedTransitTime, type TransitTimeMode, type TransitTimeResult } from "./transit-time.js";
 import { swapVerifiedRouteEndpoints, type RouteSwapResult } from "./route-swap.js";
 import { getVerifiedRouteShareLink, type RouteShareLinkResult } from "./route-share.js";
+import { selectVerifiedRecommendedTravelMode, type RecommendedTravelModeResult } from "./recommended-mode.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 
 export class SemanticController {
@@ -34,6 +42,22 @@ export class SemanticController {
 
   async getPlaceShareLink(expectedLabel: string): Promise<PlaceShareLinkResult> {
     return getVerifiedPlaceShareLink(this.runtime, expectedLabel);
+  }
+
+  async getSearchShareLink(expectedQuery: string): Promise<SearchShareLinkResult> {
+    return getVerifiedSearchShareLink(this.runtime, expectedQuery);
+  }
+
+  async readSearchSuggestions(query: string): Promise<SearchSuggestionsResult> {
+    return readVerifiedSearchSuggestions(this.runtime, this.compiler, query);
+  }
+
+  async selectSearchSuggestion(
+    query: string,
+    index: number,
+    expectedLabel: string
+  ): Promise<SearchSuggestionSelectionResult> {
+    return selectVerifiedSearchSuggestion(this.runtime, query, index, expectedLabel);
   }
 
   async searchNearby(expectedLabel: string, query: string): Promise<NearbySearchResult> {
@@ -75,6 +99,13 @@ export class SemanticController {
 
   async getRouteShareLink(expectedOrigin: string, expectedDestination: string): Promise<RouteShareLinkResult> {
     return getVerifiedRouteShareLink(this.runtime, expectedOrigin, expectedDestination);
+  }
+
+  async setRecommendedTravelMode(
+    expectedOrigin: string,
+    expectedDestination: string
+  ): Promise<RecommendedTravelModeResult> {
+    return selectVerifiedRecommendedTravelMode(this.runtime, expectedOrigin, expectedDestination);
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {
