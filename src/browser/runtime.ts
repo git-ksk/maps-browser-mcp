@@ -188,6 +188,12 @@ export class MapsBrowserRuntime {
     this.handoff.advanceResourceEpoch();
   }
 
+  markSemanticMutationWithoutReplayAction(): void {
+    this.assertAgentAuthority();
+    this.lastAction = undefined;
+    this.handoff.advanceResourceEpoch();
+  }
+
   invalidateSemanticContext(): void {
     this.assertAgentAuthority();
     if (this.viewState === "blank" && this.lastAction === undefined) return;

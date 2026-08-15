@@ -54,6 +54,28 @@ test("an allowed Maps surface passes the navigation boundary", () => {
   assert.doesNotThrow(() => boundary.assertAllowedCurrentUrl("https://www.google.com/maps/search/Tokyo"));
 });
 
+test("UI-only semantic mutation can drop the replay action while preserving the readable view", () => {
+  const runtime = makeRuntime();
+  const mutable = runtime as unknown as {
+    lastAction?: MapsAction;
+    viewState: "directions" | "blank";
+  };
+  mutable.lastAction = {
+    kind: "directions",
+    origin: "Tokyo Station",
+    destination: "Yokohama Station",
+    mode: "transit"
+  };
+  mutable.viewState = "directions";
+  const before = runtime.getResourceEpoch();
+
+  runtime.markSemanticMutationWithoutReplayAction();
+
+  assert.equal(runtime.getLastAction(), undefined);
+  assert.equal(runtime.getViewState(), "directions");
+  assert.equal(runtime.getResourceEpoch(), before + 1);
+});
+
 test("challenge handoff preserves the canonical Maps action and invalidates stale state", () => {
   const runtime = makeRuntime();
   const boundary = runtime as unknown as {

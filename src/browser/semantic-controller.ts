@@ -7,6 +7,7 @@ import { selectVerifiedPlaceTab, type PlaceTab, type PlaceTabSelectionResult } f
 import { expandVerifiedOpeningHours, type OpeningHoursExpansionResult } from "./place-opening-hours.js";
 import { setVerifiedSearchRating, type SearchRating, type SearchRatingFilterResult } from "./search-rating-filter.js";
 import { zoomVerifiedSearch, type SearchZoomDirection, type SearchZoomResult } from "./search-zoom.js";
+import { setVerifiedTransitTime, type TransitTimeMode, type TransitTimeResult } from "./transit-time.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 
 export class SemanticController {
@@ -55,6 +56,15 @@ export class SemanticController {
 
   async zoomSearch(expectedQuery: string, direction: SearchZoomDirection): Promise<SearchZoomResult> {
     return zoomVerifiedSearch(this.runtime, expectedQuery, direction);
+  }
+
+  async setTransitTime(
+    expectedOrigin: string,
+    expectedDestination: string,
+    mode: TransitTimeMode,
+    time: string
+  ): Promise<TransitTimeResult> {
+    return setVerifiedTransitTime(this.runtime, expectedOrigin, expectedDestination, mode, time);
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {

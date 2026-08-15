@@ -51,6 +51,8 @@ A bounded 2026-08-15 map-layer observation used dedicated JA and explicit `--lan
 
 A bounded 2026-08-15 viewport observation used a JA search-result view at 1440×1000 and an explicit en-US search-result view at 1280×800. In both UIs, Zoom in/out were exact-one visible enabled `button` controls (with hidden duplicates ignored by the visible-only boundary), the visible query remained exact, and the public Maps search path exposed a settled integer zoom level. One bounded round trip verified JA `17z -> 18z -> 17z` and EN `16z -> 17z -> 16z`. The longitude changed slightly during the zoom animation because of the results-pane geometry, so map-center equality is deliberately not a postcondition. `maps_zoom_search(expectedQuery, direction)` therefore implements only one-level `in|out` zoom for an active verified search state, requiring the same query plus an exact ±1 zoom transition. Generic pan/recenter and root/place zoom remain outside this slice.
 
+A bounded 2026-08-15 V4-D transit-time observation used a fresh simple Tokyo Station -> Yokohama Station transit request in JA and explicit en-US. `Leave now` / `すぐに出発` was an exact visible button; its menu exposed `Depart at` / `出発時刻` and `Arrive by` / `到着時刻` as exact `menuitemradio` controls. After either mode was selected, exactly one visible `input[name="transit-time"]` appeared. A bounded 13:30 edit verified JA `13:30` and EN `1:30 PM`, while the visible resolved origin/destination input values remained byte-for-byte unchanged and the page stayed in `/maps/dir/`. The transit-mode radio group may disappear after choosing a time mode, so it is deliberately not a postcondition. `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` therefore implements only same-day `depart_at|arrive_by` with a 24-hour `HH:MM` input from a fresh simple documented transit request. Date selection, `Last available`, and transit preference options remain observation/design-gated. Because the resulting UI-only schedule is not fully represented by the original documented navigation action, success advances the resource epoch and drops that replayable action while preserving the current directions view for bounded route read/select in the same session.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -84,7 +86,7 @@ A bounded 2026-08-15 viewport observation used a JA search-result view at 1440×
 | Swap origin and destination | V4 normal priority | Stateful route edit; preserve route identity and invalidate old candidate state. |
 | Add/reorder/remove route stops | V4 normal priority | URL path already supports bounded waypoints; stateful UI editing is secondary but useful. |
 | Driving avoid options (ferries/highways/tolls) | implemented | Bounded documented route options are supported and preserved across mode changes. |
-| Departure/arrival time and transit preferences | V4 high priority | Important UI-only routing behavior not covered by documented Maps URL parameters; implement via semantic visible controls, not guessed web parameters. |
+| Departure/arrival time and transit preferences | partial / same-day transit time implemented | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` implements only fresh simple transit routes with `mode=depart_at|arrive_by` and 24-hour `HH:MM` for the current day. It revalidates documented route identity before mutation, verifies exact localized time controls plus unchanged visible resolved endpoints, then drops the stale replayable navigation action while keeping route read/select available. Date, Last available, and transit preference options remain observation/design-gated. |
 | Route candidate details / step expansion | V4 normal priority | Bounded route-detail interaction; no bulk itinerary extraction. |
 | Route link copy/share | V4 high priority | Read the Maps-generated link for the verified active route; do not use raw clipboard access. |
 | Destination-nearby shortcuts from route view | V4 normal priority | Convenience category search scoped to current destination. |
@@ -143,7 +145,7 @@ Priority order:
 
 Priority order:
 
-1. departure/arrival time and transit options,
+1. departure/arrival time and transit options — same-day `depart_at|arrive_by` implemented as `maps_set_transit_time`; date/Last available/preferences remain observation/design-gated,
 2. route link sharing,
 3. swap/edit stops,
 4. bounded route detail expansion,

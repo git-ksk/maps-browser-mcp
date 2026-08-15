@@ -48,6 +48,7 @@ import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
 import { SEARCH_ZOOM_DIRECTIONS } from "./browser/search-zoom.js";
+import { TRANSIT_TIME_MODES } from "./browser/transit-time.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import { TakeoverBroker } from "./takeover-broker.js";
@@ -681,6 +682,30 @@ export function buildServer(): McpServer {
       resumeStrategy: "require_fresh_semantic_action",
       ctx,
       task: () => controller.selectRoute(index, expectedLabel)
+    })
+  );
+
+  server.registerTool(
+    "maps_set_transit_time",
+    {
+      description: "Set a same-day depart-at or arrive-by time on one fresh verified Google Maps transit directions request. expectedOrigin and expectedDestination must match the active documented maps_directions request; mode is restricted to depart_at|arrive_by and time to 24-hour HH:MM. The operation verifies the localized mode trigger, exact transit-time input, unchanged visible route endpoints, and directions view before dropping the stale replayable navigation action. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedOrigin: locationText,
+        expectedDestination: locationText,
+        mode: z.enum(TRANSIT_TIME_MODES),
+        time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)
+      })
+    },
+    async ({ expectedOrigin, expectedDestination, mode, time }, ctx) => runToolWithHandoff({
+      toolName: "maps_set_transit_time",
+      args: { expectedOrigin, expectedDestination, mode, time },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.setTransitTime(expectedOrigin, expectedDestination, mode, time);
+      }
     })
   );
 

@@ -133,11 +133,19 @@ maps_search(...)
 経路候補も同様です。
 
 ```text
-maps_directions(...)
+maps_directions({ origin, destination, mode: "transit" })
+  -> maps_set_transit_time({
+       expectedOrigin: origin,
+       expectedDestination: destination,
+       mode: "depart_at",
+       time: "13:30"
+     })
   -> maps_read_route_summary()
   -> items[{ index, label }] から選ぶ
   -> maps_select_route({ index, expectedLabel: label })
 ```
+
+`maps_set_transit_time` はlive再観測できた当日 `depart_at|arrive_by` と24時間 `HH:MM` だけに限定します。Freshなsimple `maps_directions` transit requestを必須とし、mutation前にdocumented origin/destination identityを再検証します。その後、localized mode trigger、exact `transit-time` input、visible route endpoint値の不変、directions viewをpostcondition確認します。UI-onlyな時刻stateは元のdocumented navigation actionでは表現できないため、成功後はそのreplayable actionだけを破棄し、same browser sessionのcurrent route resultsはread/select可能なまま維持します。日付指定、終電、transit preference optionは別のobservation/design-gated sliceです。
 
 `expectedLabel` は重要です。Google Mapsが候補を動的に並べ替えたり置換した場合、別対象を誤操作せず `UI_STATE_CHANGED` で停止します。
 
@@ -162,6 +170,7 @@ maps_directions(...)
 - `maps_expand_opening_hours` — V4、展開stateのみ検証、Interactive Assist必須
 - `maps_select_route`
 - `maps_set_travel_mode`
+- `maps_set_transit_time` — V4-D、当日 `depart_at|arrive_by`、Interactive Assist必須
 
 ### Optional bounded visible-state reading
 
