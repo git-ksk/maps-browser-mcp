@@ -6,6 +6,10 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+### Documentation
+
+- Define the V5 authenticated-workflows design baseline without enabling implementation: Human-only sign-in, single-user/per-principal browser isolation gate, bounded saved-state reads, save-to-existing-list as the first mutation candidate, explicit ActionApproval before Send to phone, Maps-history privacy gating, and Timeline removal from the desktop Web candidate set.
+
 ### Changed
 
 - Harden the experimental MCP Apps directions View against host differences: stable 2026-01-26 host context, safe areas/container sizing, size notifications, cancellation/error cleanup, teardown, and Google-recommended Embed referrer policy.

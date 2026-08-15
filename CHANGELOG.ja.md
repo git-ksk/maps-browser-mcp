@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Documentation
+
+- V5 authenticated-workflows design baselineをimplementation有効化なしで定義。Human-only sign-in、single-user/per-principal browser isolation gate、bounded saved-state read、first mutation candidateとしてexisting-listへのSave、Send to phone前のexplicit ActionApproval、Maps-history privacy gate、Timelineのdesktop Web candidate除外を明文化。
+
 ### 変更
 
 - ExperimentalなMCP Apps directions Viewをhost差異に対してhardening。Stable 2026-01-26 host context、safe-area/container sizing、size notification、cancellation/error cleanup、teardown、Google推奨Embed referrer policyを反映。

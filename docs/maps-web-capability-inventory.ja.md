@@ -125,7 +125,8 @@ V4-Fでは残りhigh/normal priorityもunsafe convenience APIを増やさず解�
 | Street View imagery/date選択 | observation-gated | Actual-panorama bounded観測でstable visibleなhistorical-imagery/date selectorを確認できず、valid viewpointでもno-panorama stateがあり得る。Image contentからdateを推測せずhistorical imageryもharvestしない。Exact visible date/image control + verifiable postconditionを観測できた場合だけ再開。 |
 | current map/view の共有URL | observation-gated / visible Maps share surfaceなし | JA/en-USのcoordinate/root-map bounded観測でvisible Share controlを確認できなかった。Browser current URLやclipboardを未観測のMaps-generated share stateに代用せず、bounded visible semantic share surfaceを観測できた場合だけ再開する。 |
 | sign-in / account切替 / credential入力 | login required | 自然発生したsign-inは Human Intervention へhandoff可能だが、MCPはcredentialを扱わない。 |
-| Timeline / account list / synced saved place | login required | V5。 |
+| saved list / synced saved place | login required / V5 design-only | account-backed saved stateはV5 authentication/isolation entry gateの後段。最初の候補はboundedなselected-place save membership / existing-list identityであり、Saved library全体traversalは行わない。 |
+| Timeline | current desktop Maps Web capabilityではない | 現行Google公式情報ではcomputer版Mapsで利用不可かつdevice-based。V5 Web candidateから外し、Googleがofficial desktop Maps surfaceを復活させbounded semantic targetを観測できた場合だけre-openする。 |
 | contribution / rating / review / edit / public photo upload | login required | account-backed state-changing contribution はV4外。 |
 | CAPTCHA / access challenge解決 | out of scope | Human handoffのみ。solver/bypass禁止。 |
 | raw DOM / AX tree / raw CDP / generic browser action | out of scope | 内部実装detail。MCP toolとして公開しない。 |

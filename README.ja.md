@@ -40,7 +40,7 @@ V4はV1〜V3よりcoverageを広げますが、制約付きarchitectureは維持
 
 優先順位は、browser-native / UI-dependent機能を最優先、browser workflow完結に必要なsearch / directions / placeを次、公式structured interfaceとほぼ同等の機能をその次とします。
 
-機能単位のcanonical status表は **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md)** です。ログイン必須機能はV5へ送ります。V4でもraw DOM、raw Accessibility Tree、raw CDP、generic browser action、desktop action、shell executionをMCPへ公開しません。
+機能単位のcanonical status表は **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md)** です。ログイン必須機能はV5へ送ります。Current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.ja.md)** はdesign-onlyで、broad signed-in automationではなくaccount isolation + bounded saved-stateから始めます。V4でもraw DOM、raw Accessibility Tree、raw CDP、generic browser action、desktop action、shell executionをMCPへ公開しません。
 
 ## 5分クイックスタート
 
@@ -426,6 +426,7 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 | [Project positioning](docs/positioning.ja.md) | 競合category、Maps Web priority、公式interface重複、product direction |
 | [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md) | 未ログインcapabilityのcanonical coverage/status表とV4 slice |
 | [MCP Apps portability](docs/mcp-apps.ja.md) | Host-neutral UI contract、fallback、layout、security、deployment、compatibility evidence |
+| [V5 authenticated workflows](docs/v5-authenticated-workflows.ja.md) | Design-only authenticated boundary、staged saved-state scope、approval gate |
 | [Roadmap](docs/roadmap.ja.md) | V4 closeout baselineとMCP Apps portability status / future direction |
 | [Compliance / Safety](docs/compliance.ja.md) | 利用目的・非目的・規約境界 |
 | [Manual Live E2E](docs/manual-e2e.ja.md) | 実Google Maps user-triggered互換性確認 |
