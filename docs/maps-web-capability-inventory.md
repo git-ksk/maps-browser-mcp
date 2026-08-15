@@ -135,7 +135,7 @@ V4-F also resolved the remaining high/normal-priority items without forcing unsa
 
 ## V4 implementation slices
 
-V4 should be delivered in small reviewable groups rather than as one broad DOM-automation change.
+V4 was delivered in small reviewable groups rather than as one broad DOM-automation change.
 
 ### V4-A — inventory and semantic identity primitives
 

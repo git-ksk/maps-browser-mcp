@@ -33,20 +33,36 @@ const chrome = new ChromeProcess({ profileDir, headless: true });
 const policy = new PolicyEngine({
   interactiveAssist: true,
   maxActionsPerMinute: 10,
-  maxVisibleReadsPerHour: 8
+  maxVisibleReadsPerHour: 12
 });
 const runtime = new MapsBrowserRuntime(chrome, policy);
 const compiler = new MapsUrlCompiler();
 const reader = new VisibleStateReader(runtime, { maxNodes: 120, maxChars: 1800 });
 const semantic = new SemanticController(runtime, compiler);
 
-async function searchAndSelectFirstPlace(placeQuery) {
+async function searchAndSelectFirstPlace(placeQuery, { verifySearchShare = false } = {}) {
   policy.consumeAction();
   policy.assertSearchQuery(placeQuery);
   const search = compiler.search(placeQuery);
   const searchNavigation = await runtime.navigate(search.url, search.action);
   assert(searchNavigation.url.includes("/maps/"), "Search did not remain on Google Maps");
   await sleep(2_500);
+
+  if (verifySearchShare) {
+    policy.consumeVisibleRead();
+    const searchShare = await semantic.getSearchShareLink(placeQuery);
+    assert(searchShare.query === placeQuery, "Search share lost the verified query");
+    assert(searchShare.source === "google_maps_search_share_dialog", "Unexpected search-share result source");
+    const searchShareUrl = new URL(searchShare.url);
+    assert(searchShareUrl.protocol === "https:", "Search share URL was not HTTPS");
+    assert(
+      searchShareUrl.hostname === "maps.app.goo.gl" ||
+        (searchShareUrl.hostname === "www.google.com" &&
+          (searchShareUrl.pathname === "/maps" || searchShareUrl.pathname.startsWith("/maps/"))),
+      "Search share URL left the allow-listed Google Maps origins"
+    );
+    console.log("Live Maps search-share phase passed: verified active search -> bounded share URL -> dialog closed");
+  }
 
   policy.consumeVisibleRead();
   const placeSummary = await reader.read("place");
@@ -65,13 +81,37 @@ async function searchAndSelectFirstPlace(placeQuery) {
 }
 
 try {
+  // Representative V4-F autocomplete compatibility check. This intentionally reads
+  // one bounded suggestion list and selects exactly one returned identity.
+  const suggestionQuery = "Tokyo Station";
+  policy.assertSearchQuery(suggestionQuery);
+  policy.consumeVisibleRead();
+  const suggestions = await semantic.readSearchSuggestions(suggestionQuery);
+  assert(suggestions.source === "google_maps_bounded_search_suggestions", "Unexpected suggestion result source");
+  assert(suggestions.untrustedExternalText === true, "Suggestions must be marked as untrusted external text");
+  assert(suggestions.items.length > 0 && suggestions.items.length <= 6, "Suggestion list was empty or over-broad");
+  const firstSuggestion = suggestions.items[0];
+  assert(firstSuggestion, "No first search suggestion was returned");
+  policy.consumeVisibleRead();
+  const suggestionSelection = await semantic.selectSearchSuggestion(
+    suggestionQuery,
+    firstSuggestion.index,
+    firstSuggestion.label
+  );
+  assert(
+    suggestionSelection.source === "google_maps_search_suggestion" &&
+      (suggestionSelection.view === "search" || suggestionSelection.view === "place"),
+    "Suggestion selection did not settle to a verified search/place state"
+  );
+  console.log("Live Maps autocomplete phase passed: bounded suggestions -> guarded selection");
+
   // Public, user-directed place workflow. No reviews, crawling, screenshots, or persistence.
   const placeQuery = "coffee near Tokyo Station";
 
   // Exercise the V4-B photo opener through the public semantic controller, not a
   // diagnostic CDP probe. The human-visible viewer is deliberately not retained as
   // replayable place state after the verified transition.
-  const photoPlace = await searchAndSelectFirstPlace(placeQuery);
+  const photoPlace = await searchAndSelectFirstPlace(placeQuery, { verifySearchShare: true });
   const photoEpochBefore = runtime.getResourceEpoch();
   policy.consumeVisibleRead();
   const photoSurface = await semantic.openPlacePhotos(photoPlace);
@@ -133,6 +173,19 @@ try {
   await sleep(3_000);
 
   policy.consumeVisibleRead();
+  const recommended = await semantic.setRecommendedTravelMode("Tokyo Station", "Yokohama Station");
+  assert(recommended.selected === true, "Recommended/Best travel mode was not verified as selected");
+  assert(recommended.source === "google_maps_recommended_travel_mode", "Unexpected Recommended-mode result source");
+  assert(runtime.getLastAction() === undefined, "Recommended-mode mutation retained a stale replayable directions action");
+  assert(runtime.getViewState() === "directions", "Recommended-mode mutation lost the bounded directions view");
+  console.log("Live Maps Recommended phase passed: fresh simple transit -> Best/Recommended -> stale replay action dropped");
+
+  // Recommended selection can trigger a short route-list rerender after the radio
+  // postcondition is already verified. Let the bounded visible route surface settle
+  // before taking a fresh Accessibility snapshot; do not reuse any pre-mutation node.
+  await sleep(2_000);
+
+  policy.consumeVisibleRead();
   const routeSummary = await reader.read("route");
   boundedSummary(routeSummary, 1800);
   assert(routeSummary.items.length > 0, "No selectable transit route candidates were detected");
@@ -146,7 +199,7 @@ try {
     "Route selection did not return a label"
   );
 
-  console.log("Live Maps E2E passed: photo opener, nearby, bounded place share, transit read, and guarded route selection");
+  console.log("Live Maps E2E passed: autocomplete, search share, place workflow, Recommended transit, bounded route read, and guarded selection");
 } finally {
   await runtime.close().catch(() => undefined);
   await fsp.rm(profileDir, {

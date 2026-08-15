@@ -12,7 +12,7 @@
 - [ChatGPT 接続ガイド 日本語版](chatgpt.ja.md) — ChatGPT App / Remote MCP接続、認証境界、Tool再スキャン
 - [OAuth Gateway パターン 日本語版](oauth-gateway.ja.md) — browser runtimeへOAuth protocol責務を持ち込まずRemote MCPをOAuth保護する構成
 - [利用モードとユースケース](use-cases.ja.md) — Navigation-only / Interactive Assistの使い分け、Local / Remoteでの実例
-- [ロードマップ](roadmap.ja.md) — V4 Google Maps Web coverage、MCP Apps / Optional UI、残るportability作業
+- [ロードマップ](roadmap.ja.md) — 完了済みV4 Google Maps Web baseline、MCP Apps / Optional UI、残るportability作業
 - [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md) — 未ログインMaps Webのcanonical coverage表、優先順位、V4 slice、login-required境界、明示的non-goal
 
 ## 設計・安全性
@@ -24,7 +24,7 @@
 
 ## 開発・リリース
 
-- [Release / Versioning ガイド](releases.ja.md) — 最新安定版、tag checkout、`main`との使い分け、npm公開状況、v0.1.1検証記録
+- [Release / Versioning ガイド](releases.ja.md) — 最新安定版、tag checkout、`main`との使い分け、npm公開状況、v0.2.0検証方針
 - [Changelog 日本語版](../CHANGELOG.ja.md) — 公開Releaseごとの主要変更履歴
 - [Manual Live E2E 日本語版](manual-e2e.ja.md) — 実Google Maps UI互換性を手動起動で確認する手順
 - [Release Checklist 日本語版](release.ja.md) — v0.xリリース前後のチェックリスト
@@ -33,7 +33,7 @@
 
 ## 現在の安定版
 
-最新の公開GitHub Releaseは **v0.1.1** です。安定版を固定して利用したい場合は `main` ではなく `v0.1.1` tagを使用してください。
+v0.2.0 release baselineを安定版として扱います。安定版を固定して利用する場合は `main` ではなく `v0.2.0` tagを使用してください。
 
 現時点ではnpm packageは公開していません。詳細は [Release / Versioning ガイド](releases.ja.md) を参照してください。
 

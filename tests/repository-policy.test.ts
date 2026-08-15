@@ -26,11 +26,11 @@ test("package, lockfile, and MCP server versions stay synchronized", () => {
   assert.equal(match[1], packageJson.version);
 });
 
-test("pre-release execution handoff upstream is pinned to an immutable commit", () => {
+test("execution handoff upstream source release is pinned to an immutable commit", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(
     pkg.dependencies?.["mcp-execution-handoff"],
-    "https://github.com/git-ksk/mcp-execution-handoff/archive/31c78eb430481b00f08f7dbd5987fa5b2f194128.tar.gz"
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/c87fe17b4a9a24bda7aa42e1f40e75a491e72698.tar.gz"
   );
 });
 

@@ -6,6 +6,34 @@
 
 本projectはpre-1.0です。Public APIが安定するまでは、minor / patch releaseにも互換性・安全性hardeningが含まれる場合があります。Upgrade前に各Release内容を確認してください。
 
+## [v0.2.0] - 2026-08-15
+
+V4の未認証Google Maps Web coverage完了と、Execution Handoff upstream consumer化をまとめたminor releaseです。
+
+### 追加
+
+- 現行未認証Google Maps Web scopeに対する広いV4 Maps-specific semantic coverage。boundedなplace share / nearby / photos / tabs / opening hours、search rating / viewport zoom、same-day transit time、endpoint swap、selected transit-route share、bounded autocomplete read/select、search-result share、Recommended/Best transit selectionを含みます。
+- `ui://maps-browser-mcp/directions.html` を使うexperimentalなMCP Apps directions rendering。UI非対応host向けの有用なtext / structured fallbackは維持します。
+- V4 capability inventoryのcanonical evidenceと、未対応・不安定surfaceに対する明示的なobservation/design gate + re-open condition。
+
+### 変更
+
+- 現行未認証scopeのV4をcloseoutし、high / normal priorityの未解決rowを0件にしました。
+- Mapsを `mcp-execution-handoff` のfirst real adapterとして維持し、Japan Cinemaとのtwo-real-adapter validation完了後のimmutableなupstream v0.1.0 source-release commitへ同期しました。
+- Manual Live Maps E2Eのrelease pathを、代表的なautocomplete / search-share / place workflow 1組と、Recommended/Bestを含むfresh simple transit workflow 1組へ更新しました。Fixed / low-volumeの原則は維持します。
+- package / lockfile / MCP server metadataを `0.2.0` に同期しました。
+
+### Safety / Compatibility
+
+- raw browser / CDP / DOM / Accessibility Tree、generic browser action、arbitrary navigation、generic text entry、pointer primitive、clipboard dump、Maps internal API/XHR harvesting、bulk scraping、review harvestingは引き続きpublic MCP surfaceへ公開しません。
+- consent / sign-in / CAPTCHA / access challengeはfail-closedなHuman Intervention境界のままです。Human完了をapprovalとみなさず、state-changing actionを自動replayしません。
+- UI依存Maps operationとMCP Apps renderingは、将来のGoogle Maps / host UI変更に対する永久保証ではなくcompatibility-sensitive / experimental surfaceとして扱います。
+- `mcp-execution-handoff` はsource releaseからconsumeし、このreleaseで同packageや `maps-browser-mcp` をnpm publishしません。
+
+Validation詳細とexact release commit / live runはv0.2.0 GitHub Releaseへ記録します。
+
+**npm:** 未公開
+
 ## [v0.1.1] - 2026-08-09
 
 Container / headless portabilityとRelease hardeningを中心としたpatch releaseです。

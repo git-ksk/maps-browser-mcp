@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: "Run bounded public Google Maps checks (place search/share/nearby + transit route)"
+        description: "Run bounded public Google Maps checks (autocomplete/search share/place + Recommended transit)"
         required: true
         type: choice
         options:

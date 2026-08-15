@@ -4,6 +4,34 @@ All notable public releases of `maps-browser-mcp` are recorded here.
 
 This project is pre-1.0. Until the public API stabilizes, minor and patch releases may include compatibility or safety hardening that users should review before upgrading.
 
+## [v0.2.0] - 2026-08-15
+
+V4 unauthenticated Google Maps Web coverage completion and Execution Handoff upstream-consumer minor release.
+
+### Added
+
+- Broad V4 Maps-specific semantic coverage for the current unauthenticated Google Maps Web scope, including bounded place share/nearby/photos/tabs/opening-hours flows, search rating and viewport zoom, same-day transit time, endpoint swap, selected transit-route share, bounded autocomplete read/select, search-result sharing, and Recommended/Best transit selection.
+- Experimental MCP Apps directions rendering as a progressive enhancement through `ui://maps-browser-mcp/directions.html`, while retaining useful text/structured fallback behavior for non-UI hosts.
+- Canonical V4 capability inventory evidence and explicit observation/design gates with re-open conditions for unsupported or unstable surfaces.
+
+### Changed
+
+- V4 is now closed out for the current unauthenticated scope; no high/normal-priority V4 row remains unresolved.
+- Maps consumes `mcp-execution-handoff` as its first real adapter and is synchronized to the immutable upstream v0.1.0 source-release commit after the two-real-adapter validation completed with Japan Cinema.
+- The manual Live Maps E2E release path now covers one representative autocomplete/search-share/place workflow and one fresh simple transit workflow with Recommended/Best, while remaining fixed and low-volume.
+- Package, lockfile, and MCP server metadata are synchronized at `0.2.0`.
+
+### Safety / compatibility
+
+- Raw browser/CDP/DOM/Accessibility-tree surfaces, generic browser actions, arbitrary navigation, generic text entry, pointer primitives, clipboard dumps, Maps internal API/XHR harvesting, bulk scraping, and review harvesting remain outside the public MCP surface.
+- Consent, sign-in, CAPTCHA, and access challenges remain fail-closed Human Intervention boundaries; Human completion is not approval and does not authorize automatic replay of a state-changing action.
+- UI-dependent Maps operations and MCP Apps rendering remain compatibility-sensitive/experimental surfaces rather than guarantees against future Google Maps or host UI changes.
+- `mcp-execution-handoff` is consumed from its source release; it and `maps-browser-mcp` are not published to npm by this release.
+
+Validation details and the exact release commit/live run are recorded in the GitHub Release for v0.2.0.
+
+**npm status:** not published.
+
 ## [v0.1.1] - 2026-08-09
 
 Container/headless portability and release-hardening patch release.

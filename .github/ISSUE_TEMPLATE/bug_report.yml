@@ -18,7 +18,7 @@ body:
     attributes:
       label: maps-browser-mcp version / commit
       description: Tag or commit SHA where the problem occurs.
-      placeholder: "v0.1.1 or <commit SHA>"
+      placeholder: "v0.2.0 or <commit SHA>"
     validations:
       required: true
 

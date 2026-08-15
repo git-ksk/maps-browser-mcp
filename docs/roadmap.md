@@ -31,7 +31,7 @@ Priority order:
 
 The browser surface must still remain Maps-specific. V4 does **not** expose raw DOM, raw Accessibility Tree, raw CDP, pointer primitives, generic browser automation, desktop automation, or shell execution through MCP.
 
-V4 is split into reviewable slices:
+V4 was delivered in reviewable slices:
 
 - **V4-A** — canonical inventory and reusable semantic identity/stale-state primitives,
 - **V4-B** — place workflow: share link, nearby, photos, bounded panel interactions,
@@ -42,11 +42,11 @@ V4 is split into reviewable slices:
 
 Login-required capability stays out of V4 and moves to V5. Consent, sign-in, CAPTCHA, or access challenges that occur naturally continue to stop at the existing Human Intervention boundary; they are never bypassed and completing human intervention does not approve a different semantic action.
 
-Maps now consumes the extracted `mcp-execution-handoff` upstream at an immutable pre-release commit; the full two-adapter upstream-validation track with Japan Cinema remains separate. This integration does not generalize the Maps server into a browser/desktop/shell MCP.
+Maps now consumes the extracted `mcp-execution-handoff` formal upstream at the immutable v0.1.0 source-release commit. The two-real-adapter validation with Japan Cinema is complete. This integration does not generalize the Maps server into a browser/desktop/shell MCP.
 
-### First V4 implementation slice
+### Initial V4 implementation slice (completed)
 
-`maps_get_place_share_link(expectedLabel)` is the first V4 browser-native semantic operation. It uses the currently selected place only, revalidates the active place identity immediately before activating the visible Share control, accepts only bounded Google Maps share URLs, and fails closed on missing/ambiguous targets. The operation remains behind Interactive Assist and the visible-read/action budgets.
+`maps_get_place_share_link(expectedLabel)` was the first V4 browser-native semantic operation. It uses the currently selected place only, revalidates the active place identity immediately before activating the visible Share control, accepts only bounded Google Maps share URLs, and fails closed on missing/ambiguous targets. The operation remains behind Interactive Assist and the visible-read/action budgets.
 
 ## Near-term direction
 
@@ -69,7 +69,7 @@ The structured route path continues to use documented Google Maps URL parameters
 - `avoid` values limited to `ferries`, `highways`, and `tolls`,
 - preserving those constraints when the active travel mode is changed.
 
-Departure/arrival time and transit preference controls are important unauthenticated Maps Web capabilities, but they are not represented by the documented Google Maps URLs directions parameters used by this project. V4 may therefore support them through **bounded, visible Maps-specific semantic controls with postcondition/identity validation**. Do not invent undocumented URL parameters, intercept internal Maps APIs/XHR, or expose generic DOM automation to reach them.
+Departure/arrival time and transit preference controls are important unauthenticated Maps Web capabilities, but they are not represented by the documented Google Maps URLs directions parameters used by this project. V4 now supports the bounded same-day `depart_at|arrive_by` slice through **visible Maps-specific semantic controls with postcondition/identity validation**; date, Last available, and transit preferences remain explicitly observation/design-gated. Do not invent undocumented URL parameters, intercept internal Maps APIs/XHR, or expose generic DOM automation to reach them.
 
 ## MCP Apps / optional interactive UI
 

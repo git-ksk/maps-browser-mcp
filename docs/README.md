@@ -12,7 +12,7 @@ Documentation index for `maps-browser-mcp`.
 - [ChatGPT connection notes](chatgpt.md) — ChatGPT App / Remote MCP boundary, authentication and tool refresh
 - [OAuth gateway pattern](oauth-gateway.md) — external OAuth resource-server boundary for remote MCP clients while keeping identity/OAuth protocol concerns outside the browser runtime
 - [Usage modes and examples](use-cases.md) — when to use navigation-only vs. bounded interactive assist, with local and remote examples
-- [Roadmap](roadmap.md) — V4 Google Maps Web coverage, MCP Apps / optional UI, and remaining portability work
+- [Roadmap](roadmap.md) — completed V4 Google Maps Web baseline, MCP Apps / optional UI, and remaining portability work
 - [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.md) — canonical unauthenticated Maps Web coverage table, priorities, implementation slices, login-required boundary, and explicit non-goals
 
 ## Design and safety

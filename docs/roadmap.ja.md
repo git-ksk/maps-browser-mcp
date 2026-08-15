@@ -33,7 +33,7 @@ V4は次の位置づけです。
 
 browser control surfaceは引き続きMaps-specificに限定します。V4でもraw DOM、raw Accessibility Tree、raw CDP、pointer primitive、generic browser automation、desktop automation、shell executionをMCPへ公開しません。
 
-V4は小さくreview可能なsliceへ分割します。
+V4は小さくreview可能なsliceとして実装・closeoutしました。
 
 - **V4-A** — canonical inventoryと再利用可能なsemantic identity / stale-state primitive
 - **V4-B** — place workflow: share link、nearby、photos、bounded panel interaction
@@ -44,11 +44,11 @@ V4は小さくreview可能なsliceへ分割します。
 
 ログイン必須capabilityはV4へ入れずV5へ送ります。利用中にconsent / sign-in / CAPTCHA / access challengeが自然発生した場合は既存Human Interventionで停止し、突破しません。Human Intervention完了を別semantic actionのapprovalとはみなしません。
 
-Mapsは抽出済み `mcp-execution-handoff` upstreamのimmutable pre-release commitをconsumerとして組み込み済みです。Japan Cinemaを含むformal two-adapter upstream validationは別トラックのまま維持し、この統合でMaps serverをgeneric browser / desktop / shell MCPへ広げません。
+Mapsは抽出済み `mcp-execution-handoff` formal upstreamのimmutableなv0.1.0 source-release commitをconsumerとして組み込み済みです。Japan Cinemaを含むtwo-real-adapter validationも完了済みで、この統合でMaps serverをgeneric browser / desktop / shell MCPへ広げません。
 
-### V4最初の実装slice
+### V4最初の実装slice（完了済み）
 
-`maps_get_place_share_link(expectedLabel)` を最初のbrowser-native semantic operationとして追加します。currently selected placeだけを対象にし、visible Share controlを押す直前にactive place identityを再検証し、boundedなGoogle Maps share URLだけを許可します。target missing / ambiguousはfail closedとし、Interactive Assistとvisible-read/action budgetの内側で動作します。
+`maps_get_place_share_link(expectedLabel)` は最初のbrowser-native semantic operationとして追加済みです。currently selected placeだけを対象にし、visible Share controlを押す直前にactive place identityを再検証し、boundedなGoogle Maps share URLだけを許可します。target missing / ambiguousはfail closedとし、Interactive Assistとvisible-read/action budgetの内側で動作します。
 
 ## 近い将来の方向性
 
@@ -71,7 +71,7 @@ structured route pathは引き続き、推測したWeb parameterではなくdocu
 - `avoid` は `ferries` / `highways` / `tolls` のみ
 - active travel mode変更時もこれらの条件を維持する
 
-出発/到着時刻やtransit preferenceは、projectが使うdocumented Google Maps URLs directions parameterでは表現されない一方、未ログインGoogle Maps Webの重要なUI capabilityです。そのためV4では、**boundedなvisible Maps-specific semantic control + postcondition / identity validation** で実装対象にできます。undocumented URL parameterを推測したり、internal Maps API/XHRをinterceptしたり、generic DOM automationをMCPへ公開して到達することは禁止します。
+出発/到着時刻やtransit preferenceは、projectが使うdocumented Google Maps URLs directions parameterでは表現されない一方、未ログインGoogle Maps Webの重要なUI capabilityです。V4ではsame-day `depart_at|arrive_by` のbounded sliceを **visible Maps-specific semantic control + postcondition / identity validation** で実装済みです。Date / Last available / transit preferenceは明示的なobservation/design gateのまま維持します。undocumented URL parameterを推測したり、internal Maps API/XHRをinterceptしたり、generic DOM automationをMCPへ公開して到達することは禁止します。
 
 ## MCP Apps / Optional Interactive UI
 
