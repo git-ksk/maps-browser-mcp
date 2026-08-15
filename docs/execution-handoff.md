@@ -193,17 +193,6 @@ Possible later improvements include a lower-latency WebRTC/WebTransport view, st
 
 Normal CI never waits for human takeover and does not intentionally trigger CAPTCHA or sign-in challenges. Deterministic tests cover the authority state machine, request-state binding helpers, takeover capability rotation/expiry/revocation, capability bootstrap, HTTP broker boundaries, and fail-closed configuration. The manual Live Maps E2E remains a fixed, low-volume compatibility check; a naturally occurring challenge is not something CI should bypass.
 
-## Extraction criteria
+## Current upstream status
 
-This code stays inside `maps-browser-mcp` until it has proven useful in the Maps adapter. A separate OSS should be considered only after at least one additional adapter demonstrates that the following pieces are genuinely generic:
-
-- authority lease/state machine,
-- intervention identity binding,
-- resource epochs,
-- completion verification,
-- resume policy,
-- action-approval binding,
-- audit events,
-- MCP MRTR bridge.
-
-The intended future abstraction is an **execution handoff runtime**, not another browser-specific CAPTCHA/takeover library.
+The generic control-plane implementation has been extracted to `git-ksk/mcp-execution-handoff`. Maps-specific URLs/surface classification, postcondition verification, and CDP execution remain in this repository. Japan Cinema is the second real-adapter validation; the upstream stays pre-release with no `v0.1.0` or npm publication until both consumers are green.

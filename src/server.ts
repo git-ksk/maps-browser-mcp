@@ -16,29 +16,26 @@ import {
   MAP_DIRECTIONS_APP_RESOURCE_URI,
   MCP_APP_MIME_TYPE
 } from "./mcp-apps-map-embed.js";
-import { ExecutionHandoffError } from "./execution-handoff.js";
-import { ExecutionHandoffRuntimeV3 } from "./execution-handoff-v3.js";
 import {
+  ExecutionHandoffError,
+  ExecutionHandoffRuntime,
   HandoffCheckpointError,
-  SignedFileHandoffCheckpointStore
-} from "./handoff-checkpoint.js";
+  SignedFileHandoffCheckpointStore,
+  claimHandoffOwner,
+  createHandoffOwner,
+  digestToolInvocation,
+  handoffOwnerMatches,
+  type HandoffOwner,
+  type HandoffResumeStrategy
+} from "mcp-execution-handoff/core";
 import {
   HANDOFF_INPUT_KEY,
   HANDOFF_STATE_TTL_SECONDS,
   HUMAN_INTERVENTION_SCHEMA,
   createHandoffRequestState,
-  digestToolInvocation,
   handoffStateMatchesInvocation,
-  interventionPrompt,
-  type HandoffRequestState,
-  type HandoffResumeStrategy
-} from "./handoff-mrtr.js";
-import {
-  claimHandoffOwner,
-  createHandoffOwner,
-  handoffOwnerMatches,
-  type HandoffOwner
-} from "./handoff-owner.js";
+  type HandoffRequestState
+} from "mcp-execution-handoff/mcp";
 import { createMapsExecutionAdapter } from "./maps-execution-adapter.js";
 import { MapsUrlCompiler } from "./maps/url-compiler.js";
 import { PolicyEngine, PolicyError } from "./policy/policy-engine.js";
@@ -51,7 +48,7 @@ import { SEARCH_ZOOM_DIRECTIONS } from "./browser/search-zoom.js";
 import { TRANSIT_TIME_MODES } from "./browser/transit-time.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
-import { TakeoverBroker } from "./takeover-broker.js";
+import { TakeoverBroker } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.1.1";
@@ -76,7 +73,7 @@ const operationQueue = new OperationQueue(config.policy.maxPendingActions, {
 });
 
 const v3Handoff = config.handoffCheckpoint.enabled
-  ? new ExecutionHandoffRuntimeV3(createMapsExecutionAdapter(runtime), {
+  ? new ExecutionHandoffRuntime(createMapsExecutionAdapter(runtime), {
       checkpointStore: new SignedFileHandoffCheckpointStore(
         config.handoffCheckpoint.filePath!,
         config.handoffCheckpoint.signingKey!
@@ -166,11 +163,27 @@ function ownerFor(toolName: string, args: unknown, resumeStrategy: HandoffResume
   return createHandoffOwner(activePrincipalBinding(), toolName, args, resumeStrategy);
 }
 
+function mapsInterventionPrompt(reason: MapsIntervention["reason"]): string {
+  const label = reason === "access_challenge"
+    ? "an access challenge or CAPTCHA"
+    : reason === "sign_in"
+      ? "a Google sign-in step"
+      : reason === "consent"
+        ? "a Google consent step"
+        : "a manual browser step";
+  return [
+    `Google Maps requires ${label}.`,
+    "Complete that step directly in the dedicated Chrome window.",
+    "Do not paste passwords, 2FA codes, CAPTCHA answers, cookies, or other credentials into this MCP prompt.",
+    "Choose Continue only after the browser step is complete, or Cancel to stop the operation."
+  ].join(" ");
+}
+
 function handoffPrompt(intervention: MapsIntervention, owner: HandoffOwner): string {
-  const base = interventionPrompt(intervention.reason);
+  const base = mapsInterventionPrompt(intervention.reason);
   const principal = currentRequestPrincipal();
   const takeoverUrl = principal && principalBinding(principal) === owner.principalBinding
-    ? takeoverBroker.createLink(intervention, principal)
+    ? takeoverBroker.createLink(intervention, owner.principalBinding)
     : undefined;
   if (!takeoverUrl) return base;
   return `${base}\n\nRemote human takeover is available through the configured authenticated HTTPS gateway:\n${takeoverUrl}\n\nOpen that URL on your phone, complete the manual browser interaction, close remote control with Done, then return here and choose Continue. The capability is short-lived, bound to this intervention and resource epoch, and must not be forwarded.`;
@@ -215,7 +228,8 @@ async function humanInputRequired(
     args,
     interventionId: active.id,
     epoch: active.epoch,
-    resumeStrategy: owner.resumeStrategy
+    resumeStrategy: owner.resumeStrategy,
+    principalBinding: owner.principalBinding
   }));
 
   return inputRequired({
@@ -297,7 +311,7 @@ async function runToolWithHandoff<T>(input: {
     return executeToolTask(input.toolName, input.args, input.resumeStrategy, input.task);
   }
 
-  if (!handoffStateMatchesInvocation(state, input.toolName, input.args)) {
+  if (!handoffStateMatchesInvocation(state, input.toolName, input.args, activePrincipalBinding())) {
     return errorResult(new BrowserRuntimeError(
       "UI_STATE_CHANGED",
       "The returned MCP requestState does not match this tool invocation. Restart the Maps action instead of reusing stale intervention state."
@@ -876,7 +890,8 @@ export function isTakeoverHttpPath(pathname: string): boolean {
 }
 
 export async function handleTakeoverHttpRequest(request: Request): Promise<Response> {
-  return takeoverBroker.handle(request);
+  const principal = currentRequestPrincipal();
+  return takeoverBroker.handle(request, principal ? principalBinding(principal) : undefined);
 }
 
 export async function probeBrowserReady(): Promise<void> {

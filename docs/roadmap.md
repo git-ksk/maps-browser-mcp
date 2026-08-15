@@ -40,7 +40,7 @@ V4 is split into reviewable slices:
 
 Login-required capability stays out of V4 and moves to V5. Consent, sign-in, CAPTCHA, or access challenges that occur naturally continue to stop at the existing Human Intervention boundary; they are never bypassed and completing human intervention does not approve a different semantic action.
 
-Issue #36's second real Execution Handoff adapter proof remains a separate track. It is not a reason to generalize this server into a browser/desktop/shell MCP.
+Execution Handoff upstream validation now runs as a separate two-adapter track (`mcp-execution-handoff` + Maps + Japan Cinema). It does not generalize this server into a browser/desktop/shell MCP.
 
 ### First V4 implementation slice
 

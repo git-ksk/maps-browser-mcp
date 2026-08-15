@@ -5,7 +5,7 @@ import {
   type ExecutionIntervention,
   type ResumeDecision,
   type ResumePolicy
-} from "../execution-handoff.js";
+} from "mcp-execution-handoff/core";
 import type { MapsAction, MapsViewState } from "../types.js";
 import { PolicyEngine, PolicyError } from "../policy/policy-engine.js";
 import { classifyGoogleInterventionSurface } from "./intervention-surface.js";

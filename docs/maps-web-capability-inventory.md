@@ -199,4 +199,4 @@ Every new operation must preserve the existing browser safety model:
 
 ## Issue #36 boundary
 
-Issue #36 (second real Execution Handoff adapter proof) remains a separate track. V4 Maps coverage must not depend on turning `maps-browser-mcp` into a generic browser, desktop, or shell MCP.
+Execution Handoff upstream validation is now a separate two-adapter track. V4 Maps coverage still must not depend on turning `maps-browser-mcp` into a generic browser, desktop, or shell MCP.

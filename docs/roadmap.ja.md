@@ -42,7 +42,7 @@ V4は小さくreview可能なsliceへ分割します。
 
 ログイン必須capabilityはV4へ入れずV5へ送ります。利用中にconsent / sign-in / CAPTCHA / access challengeが自然発生した場合は既存Human Interventionで停止し、突破しません。Human Intervention完了を別semantic actionのapprovalとはみなしません。
 
-Issue #36のsecond real Execution Handoff adapter proofは別トラックです。V4のためにこのserverをgeneric browser / desktop / shell MCPへ広げません。
+Execution Handoff upstream検証は `mcp-execution-handoff` + Maps + Japan Cinemaのtwo-adapter別トラックで進めます。V4のためにこのserverをgeneric browser / desktop / shell MCPへ広げません。
 
 ### V4最初の実装slice
 

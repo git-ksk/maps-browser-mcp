@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   ExecutionHandoffError,
   ExecutionHandoffState
-} from "../src/execution-handoff.js";
+} from "mcp-execution-handoff/core";
 
 type Action = { kind: "search"; query: string };
 type Reason = "access_challenge" | "sign_in";

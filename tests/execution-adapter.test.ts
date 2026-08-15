@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defineExecutionAdapter, type ExecutionHandoffAdapter } from "../src/execution-adapter.js";
+import { defineExecutionAdapter, type ExecutionHandoffAdapter } from "mcp-execution-handoff/core";
 
 type Intervention = { id: string; epoch: number; status: string };
 type Decision = { epoch: number; resumePolicy: string };
