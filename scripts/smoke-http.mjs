@@ -139,11 +139,15 @@ try {
       : []
   );
   if (
-    toolNames.size !== 19 ||
+    toolNames.size !== 23 ||
     !toolNames.has("maps_search") ||
+    !toolNames.has("maps_read_search_suggestions") ||
+    !toolNames.has("maps_select_search_suggestion") ||
+    !toolNames.has("maps_get_search_share_link") ||
     !toolNames.has("maps_set_search_rating") ||
     !toolNames.has("maps_zoom_search") ||
     !toolNames.has("maps_set_transit_time") ||
+    !toolNames.has("maps_set_recommended_travel_mode") ||
     !toolNames.has("maps_swap_route_endpoints") ||
     !toolNames.has("maps_get_route_share_link") ||
     !toolNames.has("maps_get_place_share_link") ||

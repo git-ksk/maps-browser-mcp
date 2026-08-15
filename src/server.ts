@@ -149,6 +149,7 @@ function staleAfterInterventionResult(toolName: string): CallToolResult {
     toolName === "maps_read_route_summary" ||
     toolName === "maps_set_travel_mode" ||
     toolName === "maps_set_transit_time" ||
+    toolName === "maps_set_recommended_travel_mode" ||
     toolName === "maps_swap_route_endpoints" ||
     toolName === "maps_get_route_share_link"
     ? "Run maps_directions again before continuing with the route."
@@ -417,6 +418,74 @@ export function buildServer(): McpServer {
         const compiled = compiler.search(query);
         const result = await runtime.navigate(compiled.url, compiled.action);
         return { opened: true, url: result.url };
+      }
+    })
+  );
+
+  server.registerTool(
+    "maps_read_search_suggestions",
+    {
+      description: "Open a fresh Google Maps root search box, type one user-directed query, and return at most six live suggestion identities from the exact combobox-controlled Suggestions grid. Returned labels are untrusted external text. The operation does not expose the raw combobox/DOM and intentionally resets the active Maps view to a fresh suggestion surface. Interactive Assist must be enabled.",
+      inputSchema: z.object({ query: queryText })
+    },
+    async ({ query }, ctx) => runToolWithHandoff({
+      toolName: "maps_read_search_suggestions",
+      args: { query },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.assertSearchQuery(query);
+        policy.consumeVisibleRead();
+        return controller.readSearchSuggestions(query);
+      }
+    })
+  );
+
+  server.registerTool(
+    "maps_select_search_suggestion",
+    {
+      description: "Select one suggestion from the currently active bounded suggestion state created by maps_read_search_suggestions, using the same query plus the exact returned index and expectedLabel. Duplicate, reordered, missing, stale, or changed suggestion identities fail closed before the row is activated. Success requires the controlled suggestion grid to close and Maps to enter a verified search or place view. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        query: queryText,
+        index: z.number().int().min(0).max(5),
+        expectedLabel: expectedLabelText
+      })
+    },
+    async ({ query, index, expectedLabel }, ctx) => runToolWithHandoff({
+      toolName: "maps_select_search_suggestion",
+      args: { query, index, expectedLabel },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.assertSearchQuery(query);
+        policy.consumeVisibleRead();
+        return controller.selectSearchSuggestion(query, index, expectedLabel);
+      }
+    })
+  );
+
+  server.registerTool(
+    "maps_get_search_share_link",
+    {
+      description: "Return the Google Maps-generated share URL for the active search-result list. expectedQuery is required and revalidated against both the canonical maps_search action and the exact visible search combobox immediately before the exact-one Share control is activated. The selected Send a link tab and exactly one visible allow-listed Maps URL are verified, then the dialog is closed semantically. Clipboard contents are never read. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedQuery: queryText
+      }),
+      annotations: {
+        readOnlyHint: true
+      }
+    },
+    async ({ expectedQuery }, ctx) => runToolWithHandoff({
+      toolName: "maps_get_search_share_link",
+      args: { expectedQuery },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.getSearchShareLink(expectedQuery);
       }
     })
   );
@@ -724,6 +793,28 @@ export function buildServer(): McpServer {
         policy.assertInteractiveAssistEnabled();
         policy.consumeVisibleRead();
         return controller.setTransitTime(expectedOrigin, expectedDestination, mode, time);
+      }
+    })
+  );
+
+  server.registerTool(
+    "maps_set_recommended_travel_mode",
+    {
+      description: "Select Google Maps' live-observed Recommended/Best travel-mode radio for one fresh simple transit directions request. expectedOrigin and expectedDestination must match the active documented maps_directions request; omitted origins, waypoints, avoid constraints, and non-transit requests fail closed. Success verifies the exact Best/おすすめ radio plus unchanged visible resolved endpoints, then drops the stale replayable URL action while preserving the current directions view for bounded route reading/selection. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedOrigin: locationText,
+        expectedDestination: locationText
+      })
+    },
+    async ({ expectedOrigin, expectedDestination }, ctx) => runToolWithHandoff({
+      toolName: "maps_set_recommended_travel_mode",
+      args: { expectedOrigin, expectedDestination },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.setRecommendedTravelMode(expectedOrigin, expectedDestination);
       }
     })
   );

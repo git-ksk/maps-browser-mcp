@@ -4,7 +4,7 @@
 
 A constrained, experimental MCP browser controller for user-directed interaction with Google Maps through a dedicated Chrome/Chromium session.
 
-> **Status:** V1–V3 are implemented. **V4 is in progress:** broad semantic coverage of major Google Maps Web capabilities available without authentication. Google Maps UI-dependent interaction and bounded visible-state reading remain experimental because the live Maps UI can change.
+> **Status:** V1–V4 coverage is implemented/closed out for the current unauthenticated scope. Remaining partial capabilities are explicitly observation/design-gated in the canonical inventory rather than guessed. Google Maps UI-dependent interaction and bounded visible-state reading remain experimental because the live Maps UI can change.
 
 ## Why this project exists
 
@@ -115,6 +115,18 @@ maps_search({ query })
 
 `maps_set_search_rating` exposes only the live-reobserved `2.0|2.5|3.0|3.5|4.0|4.5` Rating options. It revalidates the visible search query before each bounded UI action, then verifies the exact requested selected chip (for example `4.0+`) with the Rating menu closed before advancing the resource epoch. Price, Hours, and All filters remain observation/design-gated rather than sharing a generic filter API.
 
+Autocomplete is also bounded rather than generic browser input:
+
+```text
+maps_read_search_suggestions({ query: "Tokyo Station" })
+  -> choose items[{ index, label }]
+  -> maps_select_search_suggestion({ query: "Tokyo Station", index, expectedLabel: label })
+```
+
+`maps_read_search_suggestions` opens a fresh Maps suggestion surface and returns at most six unique composite visible identities from the exact combobox-controlled grid. Primary names may repeat, so `maps_select_search_suggestion` requires the same active query plus the exact returned index and label immediately before activation; stale/reordered/duplicate identities fail closed. Success is accepted only after the suggestion grid closes and Maps settles to a verified search or place view. Raw combobox/DOM access is never exposed.
+
+For an active search-result list, `maps_get_search_share_link({ expectedQuery })` revalidates the canonical and exact visible query, activates exactly one live-observed Share control, reads one allow-listed Maps-generated URL from the selected Send-link tab, and closes the dialog semantically. It never reads clipboard contents and does not change the search resource epoch on success.
+
 `maps_zoom_search({ expectedQuery, direction })` adds only the bounded stateful viewport operation that was re-observed safely beyond `maps_show`: one search-result zoom step with `direction: "in" | "out"`. It requires one exact visible query and one exact visible enabled Zoom button immediately before the click, then verifies that the same search/query remains active and the public Maps viewport path changes by exactly one zoom level. Map-center coordinates are not treated as stable identity, and generic pan/recenter or root/place zoom is not exposed.
 
 The first V4 browser-native workflow extends that identity chain to a Maps-generated place share URL:
@@ -145,6 +157,8 @@ maps_directions({ origin, destination, mode: "transit" })
 
 `maps_set_transit_time` is intentionally limited to the same-day live-reobserved `depart_at|arrive_by` flow with a 24-hour `HH:MM` input. It requires a fresh simple `maps_directions` transit request, revalidates the documented origin/destination identity before mutation, then verifies the localized mode trigger, the exact `transit-time` input, unchanged visible route endpoints, and the directions view. Because the resulting UI-only time state is not represented by the original documented navigation action, the successful operation clears that replayable action while keeping the current route results readable/selectable in the same browser session. Date selection, last-available service, and transit preference options remain separate observation/design-gated slices.
 
+`maps_set_recommended_travel_mode({ expectedOrigin, expectedDestination })` covers the live-observed `Best` / `おすすめ` radio only for a fresh simple **transit** request. It rejects omitted origins, waypoints, avoid constraints, and non-transit starts; verifies the exact radio plus unchanged resolved endpoints and the directions surface; then advances the resource epoch and drops the stale replayable `travelmode=transit` action while preserving the current route results for bounded read/select. This avoids pretending the original documented URL still represents the UI's Recommended mode.
+
 `maps_swap_route_endpoints({ expectedOrigin, expectedDestination })` covers the observed origin/destination swap without automating the Maps swap button. Live JA/en-US observation verified the exact semantic swap control and visible endpoint A/B -> B/A transition, but also showed that the UI click leaves the canonical URL/action stale. The MCP operation therefore requires a fresh simple documented directions request, revalidates the expected canonical endpoints, rejects omitted origins and waypoint routes, preserves travel mode and bounded avoid constraints, and rebuilds the documented Maps URL with the endpoints reversed.
 
 `maps_get_route_share_link({ expectedOrigin, expectedDestination })` returns the Maps-generated short link from the selected-route **transit** share dialog. After a guarded `maps_select_route`, it requires the expected simple canonical transit identity, activates exactly one live-observed `Share directions` control, verifies the selected `Send a link` tab plus exactly one allow-listed visible Maps URL field, then closes the dialog semantically before returning. It never reads clipboard contents. The earlier unselected `Copy link` surface remains unused, and driving/other modes stay observation-gated because the visible link field was not stable in the bounded re-observation.
@@ -163,6 +177,9 @@ maps_directions({ origin, destination, mode: "transit" })
 ### Semantic interaction
 
 - `maps_select_result`
+- `maps_read_search_suggestions` — V4-F, max 6 composite suggestion identities; establishes bounded suggestion state, Interactive Assist required
+- `maps_select_search_suggestion` — V4-F, same active query + guarded `index/expectedLabel`, Interactive Assist required
+- `maps_get_search_share_link` — V4-F, active search-result Share dialog, clipboard-free, Interactive Assist required
 - `maps_set_search_rating` — V4, fixed observed rating enum, Interactive Assist required
 - `maps_zoom_search` — V4, search-only one-level `in|out`, Interactive Assist required
 - `maps_get_place_share_link` — V4, Interactive Assist required
@@ -172,6 +189,7 @@ maps_directions({ origin, destination, mode: "transit" })
 - `maps_expand_opening_hours` — V4, expansion-state verification only, Interactive Assist required
 - `maps_select_route`
 - `maps_set_travel_mode`
+- `maps_set_recommended_travel_mode` — V4-F, fresh simple transit -> Best/Recommended only, Interactive Assist required
 - `maps_set_transit_time` — V4-D, same-day `depart_at|arrive_by`, Interactive Assist required
 - `maps_swap_route_endpoints` — V4-D, fresh simple route only; documented URL rebuild
 - `maps_get_route_share_link` — V4-D, selected simple transit route share dialog, Interactive Assist required
@@ -383,7 +401,7 @@ GitHub Actions dependencies are pinned to full commit SHAs. Dependabot monitors 
 ## Current limitations
 
 - Google Maps UI changes can break experimental semantic selectors.
-- V4 coverage is in progress; the canonical inventory marks implemented vs. remaining unauthenticated Maps Web capabilities.
+- V4 coverage closeout is complete for the current unauthenticated scope; the canonical inventory records implemented, partial, and explicitly observation/design-gated capabilities plus their re-open conditions.
 - Bounded visible-state/UI interaction remains experimental and opt-in.
 - One process is designed for one local user/browser session, not multi-tenant hosting.
 - CAPTCHA, consent, and sign-in flows are not bypassed.

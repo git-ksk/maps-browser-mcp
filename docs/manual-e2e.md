@@ -59,6 +59,22 @@ When validating the V4 search-zoom slice with Interactive Assist enabled:
 4. A deliberately wrong `expectedQuery`, missing/duplicate/disabled Zoom control, unexpected navigation, opposite/overshoot zoom transition, or invalid postcondition must fail closed. If a click may already have happened before verification fails, prior semantic context must be invalidated.
 5. Confirm the public surface exposes no coordinates, arbitrary zoom level, generic pan/drag, root-map zoom, or place-view zoom through this tool.
 
+When validating the V4-F autocomplete slice with Interactive Assist enabled:
+
+1. Call `maps_read_search_suggestions({ query: "Tokyo Station" })`; confirm it opens a fresh suggestion state and returns at most six `items[{ index, label }]` with `untrustedExternalText: true`.
+2. Confirm composite labels distinguish visible duplicate primary names when Maps provides secondary identity, and that raw combobox/DOM/AX payloads are not returned.
+3. Without rereading, call `maps_select_search_suggestion({ query, index, expectedLabel: "deliberately wrong" })`; expect `UI_STATE_CHANGED`, no row activation, no resource-epoch advance, and the same suggestion state retained.
+4. Call the selection again with the exact returned `index + expectedLabel`; confirm the controlled suggestion grid closes, Maps settles to a verified search/place view, and the resource epoch advances exactly once for the adopted semantic result.
+5. Duplicate composite identities, reordered/missing targets, a changed active query, unexpected navigation, or an unverifiable postcondition must fail closed. Do not fall back to primary text, DOM position without expected identity, pointer geometry, or hidden suggestion IDs.
+
+When validating V4-F search-result sharing:
+
+1. Start from a fresh `maps_search({ query })` result view.
+2. Call `maps_get_search_share_link({ expectedQuery: "deliberately wrong" })`; expect `UI_STATE_CHANGED`, no Share activation, and no resource-epoch advance.
+3. Call `maps_get_search_share_link({ expectedQuery: query })`; confirm exact visible search identity, exact-one Share, selected Send-link tab, and exactly one visible allow-listed Maps URL are required.
+4. Confirm the Share dialog is semantically closed, the original search action/view remains usable, and the resource epoch does not advance on success.
+5. Confirm no clipboard read/interception, current-browser-URL substitution, network interception, or raw DOM/AX output is used.
+
 ## 2. Directions navigation
 
 1. Call `maps_directions` with a public origin/destination and `mode=transit`.
@@ -119,6 +135,14 @@ Run these only from a freshly verified active place with Interactive Assist enab
 6. Wrong identity, missing/duplicate controls, unexpected navigation, or invalid postconditions must fail closed. After any click whose postcondition cannot be verified, prior semantic state must not remain usable.
 
 ## 7. Route read/select
+
+When validating the V4-F Recommended/Best travel-mode slice, begin from a fresh simple `maps_directions({ origin, destination, mode: "transit" })` request with an explicit origin, no waypoints, and no avoid constraints:
+
+1. Call `maps_set_recommended_travel_mode({ expectedOrigin: "deliberately wrong", expectedDestination: destination })`; expect `UI_STATE_CHANGED` before UI mutation and no resource-epoch advance.
+2. Call `maps_set_recommended_travel_mode({ expectedOrigin: origin, expectedDestination: destination })` once; confirm exact-one `Best` / `おすすめ` is selected, the resolved visible origin/destination values remain unchanged, and the page remains a directions surface.
+3. Confirm success advances the resource epoch exactly once, clears the stale replayable canonical directions action, and preserves the current directions view.
+4. After bounded UI settle, confirm `maps_read_route_summary` and guarded `maps_select_route(index, expectedLabel)` remain usable in the same session.
+5. Omitted-origin, waypoint, avoid-constrained, non-transit, missing/duplicate Recommended control, unexpected navigation, or invalid postcondition cases must fail closed. Never infer Recommended state from the stale `travelmode=transit` URL or opaque `/data=` payload.
 
 When validating the V4-D same-day transit-time slice, begin from a fresh simple `maps_directions({ origin, destination, mode: "transit" })` request with Interactive Assist enabled:
 

@@ -69,6 +69,22 @@ Interactive Assist有効でV4 search-zoom sliceを検証する場合:
 4. 意図的に違う `expectedQuery`、missing/duplicate/disabled Zoom control、unexpected navigation、opposite/overshoot zoom transition、invalid postconditionはfail closed。Click済みの可能性がある状態で検証失敗した場合、prior semantic contextを無効化すること
 5. このtoolからcoordinates、arbitrary zoom level、generic pan/drag、root-map zoom、place-view zoomを公開しないことを確認
 
+Interactive Assist有効でV4-F autocomplete sliceを検証する場合:
+
+1. `maps_read_search_suggestions({ query: "Tokyo Station" })` をcallし、fresh suggestion stateを開いて最大6件の `items[{ index, label }]` と `untrustedExternalText: true` だけを返すことを確認
+2. Mapsがsame primary nameを複数出す場合、secondary visible identityを含むcomposite labelで区別され、raw combobox/DOM/AX payloadを返さないことを確認
+3. Rereadせず `maps_select_search_suggestion({ query, index, expectedLabel: "deliberately wrong" })` をcallし、`UI_STATE_CHANGED`、row未activate、resource epoch不変、same suggestion state維持を確認
+4. Exact returned `index + expectedLabel` で再callし、controlled suggestion gridがclose、Mapsがverified search/place viewへsettle、adopt時にresource epochがexact 1回進むことを確認
+5. Duplicate composite identity、reorder/missing target、active query変化、unexpected navigation、unverifiable postconditionはfail closed。Primary textだけ、expected identityなしのDOM position、pointer geometry、hidden suggestion IDへfallbackしない
+
+V4-F search-result shareを検証する場合:
+
+1. Freshな `maps_search({ query })` result viewから開始
+2. `maps_get_search_share_link({ expectedQuery: "deliberately wrong" })` は `UI_STATE_CHANGED`、Share未activate、resource epoch不変であること
+3. `maps_get_search_share_link({ expectedQuery: query })` はexact visible search identity、exact-one Share、selected Send-link tab、exact-one visible allow-listed Maps URLを必須とすること
+4. Success後はShare dialogがsemanticにcloseされ、元のsearch action/viewが利用可能、resource epoch不変であること
+5. Clipboard read/intercept、current browser URLの代用、network interception、raw DOM/AX outputを使わないこと
+
 ## 2. Directions Navigation
 
 1. 公開origin / destinationと `mode=transit` で `maps_directions`
@@ -129,6 +145,14 @@ Interactive Assist有効かつfreshにverifiedされたactive placeからだけ�
 6. Wrong identity、missing/duplicate control、unexpected navigation、invalid postconditionはfail closed。Click後にpostconditionを検証できなければprior semantic stateを利用可能なまま残さない
 
 ## 7. Route Read / Select
+
+V4-F Recommended/Best travel-mode sliceは、explicit origin・waypointなし・avoidなしのfresh simple `maps_directions({ origin, destination, mode: "transit" })` requestから開始します。
+
+1. `maps_set_recommended_travel_mode({ expectedOrigin: "deliberately wrong", expectedDestination: destination })` はUI mutation前に `UI_STATE_CHANGED`、resource epoch不変であること
+2. `maps_set_recommended_travel_mode({ expectedOrigin: origin, expectedDestination: destination })` を1回callし、exact-one `おすすめ / Best` selected、resolved visible origin/destination不変、directions surface維持を確認
+3. Successでresource epochがexact 1回進み、stale replayable canonical directions actionが破棄され、current directions viewは維持されること
+4. Bounded settle後も `maps_read_route_summary` とguarded `maps_select_route(index, expectedLabel)` がsame sessionで利用可能なこと
+5. Origin省略、waypoint、avoid、non-transit、missing/duplicate Recommended control、unexpected navigation、invalid postconditionはfail closed。Stale `travelmode=transit` URLやopaque `/data=` payloadからRecommended stateを推測しない
 
 V4-Dの当日transit-time sliceを検証する場合、Interactive Assist有効でfreshなsimple `maps_directions({ origin, destination, mode: "transit" })` requestから開始します。
 

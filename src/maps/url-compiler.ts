@@ -64,6 +64,14 @@ export class MapsUrlCompiler {
     return { url: finalize(url), action: { kind: "search", query: cleanQuery } };
   }
 
+  suggestions(query: string): { url: string; action: MapsAction } {
+    const cleanQuery = nonEmpty(query, "query");
+    return {
+      url: MAPS_BASE,
+      action: { kind: "suggestions", query: cleanQuery }
+    };
+  }
+
   directions(input: {
     origin?: string;
     destination: string;

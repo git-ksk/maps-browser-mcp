@@ -23,6 +23,8 @@ V4は次の位置づけです。
 
 機能単位のscope / coverage正本は [Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md) です。
 
+**V4-F coverage closeoutは2026-08-15に完了済みです。** 現行未認証scopeのhigh/normal priority rowは、実装済み・既存semantic operationでstructurally covered・または明示的な再開条件付きobservation/design-gatedのいずれかへ確定しました。UI依存operationは今後もpermanent selector保証ではなくexperimental compatibility surfaceとして扱います。
+
 優先順位:
 
 1. browser-native / UI-dependentなGoogle Maps Web capability
@@ -42,7 +44,7 @@ V4は小さくreview可能なsliceへ分割します。
 
 ログイン必須capabilityはV4へ入れずV5へ送ります。利用中にconsent / sign-in / CAPTCHA / access challengeが自然発生した場合は既存Human Interventionで停止し、突破しません。Human Intervention完了を別semantic actionのapprovalとはみなしません。
 
-Execution Handoff upstream検証は `mcp-execution-handoff` + Maps + Japan Cinemaのtwo-adapter別トラックで進めます。V4のためにこのserverをgeneric browser / desktop / shell MCPへ広げません。
+Mapsは抽出済み `mcp-execution-handoff` upstreamのimmutable pre-release commitをconsumerとして組み込み済みです。Japan Cinemaを含むformal two-adapter upstream validationは別トラックのまま維持し、この統合でMaps serverをgeneric browser / desktop / shell MCPへ広げません。
 
 ### V4最初の実装slice
 
