@@ -180,6 +180,11 @@ try {
   assert(runtime.getViewState() === "directions", "Recommended-mode mutation lost the bounded directions view");
   console.log("Live Maps Recommended phase passed: fresh simple transit -> Best/Recommended -> stale replay action dropped");
 
+  // Recommended selection can trigger a short route-list rerender after the radio
+  // postcondition is already verified. Let the bounded visible route surface settle
+  // before taking a fresh Accessibility snapshot; do not reuse any pre-mutation node.
+  await sleep(2_000);
+
   policy.consumeVisibleRead();
   const routeSummary = await reader.read("route");
   boundedSummary(routeSummary, 1800);
