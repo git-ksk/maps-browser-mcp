@@ -130,6 +130,14 @@ When validating the V4-D same-day transit-time slice, begin from a fresh simple 
 6. Missing/duplicate controls, stale route endpoints, unexpected navigation, invalid time postcondition, or Human Intervention must fail closed. Never parse the opaque `/data=` route payload, and do not expose generic text entry.
 7. Date selection, Last available, and transit preference options are not part of this slice.
 
+For V4-D endpoint swap, start from a fresh simple `maps_directions({ origin, destination, mode })` request with an explicit origin and no waypoints:
+
+1. Call `maps_swap_route_endpoints({ expectedOrigin: origin, expectedDestination: destination })`.
+2. Confirm a deliberately wrong expected endpoint fails before navigation and does not advance the resource epoch.
+3. Confirm success rebuilds the documented Maps URL with origin/destination reversed, preserves travel mode and any bounded avoid constraints, updates the canonical directions action, and advances the resource epoch exactly once.
+4. Omitted-origin and waypoint routes must fail closed rather than guessing reversal semantics.
+5. Confirm the implementation does not click the observed Maps swap UI control; live observation showed that control swaps visible inputs but leaves the canonical URL/action stale.
+
 1. Call one `maps_directions`.
 2. Call `maps_read_route_summary`.
 3. Confirm only a small bounded set of route-related labels/lines is returned.

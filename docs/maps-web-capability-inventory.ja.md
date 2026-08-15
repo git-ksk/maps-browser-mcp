@@ -55,6 +55,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15のV4-D route-link bounded再観測では、UI settle後の未選択directions viewでJA/explicit en-USともexact-oneのvisible `リンクをコピー / Copy link` buttonを確認しました。ただしcontrolはvisible `href` / link valueを持たないplain buttonで、activateしてもcurrent Maps URLは変わらず、bounded visibleなlink field、share dialog、信頼できるcopied-state postconditionも現れませんでした。Guardedにroute candidateを選択した後の観測route viewではCopy link control自体がvisibleではありませんでした。Clipboard内容のread/interceptはclipboard boundaryに違反し、current URLをcopied linkと同一だと仮定するのも未検証です。したがってroute-link MCP actionは公開しません。Maps-generated linkをbounded visible semantic surfaceから取得できる、またはclipboard不要のpostconditionが成立する場合だけ再開します。
 
+2026-08-15のV4-D route-swap bounded観測では、freshなJA/en-US transit directionsでexact-oneのvisible `出発地と目的地を入れ替える / Reverse starting point and destination` buttonを確認しました。1回だけactivateし、resolved visible endpoint値がexactに A/B -> B/A へ変化することを検証しました。一方、追加settle後もdocumented current URLとruntime canonical actionはA→Bのままで、UI clickをそのまま公開するとsemantic stateがstaleになります。そこで `maps_swap_route_endpoints(expectedOrigin, expectedDestination)` はUI controlをclickせず、同じsemantic intentをdocumented Maps directions parameterの再構築で実装します。Fresh simple route・explicit origin・waypointなしに限定し、expected canonical endpointを再検証、modeとbounded avoidを維持し、既存navigation pathでresource epoch更新と旧route candidate無効化を行います。Stateful stop editingは別sliceのままで、bounded documented waypoint自体は既存 `maps_directions` で対応済みです。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -85,7 +87,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | route candidate を選択 | implemented | `maps_select_route(index, expectedLabel)` が current route identity を検証。 |
 | travel mode変更 | implemented | `maps_set_travel_mode` が driving/walking/bicycling/transit と既存制約を維持。 |
 | おすすめ/automatic travel mode | V4 normal priority | UI固有mode chooser。heuristic guessなしでpostcondition検証可能な場合のみ追加。 |
-| 出発地/目的地入れ替え | V4 normal priority | stateful route edit。old candidate state は無効化する。 |
+| 出発地/目的地入れ替え | documented URL再構築で実装済み | `maps_swap_route_endpoints(expectedOrigin, expectedDestination)` がfresh simple canonical directions requestを再検証し、origin省略/waypointを拒否、mode/avoidを維持してdocumented Maps URL parameterを逆順に再構築する。Live UI swapはcanonical URL/actionがstaleに残るため自動化しない。 |
 | waypoint追加/並び替え/削除 | V4 normal priority | bounded waypoints は URL path で既に利用可能。stateful UI editing は次段。 |
 | driving avoid（ferries/highways/tolls） | implemented | bounded documented route option を実装済み。mode変更時も維持。 |
 | 出発/到着時刻・transit preference | partial / 当日transit time実装済み | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` はfresh simple transit routeの `mode=depart_at|arrive_by` と当日24時間 `HH:MM` のみ実装。Mutation前にdocumented route identityを再検証し、exact localized time controlとvisible resolved endpoint値不変をpostcondition確認後、staleなreplayable navigation actionだけを破棄してroute read/selectを維持する。日付、終電、transit preference optionはobservation/design-gated。 |
@@ -149,7 +151,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 
 1. departure/arrival time / transit option — 当日 `depart_at|arrive_by` は `maps_set_transit_time` として実装。日付/終電/preferencesはobservation/design-gated
 2. route link share — exact Copy link controlは観測したが、clipboardなしでgenerated link/postconditionを検証できないためobservation-gated
-3. origin/destination swap・stop edit
+3. origin/destination swap・stop edit — endpoint swapは `maps_swap_route_endpoints` として実装。stateful stop editはobservation/design-gated（bounded waypointは既存 `maps_directions` で対応済み）
 4. bounded route detail expansion
 5. destination-nearby shortcut
 

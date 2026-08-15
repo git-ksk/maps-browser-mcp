@@ -8,6 +8,7 @@ import { expandVerifiedOpeningHours, type OpeningHoursExpansionResult } from "./
 import { setVerifiedSearchRating, type SearchRating, type SearchRatingFilterResult } from "./search-rating-filter.js";
 import { zoomVerifiedSearch, type SearchZoomDirection, type SearchZoomResult } from "./search-zoom.js";
 import { setVerifiedTransitTime, type TransitTimeMode, type TransitTimeResult } from "./transit-time.js";
+import { swapVerifiedRouteEndpoints, type RouteSwapResult } from "./route-swap.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 
 export class SemanticController {
@@ -65,6 +66,10 @@ export class SemanticController {
     time: string
   ): Promise<TransitTimeResult> {
     return setVerifiedTransitTime(this.runtime, expectedOrigin, expectedDestination, mode, time);
+  }
+
+  async swapRouteEndpoints(expectedOrigin: string, expectedDestination: string): Promise<RouteSwapResult> {
+    return swapVerifiedRouteEndpoints(this.runtime, this.compiler, expectedOrigin, expectedDestination);
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {
