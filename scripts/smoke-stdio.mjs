@@ -17,6 +17,7 @@ const EXPECTED_TOOLS = [
   "maps_select_route",
   "maps_set_travel_mode",
   "maps_set_transit_time",
+  "maps_swap_route_endpoints",
   "maps_read_place_summary",
   "maps_read_route_summary"
 ];

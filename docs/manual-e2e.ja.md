@@ -140,6 +140,14 @@ V4-Dの当日transit-time sliceを検証する場合、Interactive Assist有効�
 6. Missing/duplicate control、stale route endpoint、unexpected navigation、invalid time postcondition、Human Interventionはfail closed。Opaque `/data=` route payloadを解析せず、generic text entryも公開しない
 7. 日付指定、終電、transit preference optionはこのsliceに含めない
 
+V4-D endpoint swapは、explicit origin・waypointなしのfresh simple `maps_directions({ origin, destination, mode })` requestから開始します。
+
+1. `maps_swap_route_endpoints({ expectedOrigin: origin, expectedDestination: destination })` をcall
+2. Wrong expected endpointはnavigation前にfailし、resource epochを更新しないことを確認
+3. Successではdocumented Maps URLのorigin/destinationが逆順に再構築され、travel modeとbounded avoidを維持、canonical directions actionも更新、resource epochがexact 1回進むことを確認
+4. Origin省略またはwaypoint routeはreversal semanticsを推測せずfail closedすること
+5. 観測済みMaps swap UI controlを実装がclickしないことを確認。Live観測ではvisible inputはswapする一方、canonical URL/actionがstaleに残ったためUI actionは採用しない
+
 1. `maps_directions` を1回実行
 2. `maps_read_route_summary`
 3. Boundedな少数route-related label / lineだけ返ることを確認

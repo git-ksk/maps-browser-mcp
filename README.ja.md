@@ -147,6 +147,8 @@ maps_directions({ origin, destination, mode: "transit" })
 
 `maps_set_transit_time` はlive再観測できた当日 `depart_at|arrive_by` と24時間 `HH:MM` だけに限定します。Freshなsimple `maps_directions` transit requestを必須とし、mutation前にdocumented origin/destination identityを再検証します。その後、localized mode trigger、exact `transit-time` input、visible route endpoint値の不変、directions viewをpostcondition確認します。UI-onlyな時刻stateは元のdocumented navigation actionでは表現できないため、成功後はそのreplayable actionだけを破棄し、same browser sessionのcurrent route resultsはread/select可能なまま維持します。日付指定、終電、transit preference optionは別のobservation/design-gated sliceです。
 
+`maps_swap_route_endpoints({ expectedOrigin, expectedDestination })` は観測済みの出発地/目的地swap semanticsを、Mapsのswap buttonを自動操作せずに実装します。JA/en-US live観測ではexact semantic swap controlとvisible endpointの A/B -> B/A 遷移を確認できましたが、UI click後もcanonical URL/actionがA→Bのまま残ることも確認しました。そのためMCP operationはfresh simple documented directions requestだけを受け付け、expected canonical endpointを再検証し、origin省略/waypoint routeを拒否、travel modeとbounded avoidを維持したままdocumented Maps URLをB→Aで再構築します。
+
 `expectedLabel` は重要です。Google Mapsが候補を動的に並べ替えたり置換した場合、別対象を誤操作せず `UI_STATE_CHANGED` で停止します。
 
 ## MCPツール
@@ -171,6 +173,7 @@ maps_directions({ origin, destination, mode: "transit" })
 - `maps_select_route`
 - `maps_set_travel_mode`
 - `maps_set_transit_time` — V4-D、当日 `depart_at|arrive_by`、Interactive Assist必須
+- `maps_swap_route_endpoints` — V4-D、fresh simple route限定・documented URL再構築
 
 ### Optional bounded visible-state reading
 

@@ -148,7 +148,11 @@ function consumeMatchingRecovery(toolName: string, args: unknown): void {
 }
 
 function staleAfterInterventionResult(toolName: string): CallToolResult {
-  const next = toolName === "maps_select_route" || toolName === "maps_read_route_summary" || toolName === "maps_set_travel_mode"
+  const next = toolName === "maps_select_route" ||
+    toolName === "maps_read_route_summary" ||
+    toolName === "maps_set_travel_mode" ||
+    toolName === "maps_set_transit_time" ||
+    toolName === "maps_swap_route_endpoints"
     ? "Run maps_directions again before continuing with the route."
     : "Run maps_search again before continuing with the place results.";
   return errorResult(new BrowserRuntimeError(
@@ -706,6 +710,24 @@ export function buildServer(): McpServer {
         policy.consumeVisibleRead();
         return controller.setTransitTime(expectedOrigin, expectedDestination, mode, time);
       }
+    })
+  );
+
+  server.registerTool(
+    "maps_swap_route_endpoints",
+    {
+      description: "Swap the explicit origin and destination of one fresh simple Google Maps directions request by rebuilding documented Maps URL parameters rather than automating the observed UI swap button. expectedOrigin and expectedDestination must match the active canonical request; waypoint routes and omitted origins fail closed. The current mode and bounded avoid constraints are preserved.",
+      inputSchema: z.object({
+        expectedOrigin: locationText,
+        expectedDestination: locationText
+      })
+    },
+    async ({ expectedOrigin, expectedDestination }, ctx) => runToolWithHandoff({
+      toolName: "maps_swap_route_endpoints",
+      args: { expectedOrigin, expectedDestination },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: () => controller.swapRouteEndpoints(expectedOrigin, expectedDestination)
     })
   );
 

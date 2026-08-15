@@ -55,6 +55,8 @@ A bounded 2026-08-15 V4-D transit-time observation used a fresh simple Tokyo Sta
 
 A bounded 2026-08-15 V4-D route-link re-observation found an exact-one visible `Copy link` / `リンクをコピー` button in the unselected directions view after UI settle. The control is a plain button with no visible `href` or link value. Activating it left the current Maps URL unchanged and did not expose a bounded visible link field, share dialog, or reliable visible copied-state postcondition. After a guarded route-candidate selection, the Copy link control was no longer visible in the observed JA/en-US route view. Reading or intercepting clipboard contents would violate the clipboard boundary, and assuming the current URL equals the copied link would be unverified. Therefore no route-link MCP action is exposed. Re-open this slice only if Maps exposes the generated link through a bounded visible semantic surface or another postcondition that does not require clipboard access.
 
+A bounded 2026-08-15 V4-D route-swap observation found exactly one visible `Reverse starting point and destination` / `出発地と目的地を入れ替える` button in fresh JA/en-US transit directions. One bounded activation verified the resolved visible endpoint values changing exactly A/B -> B/A. However the documented current URL and runtime canonical action remained A -> B even after a further settle, so exposing that UI click directly would leave semantic state stale. `maps_swap_route_endpoints(expectedOrigin, expectedDestination)` therefore implements the same semantic intent by rebuilding documented Maps directions parameters rather than clicking the UI control. It is restricted to a fresh simple route with an explicit origin and no waypoints, revalidates expected canonical endpoints, preserves mode and bounded avoid constraints, and lets the existing navigation path advance the resource epoch and invalidate prior route candidates. Stateful stop editing remains separate; existing `maps_directions` already supports bounded documented waypoints.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -85,7 +87,7 @@ A bounded 2026-08-15 V4-D route-link re-observation found an exact-one visible `
 | Select route candidate | implemented | `maps_select_route(index, expectedLabel)` validates current route identity. |
 | Change travel mode | implemented | `maps_set_travel_mode` supports driving/walking/bicycling/transit while preserving route constraints. |
 | Recommended/automatic travel mode | V4 normal priority | UI-specific mode chooser; expose only if postcondition can be verified without heuristic mode guessing. |
-| Swap origin and destination | V4 normal priority | Stateful route edit; preserve route identity and invalidate old candidate state. |
+| Swap origin and destination | implemented via documented URL rebuild | `maps_swap_route_endpoints(expectedOrigin, expectedDestination)` revalidates a fresh simple canonical directions request, rejects omitted origins/waypoints, preserves mode/avoid constraints, and rebuilds documented Maps URL parameters with endpoints reversed. Live UI swap was observed but is not automated because it leaves canonical URL/action stale. |
 | Add/reorder/remove route stops | V4 normal priority | URL path already supports bounded waypoints; stateful UI editing is secondary but useful. |
 | Driving avoid options (ferries/highways/tolls) | implemented | Bounded documented route options are supported and preserved across mode changes. |
 | Departure/arrival time and transit preferences | partial / same-day transit time implemented | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` implements only fresh simple transit routes with `mode=depart_at|arrive_by` and 24-hour `HH:MM` for the current day. It revalidates documented route identity before mutation, verifies exact localized time controls plus unchanged visible resolved endpoints, then drops the stale replayable navigation action while keeping route read/select available. Date, Last available, and transit preference options remain observation/design-gated. |
@@ -149,7 +151,7 @@ Priority order:
 
 1. departure/arrival time and transit options — same-day `depart_at|arrive_by` implemented as `maps_set_transit_time`; date/Last available/preferences remain observation/design-gated,
 2. route link sharing — exact Copy link control observed, but generated link/postcondition is not visible without clipboard access; keep observation-gated,
-3. swap/edit stops,
+3. swap/edit stops — endpoint swap implemented as `maps_swap_route_endpoints`; stateful stop editing remains observation/design-gated (bounded waypoints are already supported by `maps_directions`),
 4. bounded route detail expansion,
 5. destination-nearby shortcuts.
 
