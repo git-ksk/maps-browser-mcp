@@ -6,6 +6,7 @@ import { getVerifiedPlaceShareLink, type PlaceShareLinkResult } from "./place-sh
 import { selectVerifiedPlaceTab, type PlaceTab, type PlaceTabSelectionResult } from "./place-tabs.js";
 import { expandVerifiedOpeningHours, type OpeningHoursExpansionResult } from "./place-opening-hours.js";
 import { setVerifiedSearchRating, type SearchRating, type SearchRatingFilterResult } from "./search-rating-filter.js";
+import { zoomVerifiedSearch, type SearchZoomDirection, type SearchZoomResult } from "./search-zoom.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 
 export class SemanticController {
@@ -50,6 +51,10 @@ export class SemanticController {
 
   async setSearchRating(expectedQuery: string, rating: SearchRating): Promise<SearchRatingFilterResult> {
     return setVerifiedSearchRating(this.runtime, expectedQuery, rating);
+  }
+
+  async zoomSearch(expectedQuery: string, direction: SearchZoomDirection): Promise<SearchZoomResult> {
+    return zoomVerifiedSearch(this.runtime, expectedQuery, direction);
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {

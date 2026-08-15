@@ -61,6 +61,14 @@ Interactive Assist有効でV4 Rating-filter sliceを検証する場合:
 5. 意図的に違う `expectedQuery`、missing/duplicate Rating target、option/menu変化、unexpected navigation、invalid selected-chip postconditionはfail closed。Filterが既に変わった可能性がある状態で検証失敗した場合、prior semantic contextを無効化すること
 6. arbitrary filter text、raw DOM/AX payload、search-result harvesting、URL内部filter token解析を公開しないことを確認
 
+Interactive Assist有効でV4 search-zoom sliceを検証する場合:
+
+1. Freshな `maps_search({ query })` result viewから開始し、public Maps search pathのsettled integer zoom levelを確認
+2. `maps_zoom_search({ expectedQuery: query, direction: "in" })` をcallし、same visible query/search stateのままzoom levelがexact 1段増えることを確認
+3. `maps_zoom_search({ expectedQuery: query, direction: "out" })` をcallし、same visible query/search stateのままzoom levelがexact 1段減ることを確認。Map center座標のbyte-level完全一致は要求しない
+4. 意図的に違う `expectedQuery`、missing/duplicate/disabled Zoom control、unexpected navigation、opposite/overshoot zoom transition、invalid postconditionはfail closed。Click済みの可能性がある状態で検証失敗した場合、prior semantic contextを無効化すること
+5. このtoolからcoordinates、arbitrary zoom level、generic pan/drag、root-map zoom、place-view zoomを公開しないことを確認
+
 ## 2. Directions Navigation
 
 1. 公開origin / destinationと `mode=transit` で `maps_directions`

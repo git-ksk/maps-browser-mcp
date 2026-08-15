@@ -139,9 +139,10 @@ try {
       : []
   );
   if (
-    toolNames.size !== 15 ||
+    toolNames.size !== 16 ||
     !toolNames.has("maps_search") ||
     !toolNames.has("maps_set_search_rating") ||
+    !toolNames.has("maps_zoom_search") ||
     !toolNames.has("maps_get_place_share_link") ||
     !toolNames.has("maps_search_nearby") ||
     !toolNames.has("maps_open_place_photos") ||

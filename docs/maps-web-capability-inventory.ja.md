@@ -49,6 +49,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15のmap-layer bounded観測では、専用JA profileと明示的な `--lang=en-US` profileを使用しました。Visibleな `レイヤ` / `Layers` entry pointはoverlapするnested `div` 2件としてrenderされ、`role`、`aria-label`、`tabindex`などのsemantic control stateがなく、bounded accessibility-name queryでも `レイヤ` / `Layers` controlは0件でした。一方、manual hover後には `地形` / Terrain、`交通状況` / Traffic、`公共交通機関` / Transit、`自転車` / Bikingがそれぞれvisibleな `menuitemcheckbox`、`aria-checked=false` として確認でき、Trafficはexact-oneで `false -> true` のpostconditionまで検証できました。つまりoption側は安全に表現可能ですが、surface openerはnested DOM heuristicまたはpointer geometryなしにexactly-oneへ限定できません。Maps側でexact-one semantic/accessible Layers opener、または同等にboundedなMaps-native surface openerを観測できるまでmap-layer MCP actionは公開しません。
 
+2026-08-15のviewport bounded観測では、1440×1000のJA search-result viewと1280×800のexplicit en-US search-result viewを使用しました。両UIでZoom in/outはexact-oneのvisible enabled `button`（hidden duplicateはvisible-only境界で除外）、visible queryはexactに維持され、public Maps search pathにはsettled integer zoom levelが現れました。1往復だけのbounded観測でJA `17z -> 18z -> 17z`、EN `16z -> 17z -> 16z` を確認しています。Results pane geometryの影響でzoom animation中にlongitudeが少し変化したため、map center完全一致はpostconditionにしません。`maps_zoom_search(expectedQuery, direction)` はactive verified search state限定の1-level `in|out` とし、same query + exact ±1 zoom transitionだけを成功条件にします。Generic pan/recenterとroot/place zoomはこのsliceへ含めません。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -88,8 +90,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | route view から目的地周辺shortcut | V4 normal priority | current destination をscopeにしたcategory search。 |
 | route を mobile に送信 | login required | account/device-linked workflow はV5。 |
 | coordinates/zoomで map表示 | implemented | `maps_show` が documented coordinate-centered Maps URL を開く。 |
-| stateful zoom in/out | V4 normal priority | `maps_show` を超える価値がある範囲で追加。結果viewportを検証。 |
-| semantic map pan/recenter | V4 normal priority | Maps-specific viewport operation のみ。pointer座標やgeneric dragは公開しない。 |
+| stateful zoom in/out | partial / verified search zoom implemented | `maps_zoom_search(expectedQuery, direction)` はactive search-resultの `in|out` のみ対応。Mutation直前にexact visible query + exact-one visible enabled Zoom buttonを再検証し、same search/query + public Maps pathのexact 1-level zoom changeをpostcondition確認する。Center完全一致は要求しない。root/place zoomは未実装。 |
+| semantic map pan/recenter | observation/design-gated | verified search-zoom sliceには含めない。pointer座標やgeneric dragを公開せず、別途Maps-specific semantic target/postconditionを観測できた場合のみ再開する。 |
 | 現在地 | observation-gated / permission boundary observed | fresh profileでexact visible location buttonをactivateするとChrome geolocation permissionへ到達した。Permissionは意図的にgrantせずsafeなsuccess postconditionは未確立。Promptを出すだけのaction、自動grant、permission後のautomatic replayは公開せず、manual authorized session + verified Maps-native success state、またはdedicated permission-handoff設計が成立するまで保留する。 |
 | map layer / map type / traffic / transit / bicycling / terrain | observation-gated / option toggles verified | JA/en-USでTerrain/Traffic/Transit/Bikingのexact semantic `menuitemcheckbox` とTraffic `false -> true` を確認した。一方、visible Layers openerはrole/ARIA/AX identityのないoverlap nested `div` 2件で、安全にopenするにはDOM/geometry heuristicが必要。exact-one semantic/accessible openerまたは同等のbounded Maps-native surfaceを観測できるまでlayer actionは公開しない。 |
 | coordinatesから Street View を開く | implemented | `maps_streetview` が documented Street View parameter を利用。 |
@@ -135,7 +137,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 2. search-this-area / update-after-move — JA/en-US manual pan後もexplicit one-shot controlを再観測できず。auto-update checkboxを代替せずobservation-gated
 3. permission-safe current-location action — browser permission boundaryを観測済み。manual authorized success postconditionまたはdedicated permission-handoff modelが成立するまでobservation-gated
 4. semantic layer toggle — option toggleはverifiedだがLayers openerがnon-semantic/ambiguous。exact-one semantic openerが成立するまでobservation-gated
-5. `maps_show` 以上の価値がある bounded viewport movement
+5. bounded viewport movement — search-result one-level zoomを `maps_zoom_search(expectedQuery, direction)` として実装。root/place zoomとsemantic pan/recenterは別途observation/design-gated
 
 ### V4-D — directions UI
 

@@ -49,6 +49,8 @@ A bounded 2026-08-15 current-location observation used a fresh dedicated Chrome 
 
 A bounded 2026-08-15 map-layer observation used dedicated JA and explicit `--lang=en-US` Chrome profiles. The visible `レイヤ` / `Layers` entry point rendered as two overlapping nested `div` nodes with no `role`, `aria-label`, `tabindex`, or other semantic control state; a bounded accessibility-name query also returned no `レイヤ` / `Layers` control. Manual hover exposed strong semantic options: `地形` / Terrain, `交通状況` / Traffic, `公共交通機関` / Transit, and `自転車` / Biking were each visible `menuitemcheckbox` controls with `aria-checked=false`. A bounded exact-one Traffic toggle verified `aria-checked=false -> true`. The option postcondition is therefore viable once the surface is open, but the opener cannot currently be identified exactly without nested-DOM heuristics or pointer geometry. No map-layer MCP action is exposed until Maps provides an exact-one semantic/accessible Layers opener (or another equally bounded Maps-native way to expose the options).
 
+A bounded 2026-08-15 viewport observation used a JA search-result view at 1440×1000 and an explicit en-US search-result view at 1280×800. In both UIs, Zoom in/out were exact-one visible enabled `button` controls (with hidden duplicates ignored by the visible-only boundary), the visible query remained exact, and the public Maps search path exposed a settled integer zoom level. One bounded round trip verified JA `17z -> 18z -> 17z` and EN `16z -> 17z -> 16z`. The longitude changed slightly during the zoom animation because of the results-pane geometry, so map-center equality is deliberately not a postcondition. `maps_zoom_search(expectedQuery, direction)` therefore implements only one-level `in|out` zoom for an active verified search state, requiring the same query plus an exact ±1 zoom transition. Generic pan/recenter and root/place zoom remain outside this slice.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -88,8 +90,8 @@ A bounded 2026-08-15 map-layer observation used dedicated JA and explicit `--lan
 | Destination-nearby shortcuts from route view | V4 normal priority | Convenience category search scoped to current destination. |
 | Send route to mobile device | login required | Account/device-linked workflow stays V5. |
 | Show map at coordinates/zoom | implemented | `maps_show` opens a documented coordinate-centered Maps URL. |
-| Stateful zoom in/out | V4 normal priority | Add only if useful beyond `maps_show`; verify resulting viewport state. |
-| Semantic map pan/recenter | V4 normal priority | Maps-specific viewport operation only; never expose pointer coordinates or generic drag. |
+| Stateful zoom in/out | partial / verified search zoom implemented | `maps_zoom_search(expectedQuery, direction)` supports only active search-result `in|out`. It revalidates exact visible query + exact-one visible enabled Zoom button immediately before mutation and verifies the same search/query plus exactly one zoom-level change in the public Maps path. Center equality is intentionally not required. Root/place zoom remains unimplemented. |
+| Semantic map pan/recenter | observation/design-gated | Not included in the verified search-zoom slice. Do not expose pointer coordinates or generic drag; require a separately observed Maps-specific semantic target and postcondition. |
 | Current location | observation-gated / permission boundary observed | A fresh-profile activation of the exact visible location button reached Chrome geolocation permission. Permission was deliberately not granted, so no safe success postcondition was established. Do not expose an action that merely opens the prompt, auto-grants permission, or auto-replays after it; require a manually authorized session plus a verified Maps-native success state or a dedicated permission-handoff design. |
 | Map layers / map type / traffic / transit / bicycling / terrain | observation-gated / option toggles verified | JA/en-US observation found exact semantic `menuitemcheckbox` toggles for Terrain/Traffic/Transit/Biking, and Traffic verified `false -> true`. However the visible Layers opener itself is two overlapping non-semantic `div` nodes with no role/ARIA/AX identity, so opening it safely would require a DOM/geometry heuristic. Do not expose a layer action until an exact-one semantic/accessible opener or equivalent bounded Maps-native surface is observed. |
 | Street View open by coordinates | implemented | `maps_streetview` opens documented Street View parameters. |
@@ -135,7 +137,7 @@ Priority order:
 2. search-this-area / update-after-move — explicit one-shot control not re-observed after JA/en-US manual pans; keep observation-gated and do not substitute the auto-update checkbox,
 3. current-location permission-safe action — browser permission boundary observed; keep observation-gated until a manually authorized success postcondition or dedicated permission-handoff model is established,
 4. semantic layer toggles — option toggles are verified, but the Layers opener is non-semantic/ambiguous; keep observation-gated until an exact-one semantic opener exists,
-5. bounded viewport movement where it adds value beyond `maps_show`.
+5. bounded viewport movement — search-result one-level zoom implemented as `maps_zoom_search(expectedQuery, direction)`; root/place zoom and semantic pan/recenter remain separately observation/design-gated.
 
 ### V4-D — directions UI
 

@@ -115,6 +115,8 @@ maps_search({ query })
 
 `maps_set_search_rating` exposes only the live-reobserved `2.0|2.5|3.0|3.5|4.0|4.5` Rating options. It revalidates the visible search query before each bounded UI action, then verifies the exact requested selected chip (for example `4.0+`) with the Rating menu closed before advancing the resource epoch. Price, Hours, and All filters remain observation/design-gated rather than sharing a generic filter API.
 
+`maps_zoom_search({ expectedQuery, direction })` adds only the bounded stateful viewport operation that was re-observed safely beyond `maps_show`: one search-result zoom step with `direction: "in" | "out"`. It requires one exact visible query and one exact visible enabled Zoom button immediately before the click, then verifies that the same search/query remains active and the public Maps viewport path changes by exactly one zoom level. Map-center coordinates are not treated as stable identity, and generic pan/recenter or root/place zoom is not exposed.
+
 The first V4 browser-native workflow extends that identity chain to a Maps-generated place share URL:
 
 ```text
@@ -150,6 +152,7 @@ maps_directions(...)
 
 - `maps_select_result`
 - `maps_set_search_rating` — V4, fixed observed rating enum, Interactive Assist required
+- `maps_zoom_search` — V4, search-only one-level `in|out`, Interactive Assist required
 - `maps_get_place_share_link` — V4, Interactive Assist required
 - `maps_search_nearby` — V4, Interactive Assist required
 - `maps_open_place_photos` — V4, Interactive Assist required
