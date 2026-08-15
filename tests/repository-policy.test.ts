@@ -24,6 +24,11 @@ test("package, lockfile, and MCP server versions stay synchronized", () => {
   const match = serverSource.match(/const SERVER_VERSION = "([^"]+)";/);
   assert.ok(match, "src/server.ts must declare SERVER_VERSION explicitly");
   assert.equal(match[1], packageJson.version);
+
+  const appSource = read("src/mcp-apps-map-embed.ts");
+  const appMatch = appSource.match(/MAP_DIRECTIONS_APP_VERSION = "([^"]+)";/);
+  assert.ok(appMatch, "MCP Apps View must declare its implementation version explicitly");
+  assert.equal(appMatch[1], packageJson.version);
 });
 
 test("execution handoff upstream source release is pinned to an immutable commit", () => {

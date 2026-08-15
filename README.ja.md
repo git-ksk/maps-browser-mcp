@@ -196,10 +196,9 @@ maps_directions({ origin, destination, mode: "transit" })
 - `maps_swap_route_endpoints` — V4-D、fresh simple route限定・documented URL再構築
 - `maps_get_route_share_link` — V4-D、selected simple transit route share dialog、Interactive Assist必須
 
-### Optional bounded visible-state reading
+### Display-only / Optional MCP Apps UI
 
-- `maps_read_place_summary`
-- `maps_read_route_summary`
+- `maps_render_directions` — 常にtext + structured route dataを返します。`GOOGLE_MAPS_EMBED_API_KEY` 設定時はMCP Apps対応hostが `ui://maps-browser-mcp/directions.html` を追加renderできます。Dedicated browser sessionのnavigate/mutateは行いません。
 
 Interactive Assistは**デフォルトOFF**です。必要な場合だけ有効化します。
 
@@ -336,6 +335,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MAPS_HEADLESS` | `false` | headless mode |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linuxの制約runtime向け最終手段。明示時のみ `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
+| `GOOGLE_MAPS_EMBED_API_KEY` | unset | MCP Apps directions view用のoptional restricted Maps Embed API key。未設定でもtext/structured render toolは利用可能 |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | process-local操作上限 |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | 独立したbounded visible-state/UI read上限 |
 | `MAPS_MAX_AX_NODES` | `120` | bounded visible-state readingのAccessibility node上限 |
@@ -425,7 +425,8 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 | [Architecture](docs/architecture.ja.md) | runtime、CDP、state、queue/watchdog、semantic UI operation model |
 | [Project positioning](docs/positioning.ja.md) | 競合category、Maps Web priority、公式interface重複、product direction |
 | [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md) | 未ログインcapabilityのcanonical coverage/status表とV4 slice |
-| [Roadmap](docs/roadmap.ja.md) | V4 closeout baselineとMCP Apps portability direction |
+| [MCP Apps portability](docs/mcp-apps.ja.md) | Host-neutral UI contract、fallback、layout、security、deployment、compatibility evidence |
+| [Roadmap](docs/roadmap.ja.md) | V4 closeout baselineとMCP Apps portability status / future direction |
 | [Compliance / Safety](docs/compliance.ja.md) | 利用目的・非目的・規約境界 |
 | [Manual Live E2E](docs/manual-e2e.ja.md) | 実Google Maps user-triggered互換性確認 |
 | [Release Checklist](docs/release.ja.md) | release前CI、Live check、security、tag手順 |

@@ -4,6 +4,18 @@ All notable public releases of `maps-browser-mcp` are recorded here.
 
 This project is pre-1.0. Until the public API stabilizes, minor and patch releases may include compatibility or safety hardening that users should review before upgrading.
 
+## [Unreleased]
+
+### Changed
+
+- Harden the experimental MCP Apps directions View against host differences: stable 2026-01-26 host context, safe areas/container sizing, size notifications, cancellation/error cleanup, teardown, and Google-recommended Embed referrer policy.
+- Keep `maps_render_directions` available as a text/structured display tool even when the Embed API key is absent; UI resource/linkage/extension advertisement remains conditional.
+- Validate the UI pipeline with the official MCP Apps basic reference host and validate the no-UI fallback with the official MCP SDK client. A second production-host real-key render remains explicitly unclaimed, so the UI retains its experimental label.
+
+### Security
+
+- Keep the MCP Apps CSP restricted to the single required Google nested-frame origin and document dedicated/restricted Embed-key deployment. No browser-control or credential surface is added.
+
 ## [v0.2.0] - 2026-08-15
 
 V4 unauthenticated Google Maps Web coverage completion and Execution Handoff upstream-consumer minor release.

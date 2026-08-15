@@ -75,7 +75,7 @@ structured route pathは引き続き、推測したWeb parameterではなくdocu
 
 ## MCP Apps / Optional Interactive UI
 
-MCP Appsを使ったGoogle Maps directionsのinline rendering PoCは検証成功済みです。既存のtext/tool workflowをbaselineとして維持しつつ、UIは残るportability確認が完了するまではexperimentalとして扱います。
+MCP Appsを使ったGoogle Maps directionsのinline rendering PoCはportability / hardening milestoneまで完了しました。既存のtext / structured tool resultをbaselineとして維持し、host-neutral UI pathをstable 2026-01-26 lifecycleへhardening済みです。UIはsecond production hostでreal-key Google Maps Embed renderが成功するまではexperimentalとして扱います。
 
 ### 標準仕様としての位置づけ
 
@@ -131,15 +131,20 @@ PoCで確認済み:
 - UI対応をscraping / crawling / persistence / review collectionのscope拡張理由にしない
 - 実装時にGoogle Maps Embedの利用条件、CSP要件、Host互換性を再確認する
 
-### 残るPortability検証
+### Portability Hardening Status
 
-Production-readyと判断する前に、残りを確認します。
+Portability baselineはcompleteです。
 
-1. 可能なら別のMCP Apps対応host 1種類で検証する
-2. 可能なら別の実MCP Apps非対応hostでもtext-only fallbackを確認する。protocol-level fallbackはsmoke testで検証済み
-3. ChatGPT Webで成功した以外の対応host layout / container sizingも確認する
+1. Embed key / MCP Apps UIなしでも `maps_render_directions` は有用なtext + structured dataを返す
+2. UI resource/linkage/extension advertisementはconditionalで、optional UI設定がcore display resultを消さない
+3. Viewはstable host context、safe-area/container dimension、size change、cancellation/error cleanup、teardownを処理する
+4. Official MCP Apps basic reference hostでresource discovery、CSP propagation、sandbox/View lifecycle、tool input/result delivery、nested Google Embed frame pathを実行済み。Dummy keyを意図的に使ったためsecond real-key map render成功とは主張しない
+5. Official MCP SDK clientでno-key / no-UI fallbackをreal clientとして実行済み
+6. ChatGPT Webはreal Google Maps Embed render成功をproject検証済みのproduction host。VS Codeは公式にMCP Apps対応だが、このrepositoryではproject-level real-key render成功をまだ主張しない
 
-ChatGPT Webでの実render成功により当初のfeasibility確認は完了しています。MCP extension広告、capabilityを宣言するclientのsmoke、text / structured fallbackは検証済みで、残りはcross-host portabilityとhardeningです。
+残るのはunfinished core portability workではなく **production-host re-validation gate** です。Suitableなsecond production host + restricted keyが利用可能になった時にreal Embed renderを検証し、experimental labelを再評価します。Stable MCP Apps specification、Google Embed requirement、host sandbox/CSP behaviorがmaterialに変わった場合はそれより早くre-openします。
+
+Canonical contract / security rule / evidence / completion criteriaは [MCP Apps portability / deployment](mcp-apps.ja.md) を参照してください。
 
 ## ロードマップでも維持する非ゴール
 

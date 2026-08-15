@@ -6,6 +6,18 @@
 
 本projectはpre-1.0です。Public APIが安定するまでは、minor / patch releaseにも互換性・安全性hardeningが含まれる場合があります。Upgrade前に各Release内容を確認してください。
 
+## [Unreleased]
+
+### 変更
+
+- ExperimentalなMCP Apps directions Viewをhost差異に対してhardening。Stable 2026-01-26 host context、safe-area/container sizing、size notification、cancellation/error cleanup、teardown、Google推奨Embed referrer policyを反映。
+- Embed API key未設定でも `maps_render_directions` をtext/structured display toolとして維持。UI resource/linkage/extension advertisementだけをconditionalにする。
+- Official MCP Apps basic reference hostでUI pipeline、official MCP SDK clientでno-UI fallbackを検証。Second production hostでのreal-key render成功は未検証として明示し、UIのexperimental labelを維持。
+
+### Security
+
+- MCP Apps CSPを必要なGoogle nested-frame origin 1つだけに維持し、専用/restricted Embed key deploymentを文書化。Browser-control surfaceやcredential surfaceは追加しない。
+
 ## [v0.2.0] - 2026-08-15
 
 V4の未認証Google Maps Web coverage完了と、Execution Handoff upstream consumer化をまとめたminor releaseです。

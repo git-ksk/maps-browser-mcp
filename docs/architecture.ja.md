@@ -142,6 +142,28 @@ Action / read counterはprocess-local safety guardであり、再起動でreset�
 - reconnect / restart後に旧semantic operationを自動replayしない
 - V4 cleanupはintervention stateを確認し、handoff activeならUI inputを送らない
 
+## MCP Apps Render Boundary
+
+`maps_render_directions` はbrowser controller pathから意図的に分離しています。
+
+```text
+MCP client / host
+   |
+   +-- maps_render_directions
+   |      +-- text + structured route data（常時）
+   |      +-- optional ui://maps-browser-mcp/directions.html
+   |             -> sandboxed MCP Apps View
+   |             -> official Google Maps Embed iframe
+   |
+   +-- Maps browser tools
+          -> Policy / semantic controller
+          -> MapsBrowserRuntime / CDP
+```
+
+Display toolは `MapsBrowserRuntime` を呼ばず、dedicated browser stateを読まず、Google Maps tabもmutateしません。MCP Apps resourceはEmbed API key設定時だけadvertiseし、未設定時も同じtoolのtext / structured resultは残ります。
+
+Viewはstable MCP Apps host-context lifecycleに合わせ、theme / locale / style variables、safe-area inset、container dimensions、size-change notification、cancellation/error cleanup、teardownを処理します。Nested-frame CSPは `https://www.google.com` のみに限定します。詳細は [MCP Apps portability / deployment](mcp-apps.ja.md) を参照してください。
+
 ## HTTP Transport
 
 HTTP endpointは公式MCP TypeScript v2 server entryを使用し、entryが扱う両protocol eraに対応します。

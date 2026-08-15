@@ -91,7 +91,8 @@ const child = spawn(process.execPath, ["dist/index.js", "--http"], {
     MCP_HTTP_HOST: "127.0.0.1",
     MCP_HTTP_PORT: String(port),
     MCP_ALLOWED_HOSTS: "localhost,127.0.0.1",
-    MCP_MAX_BODY_BYTES: "4096"
+    MCP_MAX_BODY_BYTES: "4096",
+    GOOGLE_MAPS_EMBED_API_KEY: ""
   },
   stdio: ["ignore", "ignore", "pipe"]
 });
@@ -139,7 +140,7 @@ try {
       : []
   );
   if (
-    toolNames.size !== 23 ||
+    toolNames.size !== 24 ||
     !toolNames.has("maps_search") ||
     !toolNames.has("maps_read_search_suggestions") ||
     !toolNames.has("maps_select_search_suggestion") ||
@@ -155,7 +156,8 @@ try {
     !toolNames.has("maps_open_place_photos") ||
     !toolNames.has("maps_select_place_tab") ||
     !toolNames.has("maps_expand_opening_hours") ||
-    !toolNames.has("maps_read_route_summary")
+    !toolNames.has("maps_read_route_summary") ||
+    !toolNames.has("maps_render_directions")
   ) {
     throw new Error(`Unexpected modern tools/list response: ${JSON.stringify(modernTools)}`);
   }
@@ -172,6 +174,29 @@ try {
   }, modernHeaders("tools/call", "maps_read_place_summary"));
   if (modernToolCall?.result?.isError !== true) {
     throw new Error(`Expected safe-mode tool execution error: ${JSON.stringify(modernToolCall)}`);
+  }
+
+  const renderFallback = await postMcp(baseUrl, {
+    jsonrpc: "2.0",
+    id: "tool-modern-render-1",
+    method: "tools/call",
+    params: {
+      name: "maps_render_directions",
+      arguments: {
+        origin: "Tokyo Station",
+        destination: "Shibuya Station",
+        mode: "transit"
+      },
+      _meta: modernMeta()
+    }
+  }, modernHeaders("tools/call", "maps_render_directions"));
+  if (
+    renderFallback?.result?.structuredContent?.origin !== "Tokyo Station" ||
+    renderFallback?.result?.structuredContent?.destination !== "Shibuya Station" ||
+    renderFallback?.result?.structuredContent?.mode !== "transit" ||
+    !renderFallback?.result?.content?.[0]?.text?.includes("GOOGLE_MAPS_EMBED_API_KEY is not configured")
+  ) {
+    throw new Error(`Unexpected HTTP render fallback: ${JSON.stringify(renderFallback)}`);
   }
 
   const missingMethodHeader = await fetch(`${baseUrl}/mcp`, {
