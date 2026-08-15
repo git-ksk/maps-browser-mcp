@@ -61,6 +61,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 その後の2026-08-15 selected-route share bounded観測で、先のroute-link判断を1つの限定surfaceについて更新しました。Guardedにsimple transit candidateを選択した後、JA/en-USともexact-oneの `ルートを共有 / Share directions` controlを確認しました。Dialogでは `リンクを送信する / Send a link` tabがselectedで、bounded settle後にexact-oneのvisible inputへallow-listed `https://maps.app.goo.gl/...` URLが現れました。したがってclipboard accessなしでlinkを取得でき、exact `閉じる / Close` semanticsでtransient dialogのcloseも検証できます。`maps_get_route_share_link(expectedOrigin, expectedDestination)` はこのselected simple transit-route surfaceだけを実装します。未選択directionsの `リンクをコピー / Copy link` は使わず、driving/その他route modeはbounded再観測でvisible generated-link fieldが安定しなかったためobservation-gatedのままです。
 
+2026-08-15のroute-detail bounded観測では、guarded `maps_select_route(index, expectedLabel)` 自体がselected route detail viewへ入ることを確認しました。Candidate側の `詳細 / Details` controlは消え、遷移後surfaceにはexactなBack、route-share、Print、`詳細を切り替える / Toggle details` controlが現れます。追加のToggle-details controlはJA/en-USともexact-oneでしたが、bounded activate前後でlabelは不変、selected/pressed/expanded semantic stateもありませんでした。URLは同等のまま、またはopaque Maps `data=` stateだけが変化し、これは意図的にparseしません。Activate後にvisible semantic control数が増えることは確認できましたが、control-count差や新しく見えたstep本文をpostconditionにするのはheuristic/content harvestingになります。追加details-toggle MCP actionは公開しません。Route-detail entryはguarded `maps_select_route` でcoveredとし、explicit semanticなexpanded/collapsed stateを観測できた場合だけtoggle sliceを再開します。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -95,7 +97,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | waypoint追加/並び替え/削除 | observation/design-gated / documented waypoint overlap | JA/en-USでexact Add destinationは観測したが、1-waypoint routeでは同一labelのRemove destinationが2件あり、exact semantic reorder controlも未観測。position heuristic/generic dragは使わず、既存 `maps_directions(..., waypoints)` をbounded supported pathとする。 |
 | driving avoid（ferries/highways/tolls） | implemented | bounded documented route option を実装済み。mode変更時も維持。 |
 | 出発/到着時刻・transit preference | partial / 当日transit time実装済み | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` はfresh simple transit routeの `mode=depart_at|arrive_by` と当日24時間 `HH:MM` のみ実装。Mutation前にdocumented route identityを再検証し、exact localized time controlとvisible resolved endpoint値不変をpostcondition確認後、staleなreplayable navigation actionだけを破棄してroute read/selectを維持する。日付、終電、transit preference optionはobservation/design-gated。 |
-| route detail / step expansion | V4 normal priority | bounded route-detail interaction。bulk itinerary extraction はしない。 |
+| route detail / step expansion | partial / detail entry covered・extra toggle gated | Guarded `maps_select_route(index, expectedLabel)` でselected route detail viewへ入れる。JA/en-USの `Toggle details` はexact-oneだがselected/pressed/expanded postconditionがなくlabelも不変。Opaque URL data、revealed step本文、control-count差から成功を推測せず、explicit semanticなexpanded/collapsed stateを観測するまで追加toggle actionは公開しない。 |
 | route link copy/share | partial / selected transit route実装済み | `maps_get_route_share_link(expectedOrigin, expectedDestination)` はlive観測済みsimple transitのselected-route `Share directions` dialogだけを使い、selected Send-link tabとexact-one visible allow-listed Maps URLを検証後dialogをcloseする。Clipboard内容は読まない。未選択Copy linkとdriving/その他modeはobservation-gated。 |
 | route view から目的地周辺shortcut | V4 normal priority | current destination をscopeにしたcategory search。 |
 | route を mobile に送信 | login required | account/device-linked workflow はV5。 |
@@ -156,7 +158,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 1. departure/arrival time / transit option — 当日 `depart_at|arrive_by` は `maps_set_transit_time` として実装。日付/終電/preferencesはobservation/design-gated
 2. route link share — selected simple transit routeは `maps_get_route_share_link` として実装。未選択Copy linkとdriving/その他modeはobservation-gated
 3. origin/destination swap・stop edit — endpoint swapは `maps_swap_route_endpoints` として実装。stateful stop editはobservation/design-gated（bounded waypointは既存 `maps_directions` で対応済み）
-4. bounded route detail expansion
+4. bounded route detail expansion — guarded `maps_select_route` でroute detailへ入る。追加Toggle-detailsはsemantic postcondition不在のためobservation-gated
 5. destination-nearby shortcut
 
 ### V4-E — Street View
