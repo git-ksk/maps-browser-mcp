@@ -67,6 +67,8 @@ A bounded 2026-08-15 destination-nearby observation separated route-destination 
 
 A bounded 2026-08-15 V4-E Street View entry observation separated Maps-native image browsing from actual panorama entry. On Tokyo Station place views and on a coordinate-centered root map, JA/en-US exposed exactly one `Browse Street View images` / `ストリートビューの画像をブラウジング` button. Activating the place Browse control retained the place URL and exposed image-browsing controls such as numbered Street View items plus Back/Close/Zoom; it did not establish a verified panorama state, so this Browse surface is not treated as direct Street View entry. On a business place, direct `Street View` / `ストリートビュー` controls were observed but became duplicate/ambiguous after UI settle in at least one JA/en-US shape. Selecting a particular browse image/map location would require index/geometry heuristics without a stable identity. No active-place/map Street View-entry action is added. The existing documented coordinate-based `maps_streetview` remains the safe supported panorama entry; re-open place/map entry only when an exact-one direct control and a verifiable panorama postcondition are observed without image-index or pointer heuristics.
 
+A bounded 2026-08-15 Street View control observation then used the existing documented `maps_streetview` entry with explicit heading/pitch/FOV. A Times Square viewpoint resolved to an actual panorama in both JA/en-US and preserved the requested orientation in the visible Maps panorama state. JA exposed exact Zoom in/out buttons, while the same panorama in en-US did not expose equivalent visible Zoom controls; no exact semantic turn or adjacent-panorama navigation control was observed in either shape. Other tested viewpoints legitimately produced no-panorama surfaces, reinforcing that coordinate entry cannot assume imagery availability. Because `maps_streetview` already exposes documented bounded `heading`, `pitch`, and `fov`, explicit turn/look/zoom orientation is structurally covered without adding locale-fragile UI controls. Stateful forward/adjacent-panorama navigation remains observation-gated because it would currently require canvas/pointer geometry or undocumented panorama-link data. No stable visible historical-imagery/date selector was observed in the bounded panorama surfaces, so imagery/date choice also remains observation-gated; do not infer dates from image content or harvest historical panorama data.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -112,8 +114,8 @@ A bounded 2026-08-15 V4-E Street View entry observation separated Maps-native im
 | Map layers / map type / traffic / transit / bicycling / terrain | observation-gated / option toggles verified | JA/en-US observation found exact semantic `menuitemcheckbox` toggles for Terrain/Traffic/Transit/Biking, and Traffic verified `false -> true`. However the visible Layers opener itself is two overlapping non-semantic `div` nodes with no role/ARIA/AX identity, so opening it safely would require a DOM/geometry heuristic. Do not expose a layer action until an exact-one semantic/accessible opener or equivalent bounded Maps-native surface is observed. |
 | Street View open by coordinates | implemented | `maps_streetview` opens documented Street View parameters. |
 | Enter Street View from active place/map | observation-gated / browse-vs-pano ambiguity | JA/en-US place/root-map observation found exact `Browse Street View images` controls, but that surface is image browsing rather than verified panorama entry. Direct business `Street View` controls became duplicate/ambiguous in an observed shape. Do not select browse images by index/geometry. Existing documented coordinate `maps_streetview` remains the supported entry until an exact-one direct control plus panorama postcondition is observable. |
-| Street View rotate/zoom/navigation | V4 high priority | Maps-specific movement semantics only; no raw pointer/CDP tool surface. |
-| Street View imagery/date selection | V4 normal priority | Bounded visible-image navigation where available; no bulk historical imagery harvesting. |
+| Street View rotate/zoom/navigation | partial / documented orientation covered | `maps_streetview` already supports bounded documented `heading`, `pitch`, and `fov` for explicit turn/look/zoom orientation. Live panorama observation found JA Zoom controls but not equivalent en-US controls, and no exact semantic turn/adjacent-panorama navigation target. Do not add pointer/canvas navigation or parse undocumented panorama links; forward/adjacent movement remains observation-gated. |
+| Street View imagery/date selection | observation-gated | Bounded actual-panorama observations did not expose a stable visible historical-imagery/date selector, and some valid viewpoints produced no-panorama state. Do not infer dates from image content or harvest historical imagery. Re-open only with an exact visible date/image control plus verifiable postcondition. |
 | Share current map/view URL | V4 high priority | Produce Maps-generated/shareable state, not a generic browser URL/clipboard tool. |
 | Sign-in, account switching, credential entry | login required | Existing Human Intervention can hand off naturally occurring sign-in, but MCP never handles credentials. |
 | Timeline, account lists, synced saved places | login required | V5. |
@@ -168,8 +170,8 @@ Priority order:
 ### V4-E — Street View
 
 - enter from active place/map,
-- semantic turn/zoom/navigation,
-- bounded imagery/date choice where safely identifiable.
+- semantic turn/zoom/navigation — explicit orientation is already covered by documented `maps_streetview` heading/pitch/fov; stateful forward/adjacent navigation remains observation-gated,
+- bounded imagery/date choice — no stable visible selector re-observed; keep observation-gated without historical-image harvesting.
 
 ### V4-F — coverage closeout
 

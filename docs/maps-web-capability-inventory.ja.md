@@ -67,6 +67,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15のV4-E Street View entry bounded観測では、Maps-nativeなimage browseとactual panorama entryを分離しました。Tokyo Station place viewとcoordinate-centered root mapでは、JA/en-USともexact-oneの `ストリートビューの画像をブラウジング / Browse Street View images` buttonを確認しました。Place側Browse controlをactivateしてもplace URLを維持したまま、numbered Street View itemやBack/Close/Zoomなどのimage-browsing controlが現れるだけでverified panorama stateは確立しなかったため、このsurfaceをdirect Street View entryとは扱いません。Business placeではdirect `ストリートビュー / Street View` controlも観測しましたが、JA/en-USの少なくとも1 shapeでUI settle後にduplicate/ambiguousになりました。Browse image/map locationを特定index/geometryで選ぶのはstable identityを欠くheuristicです。Active-place/map Street View-entry actionは追加しません。Existing documented coordinate-based `maps_streetview` をsafe supported panorama entryとして維持し、exact-one direct controlとverifiable panorama postconditionをimage-index/pointer heuristicなしで観測できた場合だけplace/map entryを再開します。
 
+続く2026-08-15 Street View control bounded観測では、existing documented `maps_streetview` entryを明示heading/pitch/FOV付きで使用しました。Times Square viewpointはJA/en-USともactual panoramaへresolveし、requested orientationがvisible Maps panorama stateへ反映されました。JAではexact Zoom in/out buttonを確認しましたが、同じpanoramaのen-USではequivalent visible Zoom controlを確認できず、exact semanticなturnまたはadjacent-panorama navigation controlも両shapeで未観測でした。別のviewpointは正当にno-panorama surfaceとなり、coordinate entryがimagery availabilityを仮定できないことも確認しました。`maps_streetview` はすでにdocumented bounded `heading`、`pitch`、`fov` を公開しているため、explicitなturn/look/zoom orientationはlocale-fragileなUI control追加なしでstructurally coveredです。Statefulなforward/adjacent-panorama navigationは現状canvas/pointer geometryまたはundocumented panorama-link dataが必要になるためobservation-gatedに残します。Bounded panorama surfaceではstable visibleなhistorical-imagery/date selectorも観測できなかったためimagery/date choiceもobservation-gatedとし、image contentからdateを推測したりhistorical panoramaをharvestしません。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -112,8 +114,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | map layer / map type / traffic / transit / bicycling / terrain | observation-gated / option toggles verified | JA/en-USでTerrain/Traffic/Transit/Bikingのexact semantic `menuitemcheckbox` とTraffic `false -> true` を確認した。一方、visible Layers openerはrole/ARIA/AX identityのないoverlap nested `div` 2件で、安全にopenするにはDOM/geometry heuristicが必要。exact-one semantic/accessible openerまたは同等のbounded Maps-native surfaceを観測できるまでlayer actionは公開しない。 |
 | coordinatesから Street View を開く | implemented | `maps_streetview` が documented Street View parameter を利用。 |
 | active place/map から Street View へ入る | observation-gated / browse-vs-pano ambiguity | JA/en-US place/root-mapでexactな `Browse Street View images` は観測したが、これはverified panorama entryではなくimage browsing。Businessのdirect `Street View` controlは観測shapeでduplicate/ambiguous化した。Browse imageをindex/geometryで選ばず、existing documented coordinate `maps_streetview` をsupported entryとする。Exact-one direct control + panorama postconditionを観測できるまで保留。 |
-| Street View rotate/zoom/navigation | V4 high priority | Maps-specific movement semantics のみ。raw pointer/CDP tool は公開しない。 |
-| Street View imagery/date選択 | V4 normal priority | safely identifiable な範囲で bounded navigation。bulk historical imagery harvesting はしない。 |
+| Street View rotate/zoom/navigation | partial / documented orientation covered | `maps_streetview` はbounded documented `heading` / `pitch` / `fov` でexplicit turn/look/zoom orientationを既に対応。Live panoramaではJA Zoom controlを観測したがen-US同等controlは未観測、exact semanticなturn/adjacent-panorama navigation targetもない。pointer/canvas navigationやundocumented panorama link解析は追加せず、forward/adjacent movementはobservation-gated。 |
+| Street View imagery/date選択 | observation-gated | Actual-panorama bounded観測でstable visibleなhistorical-imagery/date selectorを確認できず、valid viewpointでもno-panorama stateがあり得る。Image contentからdateを推測せずhistorical imageryもharvestしない。Exact visible date/image control + verifiable postconditionを観測できた場合だけ再開。 |
 | current map/view の共有URL | V4 high priority | generic browser URL/clipboard tool ではなく Maps-generated share state として扱う。 |
 | sign-in / account切替 / credential入力 | login required | 自然発生したsign-inは Human Intervention へhandoff可能だが、MCPはcredentialを扱わない。 |
 | Timeline / account list / synced saved place | login required | V5。 |
@@ -168,8 +170,8 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 ### V4-E — Street View
 
 - active place/map からenter
-- semantic turn/zoom/navigation
-- safely identifiable な bounded imagery/date choice
+- semantic turn/zoom/navigation — explicit orientationはdocumented `maps_streetview` heading/pitch/fovでcovered。stateful forward/adjacent navigationはobservation-gated
+- bounded imagery/date choice — stable visible selectorを再観測できず。historical-image harvestingなしでobservation-gated
 
 ### V4-F — coverage closeout
 
