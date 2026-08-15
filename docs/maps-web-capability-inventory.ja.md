@@ -197,4 +197,4 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 
 ## Issue #36との境界
 
-Issue #36（second real Execution Handoff adapter proof）は別トラックです。V4 Maps coverage のために `maps-browser-mcp` を generic browser / desktop / shell MCP へ広げません。
+Execution Handoff upstream検証はtwo-adapterの別トラックです。V4 Maps coverageのために `maps-browser-mcp` をgeneric browser / desktop / shell MCPへ広げません。

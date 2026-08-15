@@ -1,79 +1,54 @@
 # Execution Handoff V3
 
-> This document versions the **execution-handoff subsystem**, not the Maps V1–V3 feature labels used elsewhere in this repository.
+[日本語](execution-handoff-v3.ja.md)
 
-Execution Handoff V3 moves the human-intervention work from a Maps-specific takeover feature toward a reusable control-plane runtime while keeping Maps as the first real adapter.
+> This document versions the **Execution Handoff subsystem**, not the Maps V1–V4 feature labels used elsewhere in this repository.
 
-## Current layers
+The generic Execution Handoff runtime is now extracted to `git-ksk/mcp-execution-handoff`. `maps-browser-mcp` remains the first real consumer through the Maps-specific `browser.maps` adapter.
 
-| Layer | Status | Purpose |
-| --- | --- | --- |
-| Handoff V1 | implemented | MCP MRTR `input_required`, exclusive Agent/Human authority, resource epoch, safe resume |
-| Handoff V2 | implemented | bounded remote/mobile browser takeover with private CDP and short-lived capability |
-| Handoff V2.1 | implemented | authenticated MCP principal is bound to MRTR state, takeover session and capability |
-| Handoff V2.2 | manual verification pending | end-to-end phone verification through a configured authenticated HTTPS gateway |
-| **Handoff V3** | implemented, opt-in durability | generic adapter contract, live Maps durable control-plane checkpoint, exact-action approval separation, bounded audit metadata |
+## Responsibility split
 
-## V3 architecture
+The upstream provides only the reusable control plane:
 
-```text
-MCP / Agent
-    |
-    v
-Execution Handoff V3
-    |-- principal binding
-    |-- authority / resource epoch
-    |-- durable control-plane checkpoint
-    |-- exact-action approval envelope
-    |-- secret-safe audit metadata
-    |
-    +---- adapter: browser.maps   (real + live checkpoint integration)
-    +---- adapter: desktop.mock   (deterministic contract test)
-    +---- adapter: terminal.mock  (deterministic contract test)
-```
-
-The core never exposes CDP or another adapter-native protocol. A future desktop, terminal, cloud-console, or device adapter implements the same control-plane contract while keeping its native execution channel behind the adapter.
-
-## Exclusive remote client lease
-
-Authenticated identity and remote-control concurrency are separate boundaries. The same authenticated principal may own the Human intervention, but one intervention/resource epoch permits only **one active remote takeover client**.
-
-The authenticated takeover page creates a random client binding with Web Crypto and keeps it only in page memory. The first same-origin bootstrap atomically claims the remote-client lease. Reloading the page or opening the same locator in another device/tab creates a different binding and therefore cannot reclaim the active takeover session, even for the same authenticated principal. If the active page is lost, return to MCP and start a fresh Human round rather than transferring the lease implicitly.
-
-The short-lived takeover capability is HMAC-bound to the session locator, intervention id, resource epoch, principal binding, client binding, and expiry. Frame/input/done requests must present both the capability and the matching client binding. A resource-epoch change creates a new takeover session and therefore a fresh client lease.
-
-V3 intentionally does not provide a hidden client-transfer operation. The client binding is a concurrency lease, not user authentication; the authenticated principal remains the primary identity boundary.
-
-## Durable recovery is deliberately conservative
-
-V3 can persist a signed checkpoint, but the checkpoint is **not a serialized browser or Agent session**. It contains only bounded control-plane metadata:
-
-- adapter kind,
-- intervention id,
-- intervention status,
-- resource epoch,
+- exclusive Agent/Human authority,
+- resource epochs and stale-state fencing,
 - resume policy,
-- principal binding,
-- optional action digest,
-- timestamps and expiry.
+- generic adapter contract,
+- principal + invocation + canonical-arguments ownership binding,
+- signed durable checkpoint metadata with `reissue_and_revalidate` recovery,
+- MCP MRTR `input_required` request-state helpers,
+- optional browser-takeover transport with locator-only URLs, short-lived capabilities, one-client leases, memory-only client binding, `no-store` / `no-referrer`, and nonce-bound CSP assets.
 
-It must not contain raw search terms, origins/destinations, browser text, DOM/network data, credentials, cookies, CAPTCHA/2FA responses, approval receipts, or raw action arguments.
+This repository keeps all Maps-specific behavior:
 
-The live Maps handoff writes the checkpoint only while a Human intervention is active. Verified resume, cancellation, stale intervention state, and non-recoverable verification failure clear it. Graceful process shutdown deliberately does **not** clear an active checkpoint so recovery metadata can survive a restart.
+- `MapsAction` / `MapsViewState`,
+- Google Maps URL compilation and semantic-state handling,
+- explicit Google intervention-surface classification,
+- Maps-specific postcondition verification,
+- Chrome/CDP execution and allowed takeover inputs,
+- Maps-specific stale semantic-action guidance,
+- the separate exact-action approval primitive used to preserve the rule that takeover completion is never approval for another action.
 
-A recovered checkpoint always produces:
+The upstream has no Maps URL, Google hostname, provider, CDP, or Maps action type in its public core contract.
 
-```text
-recovery = reissue_and_revalidate
-```
+## Security invariants preserved by the consumer
 
-It never restores stale Agent/Human authority and never silently replays the interrupted action. After restart, the same authenticated principal can reissue the original Maps tool call. If the fresh validated tool arguments produce the same action digest, the checkpoint is consumed and the Maps action runs again from those current validated inputs. Old MRTR request state, DOM/semantic state, remote capability, and browser authority are never restored from disk.
+- the originating authenticated principal owns the handoff together with exact tool name, canonical argument digest, and resume strategy;
+- ownership is established before another serialized browser operation can observe the new intervention;
+- a missing owner cannot be rebound after the fresh `awaiting_human` state;
+- Human and Agent authority are mutually exclusive;
+- Human completion advances the resource epoch before verification;
+- stale requestState, stale resource epoch, stale takeover capability, and cross-principal reuse fail closed;
+- one remote client owns a takeover lease; reload/new-tab/new-device state with a fresh memory binding cannot reclaim it implicitly;
+- the takeover locator contains no capability secret;
+- `Done` revokes remote control only and never creates action approval;
+- credentials, cookies, OTP/MFA values, CAPTCHA responses, payment data, raw browser content, and raw action arguments are excluded from MCP handoff state and durable checkpoints;
+- state-changing semantic operations use fresh semantic reissue where required and are not silently replayed after Human intervention;
+- CAPTCHA/challenge solving, anti-bot bypass, stealth/fingerprint spoofing, proxy rotation, raw CDP exposure, and arbitrary browser navigation remain out of scope.
 
-If checkpoint integrity validation fails or the record expired, it is discarded and is not used as authorization. A fresh user-directed tool invocation can still execute normally.
+## Durable recovery
 
-### Opt-in configuration
-
-Durable recovery is disabled by default. Configure both values together:
+Maps durability remains opt-in:
 
 ```text
 MAPS_HANDOFF_CHECKPOINT_FILE=/absolute/private/path/handoff-checkpoint.json
@@ -81,76 +56,39 @@ MAPS_HANDOFF_CHECKPOINT_KEY=<32 random bytes encoded as canonical base64url>
 MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS=900
 ```
 
-The file path must be absolute. The signing key must remain stable across process restarts and must not be committed or logged. The checkpoint file is written with private filesystem permissions by the checkpoint store.
+The checkpoint contains bounded control-plane metadata only. It does not serialize the browser, requestState, credentials, challenge answers, takeover capabilities, or raw tool arguments.
 
-This means V3 provides **safe durable recovery metadata**, not transparent process-restart continuation. The current live MRTR request-state signing key and browser intervention remain process-local.
+After restart, recovery is only a marker. The same logical principal must reissue the same validated tool invocation; the matching digest may consume the marker, then execution starts again from current validated input. Old Agent/Human authority, DOM/semantic state, and remote capability are never restored from disk.
 
-## Approval is separate from takeover
+## Browser takeover remains optional
+
+The upstream `TakeoverBroker` is transport-only and receives only `{ id, epoch }`, an explicit non-secret principal binding, and the Maps browser adapter. The Maps runtime still decides whether the current page is an eligible intervention surface and verifies every browser operation against the active intervention and epoch.
+
+The authenticated page uses one memory-only remote-client binding. Same-origin bootstrap returns a short-lived capability bound to session + intervention + epoch + principal + client binding + expiry. The public locator itself has no capability in its query string or fragment.
+
+## Approval remains separate
 
 Human takeover means only that a Human temporarily owns execution input. It does not authorize a later side effect.
 
-For future adapters with irreversible actions, V3 provides an explicit approval envelope bound to:
-
-- canonical final action name and arguments,
-- current resource epoch,
-- authenticated principal binding,
-- expiry,
-- single use.
-
-Changing the action arguments, principal, or resource epoch invalidates the approval. An approval receipt is HMAC-protected and can be consumed once.
-
-Therefore:
-
 ```text
-CAPTCHA solved != purchase approved
+CAPTCHA complete != purchase approved
 sign-in complete != delete approved
 MFA complete != message approved
 ```
 
-Current Maps navigation actions are side-effect-free, so they do not use the approval manager today.
+`maps-browser-mcp` keeps its exact-action approval primitive separate from the upstream handoff runtime. The generic upstream intentionally does not couple an approval API to Human completion. A future consequential-action consumer must provide an independently explicit approval mechanism bound to its exact final action and current state.
 
-## Adapter extraction rule
+## Two-adapter extraction status
 
-`browser.maps` is the first real adapter. The repository also contains deterministic non-browser mock adapters to prove the TypeScript contract is resource-agnostic, but mocks are not evidence that a second production adapter is mature.
+`mcp-execution-handoff` is intentionally pre-release. The extraction is accepted as the formal upstream only after both real consumers are green:
 
-Do not extract a separate OSS yet. Consider extraction only after a second real adapter (for example a desktop or terminal integration) demonstrates that these pieces remain generic:
+1. `maps-browser-mcp` as `browser.maps`, and
+2. `japan-cinema-browser-mcp` as the second real adapter.
 
-- adapter contract,
-- authority/epoch model,
-- principal binding,
-- checkpoint recovery semantics,
-- completion verification,
-- approval envelopes,
-- audit/control-plane metadata,
-- MCP MRTR bridge.
+Until that verification is complete, there is no `v0.1.0` release and no npm publication.
 
 ## V2.2 manual mobile verification
 
-The remaining live verification requires a real authenticated HTTPS gateway, a dedicated Chrome session, and a phone. It cannot be proven by normal repository CI.
+Live phone verification still requires a configured authenticated HTTPS gateway, a dedicated Chrome session, and a phone. Normal CI does not intentionally trigger CAPTCHA/sign-in challenges.
 
-The manual run should verify a user-directed workflow only:
-
-1. the same authenticated principal starts the MCP action and opens the takeover page;
-2. another/unauthenticated principal cannot open or bootstrap the takeover session;
-3. the phone can view the bounded frame and send permitted input while Human owns authority;
-4. a second remote client for the same principal cannot claim/send input for the same intervention epoch, and reload does not silently transfer the lease;
-5. `Done` revokes remote input but does not approve the MCP action;
-6. Continue verifies the browser and either resumes safely or returns to a new Human round;
-7. stale epoch/capability/request state is rejected;
-8. an opt-in checkpoint survives a controlled process restart but only the same principal + same reissued tool-argument digest can consume the recovery marker;
-9. no screenshot/log containing accounts, private locations, tokens, browser profiles, checkpoint keys, or credentials is attached to a public issue.
-
-Do not deliberately trigger or bypass CAPTCHA during this verification.
-
-## Non-goals
-
-V3 does not add:
-
-- CAPTCHA solving or anti-bot bypass,
-- stealth/fingerprint spoofing or proxy rotation,
-- public CDP,
-- arbitrary browser navigation from the takeover UI,
-- DOM/network/cookie export,
-- automatic approval of irreversible actions,
-- multi-tenant hosting,
-- transparent replay after process restart.
+The manual flow should verify same-principal access, cross-principal rejection, one-client lease behavior, reload reclaim rejection, Human-only input authority, `Done != approval`, safe post-Human verification, stale epoch/capability/requestState rejection, and secret-free logging. Do not deliberately trigger or bypass a challenge for this test.

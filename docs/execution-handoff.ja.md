@@ -193,17 +193,6 @@ Remote takeover時のtrusted pathはphone、authenticated HTTPS gateway、local 
 
 通常CIはHuman takeoverを待たず、CAPTCHAやsign-in challengeを意図的に発生させません。Authority state machine、request-state binding、takeover capabilityのrotation/expiry/revoke、capability bootstrap、Broker HTTP boundary、fail-closed configをdeterministic testで確認します。Manual Live Maps E2Eで自然発生したchallengeもCIが突破する対象にはしません。
 
-## 別OSSへの切り出し条件
+## Upstream化の現在地
 
-まず `maps-browser-mcp` で実証し、少なくとももう1つのadapterで以下が本当にgenericだと確認できてから別OSS化を検討します。
-
-- authority lease / state machine
-- intervention identity binding
-- resource epoch
-- completion verification
-- resume policy
-- action-approval binding
-- audit event
-- MCP MRTR bridge
-
-将来の抽象化対象はBrowser専用CAPTCHA/takeover libraryではなく、**execution handoff runtime** です。
+generic control-plane実装は `git-ksk/mcp-execution-handoff` へ切り出しました。Maps固有URL/surface classification、postcondition verification、CDP executionはこのrepositoryに残します。Japan Cinemaをsecond real adapterとして検証し、2 consumerがgreenになるまではpre-release扱いで、`v0.1.0` / npm publishは行いません。
