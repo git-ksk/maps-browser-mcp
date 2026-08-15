@@ -152,7 +152,8 @@ function staleAfterInterventionResult(toolName: string): CallToolResult {
     toolName === "maps_read_route_summary" ||
     toolName === "maps_set_travel_mode" ||
     toolName === "maps_set_transit_time" ||
-    toolName === "maps_swap_route_endpoints"
+    toolName === "maps_swap_route_endpoints" ||
+    toolName === "maps_get_route_share_link"
     ? "Run maps_directions again before continuing with the route."
     : "Run maps_search again before continuing with the place results.";
   return errorResult(new BrowserRuntimeError(
@@ -709,6 +710,28 @@ export function buildServer(): McpServer {
         policy.assertInteractiveAssistEnabled();
         policy.consumeVisibleRead();
         return controller.setTransitTime(expectedOrigin, expectedDestination, mode, time);
+      }
+    })
+  );
+
+  server.registerTool(
+    "maps_get_route_share_link",
+    {
+      description: "Return the Google Maps-generated share URL from the visible Share directions dialog for one selected simple transit route. expectedOrigin and expectedDestination must match the active canonical directions request; the route must already be selected with maps_select_route. The operation is intentionally transit-only for the currently live-observed JA/en-US share surface and never reads clipboard contents. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedOrigin: locationText,
+        expectedDestination: locationText
+      })
+    },
+    async ({ expectedOrigin, expectedDestination }, ctx) => runToolWithHandoff({
+      toolName: "maps_get_route_share_link",
+      args: { expectedOrigin, expectedDestination },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.getRouteShareLink(expectedOrigin, expectedDestination);
       }
     })
   );

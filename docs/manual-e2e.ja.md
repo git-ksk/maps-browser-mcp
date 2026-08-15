@@ -140,6 +140,14 @@ V4-Dの当日transit-time sliceを検証する場合、Interactive Assist有効�
 6. Missing/duplicate control、stale route endpoint、unexpected navigation、invalid time postcondition、Human Interventionはfail closed。Opaque `/data=` route payloadを解析せず、generic text entryも公開しない
 7. 日付指定、終電、transit preference optionはこのsliceに含めない
 
+V4-D selected transit-route shareは、fresh simple `maps_directions({ origin, destination, mode: "transit" })` からroute candidateを読み、guarded `maps_select_route(index, expectedLabel)` で1件選択して開始します。
+
+1. `maps_get_route_share_link({ expectedOrigin: origin, expectedDestination: destination })` をcall
+2. Wrong expected endpointはshare dialogを開く前にfailし、resource epochを更新しないことを確認
+3. Successではselected-route detail view、exact Share directions control、selected Send-link tab、exact-one visible allow-listed Maps share URLを必須とし、clipboard read/interceptを使わないことを確認
+4. Exact Close semanticsでdialogを閉じ、route view/canonical actionが維持され、このread-only semantic operationではresource epochが進まないことを確認
+5. Driving/その他mode、waypoint/avoid route、未選択directionsのCopy link surfaceはこのsliceに含めない
+
 V4-D endpoint swapは、explicit origin・waypointなしのfresh simple `maps_directions({ origin, destination, mode })` requestから開始します。
 
 1. `maps_swap_route_endpoints({ expectedOrigin: origin, expectedDestination: destination })` をcall

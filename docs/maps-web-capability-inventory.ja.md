@@ -59,6 +59,8 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 
 2026-08-15のstateful-stop bounded観測では、waypointなし/1件ありのfresh JA/en-US driving routeを使用しました。`目的地を追加 / Add destination` はexact-one visibleでしたが、これは新しいdestination entry workflowを開くだけで、boundedな値自体は既存 `maps_directions(..., waypoints)` でdocumentedに対応済みです。Waypoint 1件のrouteではvisibleな `この目的地を削除 / Remove this destination` が同一semantic labelで2件あり、特定waypointとfinal destinationを区別するにはposition/DOM heuristicが必要でした。Exact semanticなreorder controlも観測できず、並べ替えを公開するにはgeneric drag/pointer geometryが必要になります。Stateful stop-edit MCP actionは追加しません。Target-specificなremove/reorder semanticsをexactに識別できるUIを観測した場合だけ再開し、現状はdocumented bounded waypointをsafe supported pathとします。
 
+その後の2026-08-15 selected-route share bounded観測で、先のroute-link判断を1つの限定surfaceについて更新しました。Guardedにsimple transit candidateを選択した後、JA/en-USともexact-oneの `ルートを共有 / Share directions` controlを確認しました。Dialogでは `リンクを送信する / Send a link` tabがselectedで、bounded settle後にexact-oneのvisible inputへallow-listed `https://maps.app.goo.gl/...` URLが現れました。したがってclipboard accessなしでlinkを取得でき、exact `閉じる / Close` semanticsでtransient dialogのcloseも検証できます。`maps_get_route_share_link(expectedOrigin, expectedDestination)` はこのselected simple transit-route surfaceだけを実装します。未選択directionsの `リンクをコピー / Copy link` は使わず、driving/その他route modeはbounded再観測でvisible generated-link fieldが安定しなかったためobservation-gatedのままです。
+
 ## Coverage table
 
 | Capability | V4 status | 現在のcoverage / 目標semantic behavior |
@@ -94,7 +96,7 @@ Google Maps Web は locale、viewport、experiment、地域、account state な�
 | driving avoid（ferries/highways/tolls） | implemented | bounded documented route option を実装済み。mode変更時も維持。 |
 | 出発/到着時刻・transit preference | partial / 当日transit time実装済み | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` はfresh simple transit routeの `mode=depart_at|arrive_by` と当日24時間 `HH:MM` のみ実装。Mutation前にdocumented route identityを再検証し、exact localized time controlとvisible resolved endpoint値不変をpostcondition確認後、staleなreplayable navigation actionだけを破棄してroute read/selectを維持する。日付、終電、transit preference optionはobservation/design-gated。 |
 | route detail / step expansion | V4 normal priority | bounded route-detail interaction。bulk itinerary extraction はしない。 |
-| route link copy/share | observation-gated / clipboard boundary | JA/en-US再観測で未選択directions viewのexact Copy link buttonは確認したが、visible link value / reliable visible postconditionはなく、guarded route選択後はcontrolもvisibleでなかった。Clipboard read/interceptやcurrent URL=copy値という推測は行わない。bounded visibleなgenerated-link surfaceを観測できるまで保留。 |
+| route link copy/share | partial / selected transit route実装済み | `maps_get_route_share_link(expectedOrigin, expectedDestination)` はlive観測済みsimple transitのselected-route `Share directions` dialogだけを使い、selected Send-link tabとexact-one visible allow-listed Maps URLを検証後dialogをcloseする。Clipboard内容は読まない。未選択Copy linkとdriving/その他modeはobservation-gated。 |
 | route view から目的地周辺shortcut | V4 normal priority | current destination をscopeにしたcategory search。 |
 | route を mobile に送信 | login required | account/device-linked workflow はV5。 |
 | coordinates/zoomで map表示 | implemented | `maps_show` が documented coordinate-centered Maps URL を開く。 |
@@ -152,7 +154,7 @@ V4 は大きな DOM automation 1本ではなく、小さくreview可能なまと
 優先順:
 
 1. departure/arrival time / transit option — 当日 `depart_at|arrive_by` は `maps_set_transit_time` として実装。日付/終電/preferencesはobservation/design-gated
-2. route link share — exact Copy link controlは観測したが、clipboardなしでgenerated link/postconditionを検証できないためobservation-gated
+2. route link share — selected simple transit routeは `maps_get_route_share_link` として実装。未選択Copy linkとdriving/その他modeはobservation-gated
 3. origin/destination swap・stop edit — endpoint swapは `maps_swap_route_endpoints` として実装。stateful stop editはobservation/design-gated（bounded waypointは既存 `maps_directions` で対応済み）
 4. bounded route detail expansion
 5. destination-nearby shortcut

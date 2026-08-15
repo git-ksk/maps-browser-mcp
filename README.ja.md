@@ -149,6 +149,8 @@ maps_directions({ origin, destination, mode: "transit" })
 
 `maps_swap_route_endpoints({ expectedOrigin, expectedDestination })` は観測済みの出発地/目的地swap semanticsを、Mapsのswap buttonを自動操作せずに実装します。JA/en-US live観測ではexact semantic swap controlとvisible endpointの A/B -> B/A 遷移を確認できましたが、UI click後もcanonical URL/actionがA→Bのまま残ることも確認しました。そのためMCP operationはfresh simple documented directions requestだけを受け付け、expected canonical endpointを再検証し、origin省略/waypoint routeを拒否、travel modeとbounded avoidを維持したままdocumented Maps URLをB→Aで再構築します。
 
+`maps_get_route_share_link({ expectedOrigin, expectedDestination })` はguarded `maps_select_route` 後のselected **transit** route share dialogからMaps-generated short linkを返します。Expected simple canonical transit identityを再検証し、live観測済みのexact `ルートを共有 / Share directions` を1回activate、selected `リンクを送信する / Send a link` tabとexact-oneのallow-listed visible Maps URL fieldを検証してから、semanticなCloseでdialogを閉じて返却します。Clipboard内容は一切読みません。未選択viewの `リンクをコピー / Copy link` surfaceは引き続き使わず、driving/その他modeはbounded再観測でvisible link fieldが安定しなかったためobservation-gatedです。
+
 `expectedLabel` は重要です。Google Mapsが候補を動的に並べ替えたり置換した場合、別対象を誤操作せず `UI_STATE_CHANGED` で停止します。
 
 ## MCPツール
@@ -174,6 +176,7 @@ maps_directions({ origin, destination, mode: "transit" })
 - `maps_set_travel_mode`
 - `maps_set_transit_time` — V4-D、当日 `depart_at|arrive_by`、Interactive Assist必須
 - `maps_swap_route_endpoints` — V4-D、fresh simple route限定・documented URL再構築
+- `maps_get_route_share_link` — V4-D、selected simple transit route share dialog、Interactive Assist必須
 
 ### Optional bounded visible-state reading
 

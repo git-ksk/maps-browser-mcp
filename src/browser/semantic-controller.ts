@@ -9,6 +9,7 @@ import { setVerifiedSearchRating, type SearchRating, type SearchRatingFilterResu
 import { zoomVerifiedSearch, type SearchZoomDirection, type SearchZoomResult } from "./search-zoom.js";
 import { setVerifiedTransitTime, type TransitTimeMode, type TransitTimeResult } from "./transit-time.js";
 import { swapVerifiedRouteEndpoints, type RouteSwapResult } from "./route-swap.js";
+import { getVerifiedRouteShareLink, type RouteShareLinkResult } from "./route-share.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 
 export class SemanticController {
@@ -70,6 +71,10 @@ export class SemanticController {
 
   async swapRouteEndpoints(expectedOrigin: string, expectedDestination: string): Promise<RouteSwapResult> {
     return swapVerifiedRouteEndpoints(this.runtime, this.compiler, expectedOrigin, expectedDestination);
+  }
+
+  async getRouteShareLink(expectedOrigin: string, expectedDestination: string): Promise<RouteShareLinkResult> {
+    return getVerifiedRouteShareLink(this.runtime, expectedOrigin, expectedDestination);
   }
 
   async setTravelMode(mode: TravelMode): Promise<{ url: string; mode: TravelMode }> {
