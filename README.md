@@ -147,6 +147,8 @@ maps_directions({ origin, destination, mode: "transit" })
 
 `maps_swap_route_endpoints({ expectedOrigin, expectedDestination })` covers the observed origin/destination swap without automating the Maps swap button. Live JA/en-US observation verified the exact semantic swap control and visible endpoint A/B -> B/A transition, but also showed that the UI click leaves the canonical URL/action stale. The MCP operation therefore requires a fresh simple documented directions request, revalidates the expected canonical endpoints, rejects omitted origins and waypoint routes, preserves travel mode and bounded avoid constraints, and rebuilds the documented Maps URL with the endpoints reversed.
 
+`maps_get_route_share_link({ expectedOrigin, expectedDestination })` returns the Maps-generated short link from the selected-route **transit** share dialog. After a guarded `maps_select_route`, it requires the expected simple canonical transit identity, activates exactly one live-observed `Share directions` control, verifies the selected `Send a link` tab plus exactly one allow-listed visible Maps URL field, then closes the dialog semantically before returning. It never reads clipboard contents. The earlier unselected `Copy link` surface remains unused, and driving/other modes stay observation-gated because the visible link field was not stable in the bounded re-observation.
+
 `expectedLabel` is important: if Google Maps dynamically reorders or replaces the target, the runtime refuses stale interaction with `UI_STATE_CHANGED` instead of acting on a different target.
 
 ## MCP tools
@@ -172,6 +174,7 @@ maps_directions({ origin, destination, mode: "transit" })
 - `maps_set_travel_mode`
 - `maps_set_transit_time` — V4-D, same-day `depart_at|arrive_by`, Interactive Assist required
 - `maps_swap_route_endpoints` — V4-D, fresh simple route only; documented URL rebuild
+- `maps_get_route_share_link` — V4-D, selected simple transit route share dialog, Interactive Assist required
 
 ### Optional bounded visible-state reading
 

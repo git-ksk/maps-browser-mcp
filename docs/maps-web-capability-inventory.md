@@ -59,6 +59,8 @@ A bounded 2026-08-15 V4-D route-swap observation found exactly one visible `Reve
 
 A bounded 2026-08-15 stateful-stop observation used fresh JA/en-US driving routes with zero and one documented waypoint. `Add destination` / `目的地を追加` was exact-one and visible, but it only opens another destination-entry workflow whose bounded value is already covered structurally by `maps_directions(..., waypoints)`. With one waypoint, two visible `Remove this destination` / `この目的地を削除` buttons had the same semantic label, so removing a specific waypoint versus the final destination would require positional/DOM heuristics. No exact semantic reorder control was observed; exposing reordering would require generic drag/pointer geometry. No stateful stop-edit MCP action is added. Re-open only if Maps exposes target-specific remove/reorder semantics that are exactly identifiable; documented bounded waypoints remain the safe supported path.
 
+A subsequent bounded 2026-08-15 selected-route share observation changed the earlier route-link conclusion for one narrow surface. After guarded selection of a simple transit candidate, JA/en-US exposed exactly one `ルートを共有` / `Share directions` control. Its dialog had the `リンクを送信する` / `Send a link` tab selected and, after bounded settle, exactly one visible input containing an allow-listed `https://maps.app.goo.gl/...` URL. The link can therefore be read without clipboard access, and exact `閉じる` / `Close` semantics allow the transient dialog to be closed and verified. `maps_get_route_share_link(expectedOrigin, expectedDestination)` implements only this selected simple transit-route surface. The unselected directions `Copy link` button remains unused, and driving/other route modes remain observation-gated because the visible generated-link field was not stable in bounded re-observation.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -94,7 +96,7 @@ A bounded 2026-08-15 stateful-stop observation used fresh JA/en-US driving route
 | Driving avoid options (ferries/highways/tolls) | implemented | Bounded documented route options are supported and preserved across mode changes. |
 | Departure/arrival time and transit preferences | partial / same-day transit time implemented | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` implements only fresh simple transit routes with `mode=depart_at|arrive_by` and 24-hour `HH:MM` for the current day. It revalidates documented route identity before mutation, verifies exact localized time controls plus unchanged visible resolved endpoints, then drops the stale replayable navigation action while keeping route read/select available. Date, Last available, and transit preference options remain observation/design-gated. |
 | Route candidate details / step expansion | V4 normal priority | Bounded route-detail interaction; no bulk itinerary extraction. |
-| Route link copy/share | observation-gated / clipboard boundary | JA/en-US re-observation found an exact-one Copy link button only in the unselected directions view, but no visible link value or reliable visible postcondition; after guarded route selection the control was not visible. Do not read/intercept clipboard contents or assume the current URL equals the copied value. Re-open only with a bounded visible generated-link surface. |
+| Route link copy/share | partial / selected transit route implemented | `maps_get_route_share_link(expectedOrigin, expectedDestination)` uses the selected-route `Share directions` dialog only for live-observed simple transit routes, verifies the selected Send-link tab and exact-one visible allow-listed Maps URL, then closes the dialog. It never reads clipboard contents. The unselected Copy link surface and driving/other modes remain observation-gated. |
 | Destination-nearby shortcuts from route view | V4 normal priority | Convenience category search scoped to current destination. |
 | Send route to mobile device | login required | Account/device-linked workflow stays V5. |
 | Show map at coordinates/zoom | implemented | `maps_show` opens a documented coordinate-centered Maps URL. |
@@ -152,7 +154,7 @@ Priority order:
 Priority order:
 
 1. departure/arrival time and transit options — same-day `depart_at|arrive_by` implemented as `maps_set_transit_time`; date/Last available/preferences remain observation/design-gated,
-2. route link sharing — exact Copy link control observed, but generated link/postcondition is not visible without clipboard access; keep observation-gated,
+2. route link sharing — selected simple transit-route sharing implemented as `maps_get_route_share_link`; unselected Copy link and driving/other modes remain observation-gated,
 3. swap/edit stops — endpoint swap implemented as `maps_swap_route_endpoints`; stateful stop editing remains observation/design-gated (bounded waypoints are already supported by `maps_directions`),
 4. bounded route detail expansion,
 5. destination-nearby shortcuts.

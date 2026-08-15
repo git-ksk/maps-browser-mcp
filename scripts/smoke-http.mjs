@@ -139,12 +139,13 @@ try {
       : []
   );
   if (
-    toolNames.size !== 18 ||
+    toolNames.size !== 19 ||
     !toolNames.has("maps_search") ||
     !toolNames.has("maps_set_search_rating") ||
     !toolNames.has("maps_zoom_search") ||
     !toolNames.has("maps_set_transit_time") ||
     !toolNames.has("maps_swap_route_endpoints") ||
+    !toolNames.has("maps_get_route_share_link") ||
     !toolNames.has("maps_get_place_share_link") ||
     !toolNames.has("maps_search_nearby") ||
     !toolNames.has("maps_open_place_photos") ||

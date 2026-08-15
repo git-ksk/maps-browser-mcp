@@ -130,6 +130,14 @@ When validating the V4-D same-day transit-time slice, begin from a fresh simple 
 6. Missing/duplicate controls, stale route endpoints, unexpected navigation, invalid time postcondition, or Human Intervention must fail closed. Never parse the opaque `/data=` route payload, and do not expose generic text entry.
 7. Date selection, Last available, and transit preference options are not part of this slice.
 
+For V4-D selected transit-route sharing, start from a fresh simple `maps_directions({ origin, destination, mode: "transit" })`, read route candidates, and select one with guarded `maps_select_route(index, expectedLabel)`:
+
+1. Call `maps_get_route_share_link({ expectedOrigin: origin, expectedDestination: destination })`.
+2. Confirm wrong expected endpoints fail before opening the share dialog and do not advance the resource epoch.
+3. Confirm success requires the selected-route detail view, exact Share directions control, selected Send-link tab, and exactly one visible allow-listed Maps share URL; no clipboard read/interception is used.
+4. Confirm the dialog closes through exact Close semantics, the route view/canonical action remain intact, and the resource epoch does not advance for this read-only semantic operation.
+5. Driving/other modes, waypoint/avoid routes, and the unselected directions Copy link surface are not part of this slice.
+
 For V4-D endpoint swap, start from a fresh simple `maps_directions({ origin, destination, mode })` request with an explicit origin and no waypoints:
 
 1. Call `maps_swap_route_endpoints({ expectedOrigin: origin, expectedDestination: destination })`.
