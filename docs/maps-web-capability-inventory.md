@@ -53,6 +53,8 @@ A bounded 2026-08-15 viewport observation used a JA search-result view at 1440×
 
 A bounded 2026-08-15 V4-D transit-time observation used a fresh simple Tokyo Station -> Yokohama Station transit request in JA and explicit en-US. `Leave now` / `すぐに出発` was an exact visible button; its menu exposed `Depart at` / `出発時刻` and `Arrive by` / `到着時刻` as exact `menuitemradio` controls. After either mode was selected, exactly one visible `input[name="transit-time"]` appeared. A bounded 13:30 edit verified JA `13:30` and EN `1:30 PM`, while the visible resolved origin/destination input values remained byte-for-byte unchanged and the page stayed in `/maps/dir/`. The transit-mode radio group may disappear after choosing a time mode, so it is deliberately not a postcondition. `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` therefore implements only same-day `depart_at|arrive_by` with a 24-hour `HH:MM` input from a fresh simple documented transit request. Date selection, `Last available`, and transit preference options remain observation/design-gated. Because the resulting UI-only schedule is not fully represented by the original documented navigation action, success advances the resource epoch and drops that replayable action while preserving the current directions view for bounded route read/select in the same session.
 
+A bounded 2026-08-15 V4-D route-link re-observation found an exact-one visible `Copy link` / `リンクをコピー` button in the unselected directions view after UI settle. The control is a plain button with no visible `href` or link value. Activating it left the current Maps URL unchanged and did not expose a bounded visible link field, share dialog, or reliable visible copied-state postcondition. After a guarded route-candidate selection, the Copy link control was no longer visible in the observed JA/en-US route view. Reading or intercepting clipboard contents would violate the clipboard boundary, and assuming the current URL equals the copied link would be unverified. Therefore no route-link MCP action is exposed. Re-open this slice only if Maps exposes the generated link through a bounded visible semantic surface or another postcondition that does not require clipboard access.
+
 ## Coverage table
 
 | Capability | V4 status | Current coverage / target semantic behavior |
@@ -88,7 +90,7 @@ A bounded 2026-08-15 V4-D transit-time observation used a fresh simple Tokyo Sta
 | Driving avoid options (ferries/highways/tolls) | implemented | Bounded documented route options are supported and preserved across mode changes. |
 | Departure/arrival time and transit preferences | partial / same-day transit time implemented | `maps_set_transit_time(expectedOrigin, expectedDestination, mode, time)` implements only fresh simple transit routes with `mode=depart_at|arrive_by` and 24-hour `HH:MM` for the current day. It revalidates documented route identity before mutation, verifies exact localized time controls plus unchanged visible resolved endpoints, then drops the stale replayable navigation action while keeping route read/select available. Date, Last available, and transit preference options remain observation/design-gated. |
 | Route candidate details / step expansion | V4 normal priority | Bounded route-detail interaction; no bulk itinerary extraction. |
-| Route link copy/share | V4 high priority | Read the Maps-generated link for the verified active route; do not use raw clipboard access. |
+| Route link copy/share | observation-gated / clipboard boundary | JA/en-US re-observation found an exact-one Copy link button only in the unselected directions view, but no visible link value or reliable visible postcondition; after guarded route selection the control was not visible. Do not read/intercept clipboard contents or assume the current URL equals the copied value. Re-open only with a bounded visible generated-link surface. |
 | Destination-nearby shortcuts from route view | V4 normal priority | Convenience category search scoped to current destination. |
 | Send route to mobile device | login required | Account/device-linked workflow stays V5. |
 | Show map at coordinates/zoom | implemented | `maps_show` opens a documented coordinate-centered Maps URL. |
@@ -146,7 +148,7 @@ Priority order:
 Priority order:
 
 1. departure/arrival time and transit options — same-day `depart_at|arrive_by` implemented as `maps_set_transit_time`; date/Last available/preferences remain observation/design-gated,
-2. route link sharing,
+2. route link sharing — exact Copy link control observed, but generated link/postcondition is not visible without clipboard access; keep observation-gated,
 3. swap/edit stops,
 4. bounded route detail expansion,
 5. destination-nearby shortcuts.
