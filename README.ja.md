@@ -117,6 +117,8 @@ maps_search({ query })
 
 `maps_set_search_rating` が公開するのはlive再観測できた `2.0|2.5|3.0|3.5|4.0|4.5` のRating optionだけです。各bounded UI action直前にvisible search queryを再検証し、選択後はrequested numeric rating chip（例: `4.0+`）がexact-oneでvisibleかつRating menuがclosedであることを確認してからresource epochを更新します。価格、時間、すべてのフィルタはgeneric filter APIへまとめず、引き続きobservation/design-gatedです。
 
+`maps_zoom_search({ expectedQuery, direction })` は `maps_show` を超えるstateful viewport valueとして安全に再観測できた最小sliceだけを追加します。`direction` は `"in" | "out"` 固定で、active search result限定です。Click直前にexact visible queryとexact-one visible enabled Zoom controlを再検証し、同じsearch/queryを維持したままpublic Maps viewport pathのzoom levelがちょうど1段変化したことをpostcondition確認します。Map center座標はstable identity扱いせず、generic pan/recenterやroot/place zoomは公開しません。
+
 V4最初のbrowser-native workflowでは、このidentity chainをMaps生成のplace share URLまで延長します。
 
 ```text
@@ -152,6 +154,7 @@ maps_directions(...)
 
 - `maps_select_result`
 - `maps_set_search_rating` — V4、観測済みrating enum固定、Interactive Assist必須
+- `maps_zoom_search` — V4、search限定1-level `in|out`、Interactive Assist必須
 - `maps_get_place_share_link` — V4、Interactive Assist必須
 - `maps_search_nearby` — V4、Interactive Assist必須
 - `maps_open_place_photos` — V4、Interactive Assist必須

@@ -47,6 +47,7 @@ import { ChromeProcess } from "./browser/chrome-process.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
+import { SEARCH_ZOOM_DIRECTIONS } from "./browser/search-zoom.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import { TakeoverBroker } from "./takeover-broker.js";
@@ -418,6 +419,28 @@ export function buildServer(): McpServer {
         policy.assertInteractiveAssistEnabled();
         policy.consumeVisibleRead();
         return controller.setSearchRating(expectedQuery, rating);
+      }
+    })
+  );
+
+  server.registerTool(
+    "maps_zoom_search",
+    {
+      description: "Zoom the active Google Maps search-result viewport by exactly one observed level while preserving a verified visible search query. expectedQuery is revalidated immediately before the exact-one visible Zoom in/out control is activated; direction is restricted to `in|out`. Success requires the same search/query plus an exact one-level zoom change in the public Maps URL. Interactive Assist must be enabled.",
+      inputSchema: z.object({
+        expectedQuery: queryText,
+        direction: z.enum(SEARCH_ZOOM_DIRECTIONS)
+      })
+    },
+    async ({ expectedQuery, direction }, ctx) => runToolWithHandoff({
+      toolName: "maps_zoom_search",
+      args: { expectedQuery, direction },
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.zoomSearch(expectedQuery, direction);
       }
     })
   );

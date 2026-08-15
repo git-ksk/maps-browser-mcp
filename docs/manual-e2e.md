@@ -51,6 +51,14 @@ When validating the V4 Rating-filter slice with Interactive Assist enabled:
 5. A deliberately wrong `expectedQuery`, missing/duplicate Rating target, changed option/menu, unexpected navigation, or invalid selected-chip postcondition must fail closed. If the filter may already have changed before verification fails, the prior semantic context must be invalidated.
 6. Confirm no arbitrary filter text, raw DOM/AX payload, search-result harvesting, or URL-internal filter-token parsing is exposed.
 
+When validating the V4 search-zoom slice with Interactive Assist enabled:
+
+1. Start from a fresh `maps_search({ query })` result view and note the settled integer zoom level in the public Maps search path.
+2. Call `maps_zoom_search({ expectedQuery: query, direction: "in" })`; confirm the same visible query/search state remains and the zoom level advances by exactly one.
+3. Call `maps_zoom_search({ expectedQuery: query, direction: "out" })`; confirm the same visible query/search state remains and the zoom level decreases by exactly one. Do not require map-center coordinates to remain byte-for-byte equal.
+4. A deliberately wrong `expectedQuery`, missing/duplicate/disabled Zoom control, unexpected navigation, opposite/overshoot zoom transition, or invalid postcondition must fail closed. If a click may already have happened before verification fails, prior semantic context must be invalidated.
+5. Confirm the public surface exposes no coordinates, arbitrary zoom level, generic pan/drag, root-map zoom, or place-view zoom through this tool.
+
 ## 2. Directions navigation
 
 1. Call `maps_directions` with a public origin/destination and `mode=transit`.
