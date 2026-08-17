@@ -21,6 +21,14 @@ import { selectVerifiedRecommendedTravelMode, type RecommendedTravelModeResult }
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 import { readVerifiedPlaceSaveState, type PlaceSaveStateResult } from "./place-save-state.js";
 import { saveVerifiedPlaceToExistingList, type PlaceSaveToListResult } from "./place-save-action.js";
+import {
+  readVerifiedRouteSendTargets,
+  sendVerifiedRouteToDevice,
+  type RouteSendActionInput,
+  type RouteSendIdentity,
+  type RouteSendResult,
+  type RouteSendTargetsResult
+} from "./route-send.js";
 
 export class SemanticController {
   constructor(
@@ -38,6 +46,18 @@ export class SemanticController {
 
   async savePlaceToList(expectedPlaceLabel: string, listIndex: number, expectedListLabel: string): Promise<PlaceSaveToListResult> {
     return saveVerifiedPlaceToExistingList(this.runtime, expectedPlaceLabel, listIndex, expectedListLabel);
+  }
+
+  async readRouteSendTargets(identity: RouteSendIdentity): Promise<RouteSendTargetsResult> {
+    return readVerifiedRouteSendTargets(this.runtime, identity);
+  }
+
+  async sendRouteToDevice(
+    input: RouteSendActionInput,
+    approvedEpoch: number,
+    consumeApproval: () => void
+  ): Promise<RouteSendResult> {
+    return sendVerifiedRouteToDevice(this.runtime, input, approvedEpoch, consumeApproval);
   }
 
   async selectResult(index: number, expectedLabel?: string): Promise<{ selected: string }> {
