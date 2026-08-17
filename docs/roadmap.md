@@ -144,7 +144,23 @@ The remaining item is a **production-host re-validation gate**, not unfinished c
 
 See [MCP Apps portability and deployment](mcp-apps.md) for the canonical contract, security rules, evidence, and completion criteria.
 
-## V5 — authenticated Google Maps Web workflows (design only)
+## Pre-v1 release progression
+
+The current planning sequence maps the remaining major pre-v1 work to release themes. These are planning targets rather than promises to ship every listed item in a specific release. Scope may move when live Google Maps Web behavior, MCP host support, or security constraints require it.
+
+- **v0.3.0 — V5 authenticated workflows + clean remote-auth foundation**
+  - Implement V5 in the staged order below rather than enabling broad signed-in browser automation.
+  - Treat the clean external OAuth reference gateway tracked in issue #74 as foundation/pre-work for this release: a reproducible Maps-specific remote-auth path, current-main backend, stable-principal propagation, `mcp-interop`/target-client validation, and migration away from the historical Monokura-derived dogfood gateway without modifying it in place while active clients depend on it.
+- **v0.4.0 — MCP Apps production portability**
+  - Re-validate the existing host-neutral MCP Apps surface on a suitable second production host with a real restricted Google Maps Embed key.
+  - Reconsider the experimental UI label only after production-host evidence; preserve useful text/structured fallback and avoid turning rich UI into a core requirement.
+- **v0.5.0 — reliability, UI-change resilience, and observability**
+  - Strengthen detection and diagnosis of Google Maps Web UI drift while preserving fail-closed behavior.
+  - Improve shared semantic identity/postcondition machinery, failure classification, live compatibility evidence, and locale/A-B-variation resilience without widening into generic browser automation.
+
+Later pre-v1 releases remain intentionally open for evidence-driven semantic capability gaps or hardening discovered through real use. **v1.0.0 is not reserved for a final feature dump**: it should graduate an already-complete, bounded, documented, and operationally mature product surface to stable status.
+
+## V5 / v0.3.0 — authenticated Google Maps Web workflows (design baseline)
 
 V5 is now defined at the design level as **bounded authenticated Google Maps Web workflows, starting with read-oriented and low-consequence reversible account state**. No V5 implementation is enabled yet.
 

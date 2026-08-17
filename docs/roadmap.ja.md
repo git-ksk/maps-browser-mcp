@@ -146,7 +146,23 @@ Portability baselineはcompleteです。
 
 Canonical contract / security rule / evidence / completion criteriaは [MCP Apps portability / deployment](mcp-apps.ja.md) を参照してください。
 
-## V5 — Authenticated Google Maps Web Workflows（Design Only）
+## pre-v1 release progression
+
+残る主要なpre-v1 workは、現時点では次のrelease themeへ対応付けます。これは各項目を必ずそのversionでshipすると約束するものではありません。Live Google Maps Web behavior、MCP host support、安全性制約の観測結果に応じてscopeは移動できます。
+
+- **v0.3.0 — V5 authenticated workflows + clean remote-auth foundation**
+  - broad signed-in browser automationを有効化せず、下記V5を段階的に実装する。
+  - Issue #74のclean external OAuth reference gatewayをこのreleaseのfoundation / pre-workとして扱う。Maps専用で再現可能なremote-auth path、current-main backend、stable principal propagation、`mcp-interop` / target client検証を整え、稼働clientが依存している間はhistoricalなMonokura由来dogfood gatewayをin-place変更せず安全に移行する。
+- **v0.4.0 — MCP Apps production portability**
+  - 既存host-neutral MCP Apps surfaceを、適切なsecond production host + real restricted Google Maps Embed keyで再検証する。
+  - production-host evidenceが揃った後だけexperimental labelを再評価し、text / structured fallbackを維持してrich UIをcore必須にはしない。
+- **v0.5.0 — reliability / UI-change resilience / observability**
+  - fail-closed behaviorを維持したままGoogle Maps Web UI driftの検知・診断を強化する。
+  - generic browser automationへ広げず、共通semantic identity / postcondition、failure classification、live compatibility evidence、locale差・A/B variation耐性を改善する。
+
+それ以降のpre-v1 releaseは、実利用で得たevidenceに基づくsemantic capability gapやhardeningのため意図的に未確定とします。**v1.0.0は未決機能を最後に詰め込むreleaseにはしません**。すでに完成してbounded・documented・operationally matureになったproduct surfaceをstableへ昇格するreleaseとします。
+
+## V5 / v0.3.0 — Authenticated Google Maps Web Workflows（Design Baseline）
 
 V5はdesign levelで **bounded authenticated Google Maps Web workflow。最初はread-orientedかつlow-consequenceなreversible account stateを優先** と定義します。V5 implementationはまだ有効化しません。
 
