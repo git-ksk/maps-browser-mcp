@@ -13,6 +13,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
+- Add V5-B bounded save-state reads: `maps_read_place_save_state` returns at most 10 existing list names plus membership for the revalidated selected place, excludes privacy/count metadata, requires signed-in readiness, never selects a list or creates one, does not paginate, and closes the chooser after the read.
 - Add V5-A authenticated readiness: when the V5 opt-in is enabled, expose `maps_read_authenticated_readiness`, returning only identity-free `signed_in | signed_out | unknown`; both signed-out and signed-in states were live-validated with the dedicated server-owned profile.
 - Start the V5-A foundation gate: add a disabled-by-default `MAPS_V5_AUTHENTICATED_WORKFLOWS` opt-in that requires Interactive Assist, a server-owned absolute dedicated profile, and the current single-user principal shapes; reject external CDP and module auth until per-principal profile isolation exists. No authenticated V5 semantic tool is exposed yet.
 

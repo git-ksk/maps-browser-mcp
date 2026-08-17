@@ -428,6 +428,28 @@ export function buildServer(): McpServer {
     );
   }
 
+  if (config.v5.authenticatedWorkflows) {
+    server.registerTool(
+      "maps_read_place_save_state",
+      {
+        description: "Read only the bounded existing save-list membership for the currently selected Google Maps place. Returns at most 10 visible existing list identities with saved=true|false, never creates a list, never traverses Saved library contents, and closes the chooser without selecting anything. V5 authenticated workflows and Interactive Assist must both be enabled.",
+        inputSchema: z.object({ expectedLabel: expectedLabelText }),
+        annotations: { readOnlyHint: true, idempotentHint: true }
+      },
+      async ({ expectedLabel }, ctx) => runToolWithHandoff({
+        toolName: "maps_read_place_save_state",
+        args: { expectedLabel },
+        resumeStrategy: "require_fresh_semantic_action",
+        ctx,
+        task: async () => {
+          policy.assertInteractiveAssistEnabled();
+          policy.consumeVisibleRead();
+          return controller.readPlaceSaveState(expectedLabel);
+        }
+      })
+    );
+  }
+
   server.registerTool(
     "maps_search",
     {

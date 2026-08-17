@@ -141,7 +141,7 @@ Required constraints:
 - persistence / dataset化禁止
 - list name/raw user contentをdurable audit/checkpoint logへ書かない
 
-Exact tool name / capはlive observationでsemantic UI structureを確認するまでdesign candidateです。
+Live implementation status (2026-08-18): `maps_read_place_save_state(expectedLabel)` をV5 Opt-in配下で実装済み。Fresh observationでboundedな「リストに保存」menuと、existing-list rowの `role=menuitemradio` + `aria-checked=true|false` を確認した。Toolはsigned-in readinessとexact place identityを再検証し、existing list name + membershipを最大10件だけ返す。paginationせず、row選択/new list作成をせず、read後はEscapeでchooserを閉じる。List identityは各row内の最初のstable visible text leafから取得し、privacy/count metadataは意図的に除外する。Flatten/duplicate/missing等でrow structureが曖昧ならfail closed。`maps_read_saved_lists()` はcurrent workflowにSaved-library traversalが不要なため未実装のまま。
 
 ### V5-C — Existing ListへのPlace Save
 
