@@ -38,7 +38,7 @@ V4 is intentionally broader than V1–V3 but keeps the same constrained architec
 
 Priority order is browser-native/UI-dependent behavior first; search/directions/place operations required to complete the browser workflow second; and capabilities that mostly duplicate official structured interfaces third.
 
-The canonical per-capability status table is **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**. Login-required features are staged in V5; the current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.md)** implements the identity-free readiness gate, bounded save-state reads, and one exact existing-list Save mutation behind an explicit opt-in rather than broad signed-in automation. V4 does not expose raw DOM, raw Accessibility Tree, raw CDP, generic browser actions, desktop actions, or shell execution through MCP.
+The canonical per-capability status table is **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**. Login-required features are staged in V5; the current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.md)** implements identity-free readiness, bounded save-state reads, one exact existing-list Save mutation, and a bounded selected-route Send-to-phone flow gated by explicit one-shot MCP action approval rather than broad signed-in automation. V4 does not expose raw DOM, raw Accessibility Tree, raw CDP, generic browser actions, desktop actions, or shell execution through MCP.
 
 ## 5-minute quick start
 
@@ -351,7 +351,7 @@ Invalid boolean/integer configuration fails fast instead of being silently coerc
 
 ### V5 authenticated-workflow opt-in
 
-`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, and exact existing-list Save operation documented in the V5 baseline. The setting rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden.
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. The setting rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden. The send mutation additionally requires a modern MCP 2026-07-28 client with form elicitation support.
 
 For the current remote single-user design, authenticate the public MCP client at an external gateway and use the private `static-bearer` hop to this core server. Do not forward a caller's public OAuth access token into the browser runtime. See [V5 authenticated workflows](docs/v5-authenticated-workflows.md) and [OAuth gateway pattern](docs/oauth-gateway.md).
 
@@ -433,7 +433,7 @@ See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and err
 | [Project positioning](docs/positioning.md) | Competitive category, Maps Web priority, official-interface overlap, and product direction |
 | [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.md) | Canonical unauthenticated capability coverage/status table and V4 slices |
 | [MCP Apps portability](docs/mcp-apps.md) | Host-neutral UI contract, fallback, layout, security, deployment and compatibility evidence |
-| [V5 authenticated workflows](docs/v5-authenticated-workflows.md) | Design-only authenticated boundary, staged saved-state scope and approval gates |
+| [V5 authenticated workflows](docs/v5-authenticated-workflows.md) | Authenticated boundary, bounded saved-state/send scopes, and explicit approval gates |
 | [Roadmap](docs/roadmap.md) | V4 closeout baseline plus MCP Apps portability status and future direction |
 | [Compliance](docs/compliance.md) | Intended-use and non-goal boundaries |
 | [Manual live E2E](docs/manual-e2e.md) | User-triggered Google Maps compatibility verification |

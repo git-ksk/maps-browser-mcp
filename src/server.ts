@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import {
   acceptedContent,
+  CLIENT_CAPABILITIES_META_KEY,
   createRequestStateCodec,
   inputRequired,
   inputResponse,
@@ -11,6 +12,14 @@ import {
 } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { loadConfig } from "./config.js";
+import { ActionApprovalError, ActionApprovalManager } from "./action-approval.js";
+import {
+  ACTION_APPROVAL_INPUT_KEY,
+  actionApprovalStateMatchesInvocation,
+  createActionApprovalRequestState,
+  supportsActionApprovalFormElicitation,
+  type ActionApprovalRequestState
+} from "./action-approval-mcp.js";
 import {
   buildDirectionsAppHtml,
   MAP_DIRECTIONS_APP_RESOURCE_URI,
@@ -48,6 +57,7 @@ import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
 import { SEARCH_ZOOM_DIRECTIONS } from "./browser/search-zoom.js";
 import { TRANSIT_TIME_MODES } from "./browser/transit-time.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
+import { resolveFreshRouteSendTarget, type RouteSendActionInput } from "./browser/route-send.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import { TakeoverBroker } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
@@ -83,18 +93,23 @@ const v3Handoff = config.handoffCheckpoint.enabled
     })
   : undefined;
 
-const handoffStateCodec = createRequestStateCodec<HandoffRequestState>({
+type MapsRequestState = HandoffRequestState | ActionApprovalRequestState;
+
+const handoffStateCodec = createRequestStateCodec<MapsRequestState>({
   key: randomBytes(32).toString("base64url"),
   ttlSeconds: HANDOFF_STATE_TTL_SECONDS
 });
 
 const handoffOwners = new Map<string, HandoffOwner>();
+const actionApprovals = new ActionApprovalManager();
 
 const queryText = z.string().trim().min(1).max(500);
 const locationText = z.string().trim().min(1).max(300);
 const expectedLabelText = z.string().trim().min(1).max(240);
 const expectedListLabelText = z.string().trim().min(1).max(160);
+const expectedDeviceLabelText = z.string().trim().min(1).max(160);
 const handoffDecisionSchema = z.object({ decision: z.enum(["continue", "cancel"]) });
+const actionApprovalDecisionSchema = z.object({ decision: z.enum(["approve", "cancel"]) });
 
 function jsonResult(value: unknown): CallToolResult {
   return {
@@ -107,7 +122,8 @@ function errorResult(error: unknown): CallToolResult {
     error instanceof PolicyError ||
     error instanceof BrowserRuntimeError ||
     error instanceof OperationQueueError ||
-    error instanceof ExecutionHandoffError;
+    error instanceof ExecutionHandoffError ||
+    error instanceof ActionApprovalError;
   if (!known) console.error("[maps-browser-mcp] unexpected tool error", error);
   const code = known ? error.code : "INTERNAL_ERROR";
   const message = known
@@ -153,7 +169,9 @@ function staleAfterInterventionResult(toolName: string): CallToolResult {
     toolName === "maps_set_transit_time" ||
     toolName === "maps_set_recommended_travel_mode" ||
     toolName === "maps_swap_route_endpoints" ||
-    toolName === "maps_get_route_share_link"
+    toolName === "maps_get_route_share_link" ||
+    toolName === "maps_read_route_send_targets" ||
+    toolName === "maps_send_route_to_device"
     ? "Run maps_directions again before continuing with the route."
     : "Run maps_search again before continuing with the place results.";
   return errorResult(new BrowserRuntimeError(
@@ -308,10 +326,17 @@ async function runToolWithHandoff<T>(input: {
   ctx: ServerContext;
   task: () => Promise<T>;
 }): Promise<CallToolResult | InputRequiredResult> {
-  const state = input.ctx.mcpReq.requestState<HandoffRequestState>();
+  const state = input.ctx.mcpReq.requestState<MapsRequestState>();
   if (!state) {
     consumeMatchingRecovery(input.toolName, input.args);
     return executeToolTask(input.toolName, input.args, input.resumeStrategy, input.task);
+  }
+
+  if (state.phase !== "awaiting_human") {
+    return errorResult(new BrowserRuntimeError(
+      "UI_STATE_CHANGED",
+      "The returned MCP requestState belongs to a different multi-round action. Restart the Maps action instead of reusing it."
+    ));
   }
 
   if (!handoffStateMatchesInvocation(state, input.toolName, input.args, activePrincipalBinding())) {
@@ -393,6 +418,171 @@ async function runToolWithHandoff<T>(input: {
   }
 
   return executeToolTask(input.toolName, input.args, input.resumeStrategy, input.task);
+}
+
+
+function routeSendApprovalPrompt(args: RouteSendActionInput): string {
+  return [
+    `Approve sending the selected route "${args.expectedRouteLabel}"`,
+    `from "${args.expectedOrigin}" to "${args.expectedDestination}"`,
+    `to the exact device "${args.expectedDeviceLabel}"?`,
+    "This creates an external notification on that device.",
+    "Approve only this exact route/device action; Human Intervention completion is not approval."
+  ].join(" ");
+}
+
+async function routeSendApprovalRequired(
+  state: ActionApprovalRequestState,
+  args: RouteSendActionInput
+): Promise<InputRequiredResult> {
+  const requestState = await handoffStateCodec.mint(state);
+  return inputRequired({
+    requestState,
+    inputRequests: {
+      [ACTION_APPROVAL_INPUT_KEY]: inputRequired.elicit({
+        message: routeSendApprovalPrompt(args),
+        requestedSchema: actionApprovalDecisionSchema
+      })
+    }
+  });
+}
+
+function supportsFormElicitation(ctx: ServerContext): boolean {
+  const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined;
+  return supportsActionApprovalFormElicitation(envelope?.[CLIENT_CAPABILITIES_META_KEY]);
+}
+
+async function beginRouteSendApproval(
+  toolName: string,
+  args: RouteSendActionInput,
+  ctx: ServerContext
+): Promise<CallToolResult | InputRequiredResult> {
+  if (!supportsFormElicitation(ctx)) {
+    return errorResult(new BrowserRuntimeError(
+      "UI_STATE_CHANGED",
+      "Send to phone explicit approval requires an MCP 2026-07-28 client with form elicitation support; no approval was created and no send action was attempted"
+    ));
+  }
+  let targets: Awaited<ReturnType<SemanticController["readRouteSendTargets"]>> | undefined;
+  const preflight = await executeToolTask(
+    toolName,
+    args,
+    "require_fresh_semantic_action",
+    async () => {
+      policy.assertInteractiveAssistEnabled();
+      policy.consumeVisibleRead();
+      targets = await controller.readRouteSendTargets(args);
+      return { readyForApproval: true };
+    }
+  );
+  if (!targets) return preflight;
+
+  try {
+    resolveFreshRouteSendTarget(targets.devices, args.deviceIndex, args.expectedDeviceLabel);
+    const epoch = runtime.getResourceEpoch();
+    const principal = activePrincipalBinding();
+    const request = actionApprovals.request({
+      actionName: toolName,
+      args,
+      epoch,
+      principalBinding: principal
+    });
+    return routeSendApprovalRequired(
+      createActionApprovalRequestState({
+        toolName,
+        args,
+        approvalId: request.id,
+        epoch,
+        principalBinding: principal
+      }),
+      args
+    );
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+async function runRouteSendWithApproval(
+  args: RouteSendActionInput,
+  ctx: ServerContext
+): Promise<CallToolResult | InputRequiredResult> {
+  const toolName = "maps_send_route_to_device";
+  const state = ctx.mcpReq.requestState<MapsRequestState>();
+  if (!state) return beginRouteSendApproval(toolName, args, ctx);
+
+  if (state.phase === "awaiting_human") {
+    return runToolWithHandoff({
+      toolName,
+      args,
+      resumeStrategy: "require_fresh_semantic_action",
+      ctx,
+      task: async () => {
+        throw new BrowserRuntimeError(
+          "UI_STATE_CHANGED",
+          "Send to phone requires a fresh route/device read and a new explicit approval after Human Intervention"
+        );
+      }
+    });
+  }
+
+  if (!actionApprovalStateMatchesInvocation(state, toolName, args, activePrincipalBinding())) {
+    actionApprovals.revoke(state.approvalId);
+    return errorResult(new BrowserRuntimeError(
+      "UI_STATE_CHANGED",
+      "The returned action-approval requestState does not match this exact route/device invocation"
+    ));
+  }
+  if (runtime.getResourceEpoch() !== state.epoch) {
+    actionApprovals.revoke(state.approvalId);
+    return errorResult(new BrowserRuntimeError(
+      "UI_STATE_CHANGED",
+      "The Maps resource epoch changed while waiting for approval. Re-read the route/device target and request fresh approval."
+    ));
+  }
+
+  const response = inputResponse(ctx.mcpReq.inputResponses, ACTION_APPROVAL_INPUT_KEY);
+  if (response.kind === "missing") return routeSendApprovalRequired(state, args);
+  if (response.kind !== "elicit" || response.action !== "accept") {
+    actionApprovals.revoke(state.approvalId);
+    return jsonResult({ cancelled: true, reason: "action_approval_cancelled" });
+  }
+  const content = acceptedContent(ctx.mcpReq.inputResponses, ACTION_APPROVAL_INPUT_KEY, actionApprovalDecisionSchema);
+  if (!content) return routeSendApprovalRequired(state, args);
+  if (content.decision === "cancel") {
+    actionApprovals.revoke(state.approvalId);
+    return jsonResult({ cancelled: true, reason: "action_approval_cancelled" });
+  }
+
+  let receipt: string;
+  try {
+    receipt = actionApprovals.grant(state.approvalId, activePrincipalBinding());
+  } catch (error) {
+    return errorResult(error);
+  }
+
+  try {
+    return await executeToolTask(
+      toolName,
+      args,
+      "require_fresh_semantic_action",
+      async () => {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return controller.sendRouteToDevice(args, state.epoch, () => {
+          actionApprovals.consume({
+            id: state.approvalId,
+            receipt,
+            actionName: toolName,
+            args,
+            epoch: state.epoch,
+            principalBinding: activePrincipalBinding()
+          });
+        });
+      }
+    );
+  } finally {
+    actionApprovals.revoke(state.approvalId);
+  }
 }
 
 export function buildServer(): McpServer {
@@ -479,6 +669,58 @@ export function buildServer(): McpServer {
           return controller.savePlaceToList(expectedPlaceLabel, listIndex, expectedListLabel);
         }
       })
+    );
+  }
+
+  if (config.v5.authenticatedWorkflows) {
+    server.registerTool(
+      "maps_read_route_send_targets",
+      {
+        description: "Read only the bounded device targets currently visible in Google Maps Send to phone for one exact selected simple route. Requires signed-in readiness plus exact origin, destination, selected route index and route label; returns at most six device labels, excludes email targets, does not send anything, and closes the dialog after the read.",
+        inputSchema: z.object({
+          expectedOrigin: locationText,
+          expectedDestination: locationText,
+          expectedRouteIndex: z.number().int().min(0).max(11),
+          expectedRouteLabel: expectedLabelText
+        }),
+        annotations: { readOnlyHint: true, idempotentHint: true }
+      },
+      async ({ expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel }, ctx) => runToolWithHandoff({
+        toolName: "maps_read_route_send_targets",
+        args: { expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel },
+        resumeStrategy: "require_fresh_semantic_action",
+        ctx,
+        task: async () => {
+          policy.assertInteractiveAssistEnabled();
+          policy.consumeVisibleRead();
+          return controller.readRouteSendTargets({ expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel });
+        }
+      })
+    );
+
+    server.registerTool(
+      "maps_send_route_to_device",
+      {
+        description: "Send one exact selected simple Google Maps route to one exact visible device only after a fresh MCP explicit approval bound to principal + resource epoch + route + device. The tool excludes email/free-form targets, never treats Human Intervention completion as approval, consumes approval once immediately before the device click, and refuses automatic replay after any state change.",
+        inputSchema: z.object({
+          expectedOrigin: locationText,
+          expectedDestination: locationText,
+          expectedRouteIndex: z.number().int().min(0).max(11),
+          expectedRouteLabel: expectedLabelText,
+          deviceIndex: z.number().int().min(0).max(5),
+          expectedDeviceLabel: expectedDeviceLabelText
+        }),
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false
+        }
+      },
+      async ({ expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel, deviceIndex, expectedDeviceLabel }, ctx) =>
+        runRouteSendWithApproval(
+          { expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel, deviceIndex, expectedDeviceLabel },
+          ctx
+        )
     );
   }
 

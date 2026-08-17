@@ -199,7 +199,13 @@ Implementation前に:
 - free-form recipient/email/phone entry禁止
 - notification/account/device settingをauto-enableしない
 
-Route-send toolは最初、current semantic identityをsend直前にrevalidateできるsimple single-destination routeだけを対象にします。
+Initial route-send surfaceは、delivery直前にcurrent semantic identityをrevalidateできるsimple single-destination routeだけを対象にします。
+
+Implementation status (2026-08-18): `maps_read_route_send_targets({ expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel })` と `maps_send_route_to_device(...)` をV5 opt-in + Interactive Assist gateの背後へ実装しました。Selected routeはboundedなindex + labelだけをephemeral semantic stateとして保持します。Target readはsigned-in readiness、exact canonical simple directions request、exact selected-route identityを要求し、selected-routeのSend-to-phone dialogを開いてcurrently visible device labelを最大6件だけ返します。Email targetとnotification checkboxは除外し、paginationせず、sendせずにdialogを閉じます。
+
+Send operationはreal MCP 2026-07-28 `input_required` / form elicitation flowを使います。Approval record作成前にclientのform-elicitation capabilityを必須化し、approvalをauthenticated MCP principal + exact resource epoch + exact route args + exact device index / expected labelへbindします。Approval requestStateにはraw route/device textを入れずbounded control-plane identifier/digestだけを保持し、Human向けapproval formにはfinal exact actionを表示します。Approvalはone-shot + expiry付きで、fresh route/device revalidation完了後、single exact device clickの直前にだけconsumeします。Human Intervention completionはapprovalを作成・充足せず、Human Intervention後は必ずfresh semantic reissueです。
+
+2026-08-18のfresh live observationでは、selected-routeのgeneric Send-to-phone control、visibleな `role=dialog` 1つ、bounded device-button target、独立したnotification checkboxを確認しました。新しいread toolはdedicated signed-in profileでcurrent device 1件をboundedに返し、dialogをcloseしました。Real MCP approval roundも `input_required` + signed requestState + exact `action-approval` elicitation + explicit cancel round-tripまでlive確認し、cancelではsend 0件です。その後freshなexplicit Human approvalを取得し、live route-send invocationを1回だけ実行して、target iOS device側でdeliveryを独立確認しました。初期のvisible-confirmation probeは、現行Mapsの `aria-live` confirmation文言/重複DOMが想定よりbroaderだったためfail closeしました。Automatic retryは行っていません。このlive observationを基にpostconditionをhardeningし、click前のbounded live-region baselineを取得、同一announcementをdeduplicateし、click後に新規出現したexact-device + send-semantic announcementが1件だけの場合にsuccessとする形へ変更しました。修正版postconditionはdeterministic testでcoverageし、parser確認のためだけの2回目external sendは意図的に行っていません。V5-D live session全体では複数notificationを観測しましたが、先行するSend-surface observationがあるためsingle approved invocation由来とは断定していません。Implementation上はapproved invocationごとのdevice-click siteをexact 1箇所に固定し、postcondition failure後のdelivery retryは行いません。
 
 “Send place to phone” はMaps-specific desktop place control/postconditionをfresh re-observeするまでobservation/design gateです。Googleはgeneral featureを文書化していますが、Search等の別surfaceからMaps place workflowを推測しません。
 

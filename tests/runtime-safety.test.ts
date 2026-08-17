@@ -137,3 +137,18 @@ test("active intervention blocks agent CDP access before touching the browser", 
       error.intervention?.status === "awaiting_human"
   );
 });
+
+test("selected route identity is bounded semantic state and is cleared by later semantic mutation", () => {
+  const runtime = makeRuntime();
+  const mutable = runtime as unknown as {
+    lastAction?: MapsAction;
+    selectedRoute?: { index: number; label: string };
+    viewState: "route" | "blank";
+  };
+  mutable.lastAction = { kind: "directions", origin: "A", destination: "B", mode: "driving" };
+  mutable.selectedRoute = { index: 2, label: "15 min via Example" };
+  mutable.viewState = "route";
+  assert.deepEqual(runtime.getSelectedRoute(), { index: 2, label: "15 min via Example" });
+  runtime.markSemanticMutationWithoutReplayAction();
+  assert.equal(runtime.getSelectedRoute(), undefined);
+});

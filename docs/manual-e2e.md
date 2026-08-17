@@ -136,6 +136,21 @@ Run these only from a freshly verified active place with Interactive Assist enab
 
 ## 7. Route read/select
 
+### V5-D Send to phone approval boundary
+
+Run this only with `MAPS_V5_AUTHENTICATED_WORKFLOWS=true`, Interactive Assist enabled, a signed-in dedicated single-user profile, and a modern MCP client that advertises 2026-07-28 form elicitation. Do not use a personal route/device as an unattended mutation target.
+
+1. Start a fresh simple single-destination `maps_directions({ origin, destination, mode })` request with an explicit origin, no waypoints, and no avoid constraints.
+2. Call `maps_read_route_summary`, choose one returned route, and select it with exact `index + expectedLabel`.
+3. Call `maps_read_route_send_targets({ expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel })`. Confirm at most six device targets are returned, email/free-form recipient choices and the notification checkbox are absent, no pagination occurs, and the Send-to-phone dialog closes without sending.
+4. Call `maps_send_route_to_device(...)` with the exact returned device `index + expectedDeviceLabel`. Before any device click, the MCP must return `input_required` with one `action-approval` form and a signed requestState bound to the exact principal/epoch/route/device. A client without form elicitation support must fail before an approval record or send attempt is created.
+5. Cancel the approval once and confirm the operation returns `action_approval_cancelled` with no send. Human Intervention completion must not satisfy the action approval.
+6. Only when the Human explicitly approves the exact route and exact device shown in the approval form, retry with that accepted approval. Immediately before the device click the server must freshly revalidate signed-in readiness, canonical route identity, selected route index+label, unchanged resource epoch, and exact device index+label; approval is consumed once immediately before exactly one device click.
+7. Success requires the exact visible Send-to-phone confirmation for that device. If confirmation is absent/ambiguous or any state changes, return failure, invalidate stale semantic state, and **do not automatically retry the send**.
+8. Confirm no email/phone text entry, account switching, notification-setting mutation, internal Maps API/XHR interception, credential/account identity read, or generic browser primitive is exposed.
+
+The live compatibility check may stop after step 5 when no exact Human approval is available; in that case do not claim the external-send postcondition as live-validated.
+
 When validating the V4-F Recommended/Best travel-mode slice, begin from a fresh simple `maps_directions({ origin, destination, mode: "transit" })` request with an explicit origin, no waypoints, and no avoid constraints:
 
 1. Call `maps_set_recommended_travel_mode({ expectedOrigin: "deliberately wrong", expectedDestination: destination })`; expect `UI_STATE_CHANGED` before UI mutation and no resource-epoch advance.

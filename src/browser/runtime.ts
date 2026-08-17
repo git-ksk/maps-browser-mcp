@@ -25,6 +25,7 @@ type CandidateKind = "place" | "route";
 type MapsPathKind = "search" | "place" | "directions" | "map" | "root" | "other";
 export type MapsInterventionReason = "access_challenge" | "sign_in" | "consent" | "external_surface";
 export type MapsIntervention = ExecutionIntervention<MapsAction, MapsInterventionReason>;
+export interface SelectedRouteIdentity { index: number; label: string; }
 
 const HUMAN_TAKEOVER_KEYS = new Set([
   "Enter",
@@ -170,6 +171,7 @@ export class MapsBrowserRuntime {
   private port?: number;
   private targetId?: string;
   private lastAction?: MapsAction;
+  private selectedRoute?: SelectedRouteIdentity;
   private viewState: MapsViewState = "blank";
   private readonly handoff = new ExecutionHandoffState<MapsAction, MapsInterventionReason>();
 
@@ -186,24 +188,31 @@ export class MapsBrowserRuntime {
     return this.viewState;
   }
 
+  getSelectedRoute(): SelectedRouteIdentity | undefined {
+    return this.selectedRoute ? { ...this.selectedRoute } : undefined;
+  }
+
   getResourceEpoch(): number {
     return this.handoff.getResourceEpoch();
   }
 
   markSemanticMutation(): void {
     this.assertAgentAuthority();
+    this.selectedRoute = undefined;
     this.handoff.advanceResourceEpoch();
   }
 
   markSemanticMutationWithoutReplayAction(): void {
     this.assertAgentAuthority();
     this.lastAction = undefined;
+    this.selectedRoute = undefined;
     this.handoff.advanceResourceEpoch();
   }
 
   adoptSearchSuggestionResult(query: string, view: "search" | "place"): void {
     this.assertAgentAuthority();
     this.lastAction = { kind: "search", query };
+    this.selectedRoute = undefined;
     this.viewState = view;
     this.handoff.advanceResourceEpoch();
   }
@@ -344,6 +353,7 @@ export class MapsBrowserRuntime {
     await this.assertNoInlineChallenge(action);
     this.handoff.advanceResourceEpoch();
     this.lastAction = action;
+    this.selectedRoute = undefined;
     this.viewState = actionToView(action);
     return { url: finalUrl };
   }
@@ -442,6 +452,7 @@ export class MapsBrowserRuntime {
       );
     }
     this.handoff.advanceResourceEpoch();
+    this.selectedRoute = undefined;
     this.viewState = "place";
     return label;
   }
@@ -466,6 +477,7 @@ export class MapsBrowserRuntime {
       );
     }
     this.handoff.advanceResourceEpoch();
+    this.selectedRoute = { index, label };
     this.viewState = "route";
     return label;
   }
@@ -639,6 +651,7 @@ export class MapsBrowserRuntime {
 
   private invalidateSemanticState(advanceEpoch = true): void {
     this.lastAction = undefined;
+    this.selectedRoute = undefined;
     this.viewState = "blank";
     if (advanceEpoch) this.handoff.advanceResourceEpoch();
   }

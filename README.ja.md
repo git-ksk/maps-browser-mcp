@@ -40,7 +40,7 @@ V4はV1〜V3よりcoverageを広げますが、制約付きarchitectureは維持
 
 優先順位は、browser-native / UI-dependent機能を最優先、browser workflow完結に必要なsearch / directions / placeを次、公式structured interfaceとほぼ同等の機能をその次とします。
 
-機能単位のcanonical status表は **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md)** です。ログイン必須機能はV5へ送ります。Current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.ja.md)** はdesign-onlyで、broad signed-in automationではなくaccount isolation + bounded saved-stateから始めます。V4でもraw DOM、raw Accessibility Tree、raw CDP、generic browser action、desktop action、shell executionをMCPへ公開しません。
+機能単位のcanonical status表は **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md)** です。ログイン必須機能はV5へ送ります。Current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.ja.md)** は、identity-free readiness、bounded save-state read、exact existing-list Save、explicit one-shot MCP action approval付きのbounded selected-route Send-to-phone flowまで実装し、broad signed-in automationは公開しません。V4でもraw DOM、raw Accessibility Tree、raw CDP、generic browser action、desktop action、shell executionをMCPへ公開しません。
 
 ## 5分クイックスタート
 
@@ -335,7 +335,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MAPS_HEADLESS` | `false` | headless mode |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linuxの制約runtime向け最終手段。明示時のみ `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
-| `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなV5 authenticated-workflow foundation gateを有効化。このflagだけではV5 account toolは公開しない |
+| `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなbounded V5 authenticated toolを有効化。Interactive Assistと専用single-user profile gateも必須 |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | MCP Apps directions view用のoptional restricted Maps Embed API key。未設定でもtext/structured render toolは利用可能 |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | process-local操作上限 |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | 独立したbounded visible-state/UI read上限 |
@@ -348,7 +348,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 
 ### V5 authenticated workflow Opt-in
 
-`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` はV5 authenticated-workflow foundation用の追加fail-closed Opt-inです。この設定だけでは **authenticated V5 semantic toolはまだ公開されません**。現段階では `INTERACTIVE_ASSIST_MODE=true` を必須とし、既存CDP attachを拒否し、per-principal profile isolation実装前の `MCP_AUTH_PROVIDER=module` を拒否します。`MAPS_CHROME_PROFILE_DIR` を上書きする場合は絶対pathの専用profileが必要です。
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` はbounded authenticated V5 semantics用の追加fail-closed Opt-inです。`INTERACTIVE_ASSIST_MODE=true` と組み合わせると、V5 baselineに記載したidentity-free readiness、bounded selected-place save-state read、exact existing-list Save、bounded selected-route Send-to-phone target read、approval-gated single-device sendだけを公開します。既存CDP attachを拒否し、per-principal profile isolation実装前の `MCP_AUTH_PROVIDER=module` を拒否し、`MAPS_CHROME_PROFILE_DIR` overrideにはabsoluteなdedicated profile pathを要求します。Send mutationはさらにform elicitationをadvertiseするmodern MCP 2026-07-28 clientが必要です。
 
 現在のremote single-user設計では、public MCP clientの認証はexternal gatewayで行い、このcore serverへのprivate hopは `static-bearer` を使います。callerのpublic OAuth access tokenをbrowser runtimeへ転送しません。詳細は [V5 authenticated workflows](docs/v5-authenticated-workflows.ja.md) と [OAuth gateway pattern](docs/oauth-gateway.ja.md) を参照してください。
 
@@ -433,7 +433,7 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 | [Project positioning](docs/positioning.ja.md) | 競合category、Maps Web priority、公式interface重複、product direction |
 | [V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md) | 未ログインcapabilityのcanonical coverage/status表とV4 slice |
 | [MCP Apps portability](docs/mcp-apps.ja.md) | Host-neutral UI contract、fallback、layout、security、deployment、compatibility evidence |
-| [V5 authenticated workflows](docs/v5-authenticated-workflows.ja.md) | Design-only authenticated boundary、staged saved-state scope、approval gate |
+| [V5 authenticated workflows](docs/v5-authenticated-workflows.ja.md) | Authenticated boundary、bounded saved-state / send scope、explicit approval gate |
 | [Roadmap](docs/roadmap.ja.md) | V4 closeout baselineとMCP Apps portability status / future direction |
 | [Compliance / Safety](docs/compliance.ja.md) | 利用目的・非目的・規約境界 |
 | [Manual Live E2E](docs/manual-e2e.ja.md) | 実Google Maps user-triggered互換性確認 |

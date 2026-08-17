@@ -146,6 +146,21 @@ Interactive Assist有効かつfreshにverifiedされたactive placeからだけ�
 
 ## 7. Route Read / Select
 
+### V5-D Send to Phone Approval Boundary
+
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true`、Interactive Assist有効、signed-in dedicated single-user profile、2026-07-28 form elicitationをadvertiseするmodern MCP clientでだけ実行します。Personal route/deviceをunattended mutation targetにしません。
+
+1. Explicit origin、waypointなし、avoidなしのfresh simple single-destination `maps_directions({ origin, destination, mode })` を開始
+2. `maps_read_route_summary` で1 routeを選び、exact `index + expectedLabel` でselect
+3. `maps_read_route_send_targets({ expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel })` をcall。Device targetが最大6件、email/free-form recipientとnotification checkboxは返らず、paginationなし、sendせずSend-to-phone dialogをcloseすることを確認
+4. Exact returned deviceの `index + expectedDeviceLabel` で `maps_send_route_to_device(...)` をcall。Device click前にMCPが `input_required` とsingle `action-approval` formを返し、signed requestStateがexact principal / epoch / route / deviceへbindされること。Form elicitation非対応clientはapproval record作成/send attempt前にfailすること
+5. Approvalを1回cancelし、`action_approval_cancelled` かつsend 0件を確認。Human Intervention completionはaction approvalを満たさないこと
+6. Humanがapproval formに表示されたexact route + exact deviceを明示承認した場合だけaccepted approvalでretry。Device click直前にsigned-in readiness、canonical route identity、selected route index+label、resource epoch不変、exact device index+labelをfresh revalidateし、approvalをsingle exact device click直前にone-shot consumeすること
+7. Successはexact deviceへのvisible Send-to-phone confirmationを必須化。Confirmation missing/ambiguousまたはstate change時はfailure + stale semantic state invalidateとし、**sendをautomatic retryしない**
+8. Email/phone text entry、account switching、notification setting mutation、Maps internal API/XHR interception、credential/account identity read、generic browser primitiveが公開されていないことを確認
+
+Exact Human approvalが無いlive compatibility checkはstep 5で停止してよく、その場合external-send postconditionをlive-validatedとclaimしません。
+
 V4-F Recommended/Best travel-mode sliceは、explicit origin・waypointなし・avoidなしのfresh simple `maps_directions({ origin, destination, mode: "transit" })` requestから開始します。
 
 1. `maps_set_recommended_travel_mode({ expectedOrigin: "deliberately wrong", expectedDestination: destination })` はUI mutation前に `UI_STATE_CHANGED`、resource epoch不変であること
