@@ -8,6 +8,11 @@ import {
 } from "mcp-execution-handoff/core";
 import type { MapsAction, MapsViewState } from "../types.js";
 import { PolicyEngine, PolicyError } from "../policy/policy-engine.js";
+import {
+  AUTHENTICATED_READINESS_EXPRESSION,
+  parseAuthenticatedReadiness,
+  type AuthenticatedMapsReadiness
+} from "./authenticated-readiness.js";
 import { classifyGoogleInterventionSurface } from "./intervention-surface.js";
 import { ChromeProcess } from "./chrome-process.js";
 
@@ -346,6 +351,22 @@ export class MapsBrowserRuntime {
   async currentUrl(): Promise<string> {
     const client = await this.getClient();
     return this.currentUrlUnchecked(client);
+  }
+
+  async readAuthenticatedReadiness(): Promise<AuthenticatedMapsReadiness> {
+    await this.assertMapsSurface();
+    const client = await this.getClient();
+    const deadline = Date.now() + 1_500;
+    for (;;) {
+      const result = await client.Runtime.evaluate({
+        expression: AUTHENTICATED_READINESS_EXPRESSION,
+        returnByValue: true,
+        awaitPromise: true
+      });
+      const readiness = parseAuthenticatedReadiness(result.result.value);
+      if (readiness !== "unknown" || Date.now() >= deadline) return readiness;
+      await sleep(100);
+    }
   }
 
   async assertMapsSurface(): Promise<string> {

@@ -403,6 +403,31 @@ export function buildServer(): McpServer {
     }
   );
 
+  if (config.v5.authenticatedWorkflows) {
+    server.registerTool(
+      "maps_read_authenticated_readiness",
+      {
+        description: "Return only a coarse signed_in | signed_out | unknown readiness state for the dedicated Google Maps Web session. This V5-A read never returns account name, email, profile photo, account ID, cookie, or token data. V5 authenticated workflows and Interactive Assist must both be enabled.",
+        inputSchema: z.object({}),
+        annotations: {
+          readOnlyHint: true,
+          idempotentHint: true
+        }
+      },
+      async (_args, ctx) => runToolWithHandoff({
+        toolName: "maps_read_authenticated_readiness",
+        args: {},
+        resumeStrategy: "require_fresh_semantic_action",
+        ctx,
+        task: async () => {
+          policy.assertInteractiveAssistEnabled();
+          policy.consumeVisibleRead();
+          return controller.readAuthenticatedReadiness();
+        }
+      })
+    );
+  }
+
   server.registerTool(
     "maps_search",
     {

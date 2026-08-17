@@ -15,6 +15,7 @@
 
 ### 変更
 
+- V5-A readinessを追加。V5 Opt-in時のみ `maps_read_authenticated_readiness` を公開し、identity-freeな `signed_in | signed_out | unknown` だけを返す。signed-out / signed-in両方を専用server-owned profileでlive確認済み。
 - V5-A foundation gateを開始。default offの `MAPS_V5_AUTHENTICATED_WORKFLOWS` Opt-inを追加し、Interactive Assist、server-ownedなabsolute dedicated profile、現行single-user principal shapeを必須化。per-principal profile isolation実装前はexternal CDP / module authを拒否する。authenticated V5 semantic toolはまだ公開しない。
 
 - ExperimentalなMCP Apps directions Viewをhost差異に対してhardening。Stable 2026-01-26 host context、safe-area/container sizing、size notification、cancellation/error cleanup、teardown、Google推奨Embed referrer policyを反映。
