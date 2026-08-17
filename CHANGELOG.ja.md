@@ -12,6 +12,7 @@
 
 - pre-v1 completion sequenceを定義。v0.3.0をV5 + clean remote-auth foundation、v0.4.0をMCP Apps production portability、v0.5.0をreliability / UI-change resilience / observabilityとし、v1.0.0は未決機能の詰め込みではなくstable昇格とする。
 - V5 authenticated-workflows design baselineをimplementation有効化なしで定義。Human-only sign-in、single-user/per-principal browser isolation gate、bounded saved-state read、first mutation candidateとしてexisting-listへのSave、Send to phone前のexplicit ActionApproval、Maps-history privacy gate、Timelineのdesktop Web candidate除外を明文化。
+- V5-E history privacy/surface gateをhistory tool追加なしでclose。Fresh live observationでMaps HistoryはMy Activityへcrossし、Maps-local Recentはmutation-adjacentかつbounded parseに使えるstable activity row semanticを欠くことを確認。My Activityはallowlist外、Recentはobservation gate、Timelineはdesktop Web roadmap外を維持する。
 
 ### 変更
 

@@ -213,23 +213,24 @@ Fresh live observation on 2026-08-18 confirmed the selected-route generic Send-t
 
 Google documents account-backed Maps history on desktop, including searches, directions, viewed places, shared links, and calls. That makes the surface substantially more privacy-sensitive than a single selected place's save membership.
 
-It also may cross from `maps.google.com` into Google My Activity/account surfaces, which would widen the project's current allowed top-level browser boundary.
+Fresh live observation on 2026-08-18 confirmed three distinct signed-in entry points rather than one reusable Maps dataset:
 
-Therefore Maps history is **not** part of the first V5 implementation slice.
+- the Maps menu exposes a History menu item, but activating it leaves the Maps origin and enters `myactivity.google.com/search-services/history/maps`;
+- the Maps menu also exposes a Recent menu item that remains on the Maps surface; however, the current Recent main surface is mutation-adjacent and semantically weak for bounded extraction: the observed structure contained 15 checkboxes plus Delete/More controls and a scrollable container, while the activity entries themselves did not expose stable `listitem`/`row` semantics that could be bound without relying on DOM ordering or private labels;
+- `Your data in Maps` is an explicit `myaccount.google.com` account-surface link and is not an implicit extension of the Maps allowlist.
 
-If reopened later:
+Accordingly **no V5-E history read tool is implemented**. History is currently `BLOCKED: separate account-surface threat model required`. The Maps-local Recent surface remains observation-gated rather than treated as a safe substitute: the project will not parse private activity by DOM position, click through adjacent deletion controls, auto-scroll, paginate, or infer row identity from opaque/internal attributes.
 
-- read-only first;
-- explicit user request required;
-- strict small result cap and no automatic pagination;
-- no bulk export/persistence;
-- no history deletion in the same milestone;
-- no addition of `myactivity.google.com` or another account surface without a separate threat-model/allowlist review;
-- no reuse of history content to silently influence unrelated Maps actions.
+Re-open only if one of these conditions is met:
+
+- a separate account-surface threat model and explicit top-level allowlist review approves a narrowly bounded My Activity read surface; or
+- Maps Recent exposes a freshly observed stable semantic row/container model that can be capped without scrolling/pagination and can be parsed without account identity, private-label selectors, generic DOM exposure, or mutation-adjacent ambiguity.
+
+Any reopened slice remains read-only first, requires explicit user invocation, uses a strict small hard cap, performs no bulk export/persistence or deletion, and never reuses history content to silently influence unrelated Maps actions.
 
 ### Timeline — removed from the Web roadmap
 
-Timeline is not a current Maps-on-computer capability. It is device-based and unavailable in Maps on desktop according to current Google documentation.
+Timeline is not a current Maps-on-computer capability. It is device-based and unavailable in Maps on desktop according to current Google documentation. Fresh live observation on 2026-08-18 did expose a Maps-menu link targeting `/maps/timeline`, but direct navigation did not remain on a dedicated Timeline route and resolved back to the ordinary Maps surface; no bounded desktop Timeline target was observed.
 
 V5 must not add a browser workaround, mobile automation, internal API access, synced Timeline scraping, or another mechanism to recreate it. Re-open only if Google officially restores a supported desktop Maps surface and a bounded semantic target can be observed.
 

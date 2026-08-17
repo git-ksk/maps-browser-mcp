@@ -232,6 +232,16 @@ Run this only from the dedicated signed-in V5 profile with both `MAPS_V5_AUTHENT
 
 No account name/email/profile identifier, cookie/token, chooser dump, or raw private place/list content should enter durable checkpoints or public validation logs. Human Intervention completion remains separate from action approval and must force a fresh semantic reissue rather than replaying the old Save attempt.
 
+## 12. V5-E history privacy/surface gate (observation only)
+
+There is no V5-E history MCP tool. Re-run this gate only when evaluating whether the surface can be reopened. Use the dedicated signed-in profile and record only redacted structural results.
+
+1. From the Maps top-level menu, confirm whether History, Recent, Timeline, and `Your data in Maps` entry points exist without reading account identity.
+2. If History leaves the Maps origin for `myactivity.google.com` or another account surface, stop. Do not widen the allowlist or inspect/export activity content under this checklist; record `BLOCKED: separate account-surface threat model required`.
+3. If Maps-local Recent exists, inspect only bounded visible structure. A safe candidate must expose a stable semantic row/container model, a strict first-page hard cap, and no need for DOM-order/private-label selectors. Adjacent Delete/selection controls, ambiguous rows, or required scrolling/pagination keep the feature observation-gated.
+4. Do not change activity settings, delete history, auto-scroll, paginate, read cookies/storage/account identity, intercept network/internal APIs, or persist screenshots/logs containing private activity.
+5. Timeline remains outside the desktop-Web roadmap unless navigation remains on an official dedicated desktop Timeline surface with a freshly observable bounded semantic target; a menu link or redirect back to the normal map is insufficient.
+
 ## Release result
 
 Record only pass/fail, selected runtime (`host` or `container` when applicable), the specific semantic operation checked, and the Google Maps UI date/locale used for the check. Do not attach screenshots or logs containing account information, private locations, cookies, browser profiles, or personal identifiers to public issues.
