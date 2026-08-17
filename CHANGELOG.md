@@ -8,6 +8,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Documentation
 
+- Define the pre-v1 completion sequence: v0.3.0 for V5 plus the clean remote-auth foundation, v0.4.0 for MCP Apps production portability, v0.5.0 for reliability/UI-change resilience/observability, and v1.0.0 as stable graduation rather than a final feature dump.
 - Define the V5 authenticated-workflows design baseline without enabling implementation: Human-only sign-in, single-user/per-principal browser isolation gate, bounded saved-state reads, save-to-existing-list as the first mutation candidate, explicit ActionApproval before Send to phone, Maps-history privacy gating, and Timeline removal from the desktop Web candidate set.
 
 ### Changed
