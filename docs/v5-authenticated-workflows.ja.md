@@ -1,6 +1,6 @@
 # V5 Authenticated Workflows — Design Baseline
 
-V5は、userがsign-inした後にだけ存在するGoogle Maps Web stateを意図的に扱う最初のmilestoneです。この文書は **design baselineのみ** であり、implementation開始、authenticated toolの有効化、browser-control surface拡張を許可するものではありません。
+V5は、userがsign-inした後にだけ存在するGoogle Maps Web stateを意図的に扱う最初のmilestoneです。この文書はauthenticated semanticsのdesign baselineです。authenticated toolを公開する前にV5-Aの **foundation gate** は実装できますが、下記live-observation entry gateを満たすまではauthenticated semantic read / mutationを有効化しません。
 
 V5でもagentが操作できるのはboundedなMaps-specific semantic operationだけです。Authentication、account selection、consent、MFA/OTP、CAPTCHA、その他sensitiveなaccount stepはHuman authorityのまま維持します。
 
@@ -313,9 +313,9 @@ Suggested order:
 
 Coverage目的でSaved list/historyをcrawlしません。
 
-## V5 Implementation Entry Gate
+## V5 Authenticated-Semantic Implementation Entry Gate
 
-次をすべて満たすまでimplementation開始しません。
+最初のauthenticated semantic toolより前に、fail-closedなconfiguration / isolation foundationを実装して構いません。authenticated Maps readiness、saved-state read、mutationを実装・公開する前には次をすべて満たします。
 
 1. proposed first sliceについてcurrent Google Maps authenticated UIをfresh observation済み
 2. account identityを露出せずstable signed-in/coarse readiness semanticをverify可能
@@ -326,4 +326,4 @@ Coverage目的でSaved list/historyをcrawlしません。
 7. exact enabled account surface / non-goalをEN/JA同期
 8. raw DOM/CDP/AX、generic text entry、internal Maps API/XHR、credential handlingへ依存しない
 
-このgateを満たすまではV5は **design-only** です。
+このgateを満たすまではV5 authenticated **semantic toolはdesign-only** です。configuration / isolation foundation自体はaccount-state readやmutationを許可しません。

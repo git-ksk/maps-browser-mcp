@@ -119,6 +119,9 @@ export interface AppConfig {
   mcpApps: {
     googleMapsEmbedApiKey?: string;
   };
+  v5: {
+    authenticatedWorkflows: boolean;
+  };
   handoffCheckpoint: {
     enabled: boolean;
     filePath?: string;
@@ -219,6 +222,33 @@ export function loadConfig(): AppConfig {
     ? envInt("PORT", 8787, 1, 65535)
     : envInt("MCP_HTTP_PORT", 8787, 1, 65535);
 
+  const profileDir = process.env.MAPS_CHROME_PROFILE_DIR ??
+    path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile");
+  const interactiveAssist = envBool("INTERACTIVE_ASSIST_MODE", false);
+  const v5AuthenticatedWorkflows = envBool("MAPS_V5_AUTHENTICATED_WORKFLOWS", false);
+  if (v5AuthenticatedWorkflows) {
+    if (!interactiveAssist) {
+      throw new Error(
+        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true requires INTERACTIVE_ASSIST_MODE=true because authenticated Maps state is available only through bounded semantic UI reads/actions"
+      );
+    }
+    if (allowExternalCdp) {
+      throw new Error(
+        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true cannot be combined with MAPS_ALLOW_EXTERNAL_CDP=true because V5 requires a server-owned dedicated browser profile"
+      );
+    }
+    if (authProvider === "module") {
+      throw new Error(
+        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true does not yet allow MCP_AUTH_PROVIDER=module because per-principal browser/profile isolation is not implemented; use local single-user mode or a single-user gateway with the private static-bearer hop"
+      );
+    }
+    if (!path.isAbsolute(profileDir)) {
+      throw new Error(
+        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path"
+      );
+    }
+  }
+
   return {
     auth: {
       provider: authProvider,
@@ -234,9 +264,7 @@ export function loadConfig(): AppConfig {
     },
     browser: {
       executable: process.env.MAPS_CHROME_EXECUTABLE || undefined,
-      profileDir:
-        process.env.MAPS_CHROME_PROFILE_DIR ??
-        path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile"),
+      profileDir,
       externalCdpPort,
       allowExternalCdp,
       headless: envBool("MAPS_HEADLESS", false),
@@ -250,6 +278,9 @@ export function loadConfig(): AppConfig {
     mcpApps: {
       googleMapsEmbedApiKey: process.env.GOOGLE_MAPS_EMBED_API_KEY?.trim() || undefined
     },
+    v5: {
+      authenticatedWorkflows: v5AuthenticatedWorkflows
+    },
     handoffCheckpoint: {
       enabled: Boolean(checkpointPathRaw && checkpointKey),
       filePath: checkpointPathRaw,
@@ -257,7 +288,7 @@ export function loadConfig(): AppConfig {
       ttlMs: checkpointTtlMs
     },
     policy: {
-      interactiveAssist: envBool("INTERACTIVE_ASSIST_MODE", false),
+      interactiveAssist,
       maxActionsPerMinute: envInt("MAPS_MAX_ACTIONS_PER_MINUTE", 30, 1, 300),
       maxVisibleReadsPerHour: envInt("MAPS_MAX_VISIBLE_READS_PER_HOUR", 30, 1, 240),
       maxPendingActions: envInt("MAPS_MAX_PENDING_ACTIONS", 8, 1, 50),

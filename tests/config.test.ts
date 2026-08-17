@@ -23,7 +23,10 @@ const KEYS = [
   "MAPS_HANDOFF_CHECKPOINT_FILE",
   "MAPS_HANDOFF_CHECKPOINT_KEY",
   "MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS",
-  "GOOGLE_MAPS_EMBED_API_KEY"
+  "GOOGLE_MAPS_EMBED_API_KEY",
+  "INTERACTIVE_ASSIST_MODE",
+  "MAPS_V5_AUTHENTICATED_WORKFLOWS",
+  "MAPS_CHROME_PROFILE_DIR"
 ] as const;
 
 const CHECKPOINT_KEY = Buffer.alloc(32, 6).toString("base64url");
@@ -175,6 +178,71 @@ test("validates operation watchdog bounds", async () => {
   });
   await withEnv({ MAPS_OPERATION_TIMEOUT_MS: "45000" }, () => {
     assert.equal(loadConfig().policy.operationTimeoutMs, 45_000);
+  });
+});
+
+test("V5 authenticated workflows are disabled by default", async () => {
+  await withEnv({}, () => {
+    assert.equal(loadConfig().v5.authenticatedWorkflows, false);
+  });
+});
+
+test("V5 authenticated workflows require Interactive Assist", async () => {
+  await withEnv({ MAPS_V5_AUTHENTICATED_WORKFLOWS: "true" }, () => {
+    assert.throws(() => loadConfig(), /requires INTERACTIVE_ASSIST_MODE=true/);
+  });
+});
+
+test("V5 authenticated workflows reject external CDP attachment", async () => {
+  await withEnv({
+    MAPS_V5_AUTHENTICATED_WORKFLOWS: "true",
+    INTERACTIVE_ASSIST_MODE: "true",
+    MAPS_ALLOW_EXTERNAL_CDP: "true",
+    MAPS_CDP_PORT: "9222"
+  }, () => {
+    assert.throws(() => loadConfig(), /cannot be combined with MAPS_ALLOW_EXTERNAL_CDP=true/);
+  });
+});
+
+test("V5 authenticated workflows reject multi-principal-capable module auth until profile isolation exists", async () => {
+  await withEnv({
+    MAPS_V5_AUTHENTICATED_WORKFLOWS: "true",
+    INTERACTIVE_ASSIST_MODE: "true",
+    MCP_AUTH_PROVIDER: "module",
+    MCP_AUTH_PROVIDER_MODULE: "./auth.mjs"
+  }, () => {
+    assert.throws(() => loadConfig(), /does not yet allow MCP_AUTH_PROVIDER=module/);
+  });
+});
+
+test("V5 authenticated workflows accept the current single-user local and static-bearer shapes", async () => {
+  await withEnv({
+    MAPS_V5_AUTHENTICATED_WORKFLOWS: "true",
+    INTERACTIVE_ASSIST_MODE: "true"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.v5.authenticatedWorkflows, true);
+    assert.equal(config.auth.provider, "none");
+  });
+
+  await withEnv({
+    MAPS_V5_AUTHENTICATED_WORKFLOWS: "true",
+    INTERACTIVE_ASSIST_MODE: "true",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.v5.authenticatedWorkflows, true);
+    assert.equal(config.auth.provider, "static-bearer");
+  });
+});
+
+test("V5 authenticated workflows require an absolute dedicated profile path when overridden", async () => {
+  await withEnv({
+    MAPS_V5_AUTHENTICATED_WORKFLOWS: "true",
+    INTERACTIVE_ASSIST_MODE: "true",
+    MAPS_CHROME_PROFILE_DIR: "relative-profile"
+  }, () => {
+    assert.throws(() => loadConfig(), /absolute dedicated profile path/);
   });
 });
 

@@ -338,6 +338,7 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MAPS_HEADLESS` | `false` | Headless Chrome |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable bounded visible-state reading and V4 semantic UI operations that require it |
+| `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | Enable the fail-closed V5 authenticated-workflow foundation gate; no V5 account tool is exposed by this flag alone |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | Optional restricted Maps Embed API key for the MCP Apps directions view; the text/structured render tool remains available without it |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent bounded visible-state/UI read budget |
@@ -347,6 +348,12 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MAPS_OPERATION_TIMEOUT_MS` | `25000` | Per-operation watchdog |
 
 Invalid boolean/integer configuration fails fast instead of being silently coerced.
+
+### V5 authenticated-workflow opt-in
+
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for the V5 authenticated-workflow foundation. It currently exposes **no authenticated V5 semantic tool by itself**. The setting requires `INTERACTIVE_ASSIST_MODE=true`, rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden.
+
+For the current remote single-user design, authenticate the public MCP client at an external gateway and use the private `static-bearer` hop to this core server. Do not forward a caller's public OAuth access token into the browser runtime. See [V5 authenticated workflows](docs/v5-authenticated-workflows.md) and [OAuth gateway pattern](docs/oauth-gateway.md).
 
 ### Existing CDP endpoint
 
