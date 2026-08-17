@@ -335,6 +335,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MAPS_HEADLESS` | `false` | headless mode |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linuxの制約runtime向け最終手段。明示時のみ `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
+| `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなV5 authenticated-workflow foundation gateを有効化。このflagだけではV5 account toolは公開しない |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | MCP Apps directions view用のoptional restricted Maps Embed API key。未設定でもtext/structured render toolは利用可能 |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | process-local操作上限 |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | 独立したbounded visible-state/UI read上限 |
@@ -344,6 +345,12 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MAPS_OPERATION_TIMEOUT_MS` | `25000` | 1操作watchdog |
 
 不正なboolean/整数値は曖昧に解釈せず、起動時にfail fastします。
+
+### V5 authenticated workflow Opt-in
+
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` はV5 authenticated-workflow foundation用の追加fail-closed Opt-inです。この設定だけでは **authenticated V5 semantic toolはまだ公開されません**。現段階では `INTERACTIVE_ASSIST_MODE=true` を必須とし、既存CDP attachを拒否し、per-principal profile isolation実装前の `MCP_AUTH_PROVIDER=module` を拒否します。`MAPS_CHROME_PROFILE_DIR` を上書きする場合は絶対pathの専用profileが必要です。
+
+現在のremote single-user設計では、public MCP clientの認証はexternal gatewayで行い、このcore serverへのprivate hopは `static-bearer` を使います。callerのpublic OAuth access tokenをbrowser runtimeへ転送しません。詳細は [V5 authenticated workflows](docs/v5-authenticated-workflows.ja.md) と [OAuth gateway pattern](docs/oauth-gateway.ja.md) を参照してください。
 
 ### 既存CDP endpoint
 

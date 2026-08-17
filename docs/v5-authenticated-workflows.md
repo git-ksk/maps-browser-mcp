@@ -1,6 +1,6 @@
 # V5 authenticated workflows — design baseline
 
-V5 is the first milestone that may intentionally use Google Maps Web state which exists only after the user signs in. This document is a **design baseline only**. It does not authorize implementation, enable authenticated tools, or widen the current browser-control surface.
+V5 is the first milestone that may intentionally use Google Maps Web state which exists only after the user signs in. This document remains the design baseline for authenticated semantics. The V5-A **foundation gate** may be implemented before authenticated tools are exposed, but no authenticated semantic read or mutation is enabled until the live-observation entry gate below is satisfied.
 
 V5 should preserve the project rule that the agent controls only bounded Maps-specific semantic operations. Authentication, account selection, consent, MFA/OTP, CAPTCHA, and other sensitive account steps remain Human authority.
 
@@ -313,9 +313,9 @@ Suggested order:
 
 Do not crawl Saved lists or history merely to increase coverage.
 
-## V5 implementation entry gate
+## V5 authenticated-semantic implementation entry gate
 
-Implementation should not begin until all of these are true:
+Foundational fail-closed configuration/isolation enforcement may land before the first authenticated semantic tool. Implementing or exposing authenticated Maps readiness, saved-state reads, or mutations should not begin until all of these are true:
 
 1. the current Google Maps authenticated UI has been freshly observed for the proposed first slice;
 2. a stable signed-in/coarse readiness semantic can be verified without exposing account identity;
@@ -326,4 +326,4 @@ Implementation should not begin until all of these are true:
 7. EN/JA docs describe the exact enabled account surface and non-goals;
 8. no V5 implementation depends on raw DOM/CDP/AX, generic text entry, internal Maps APIs/XHR, or credential handling.
 
-Until this gate is satisfied, V5 remains **design-only**.
+Until this gate is satisfied, V5 authenticated **semantic tools remain design-only**. The configuration/isolation foundation does not itself authorize account-state reads or mutations.

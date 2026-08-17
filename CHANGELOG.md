@@ -13,6 +13,8 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
+- Start the V5-A foundation gate: add a disabled-by-default `MAPS_V5_AUTHENTICATED_WORKFLOWS` opt-in that requires Interactive Assist, a server-owned absolute dedicated profile, and the current single-user principal shapes; reject external CDP and module auth until per-principal profile isolation exists. No authenticated V5 semantic tool is exposed yet.
+
 - Harden the experimental MCP Apps directions View against host differences: stable 2026-01-26 host context, safe areas/container sizing, size notifications, cancellation/error cleanup, teardown, and Google-recommended Embed referrer policy.
 - Keep `maps_render_directions` available as a text/structured display tool even when the Embed API key is absent; UI resource/linkage/extension advertisement remains conditional.
 - Validate the UI pipeline with the official MCP Apps basic reference host and validate the no-UI fallback with the official MCP SDK client. A second production-host real-key render remains explicitly unclaimed, so the UI retains its experimental label.
