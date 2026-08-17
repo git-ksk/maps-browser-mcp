@@ -13,6 +13,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
+- Add V5-A authenticated readiness: when the V5 opt-in is enabled, expose `maps_read_authenticated_readiness`, returning only identity-free `signed_in | signed_out | unknown`; both signed-out and signed-in states were live-validated with the dedicated server-owned profile.
 - Start the V5-A foundation gate: add a disabled-by-default `MAPS_V5_AUTHENTICATED_WORKFLOWS` opt-in that requires Interactive Assist, a server-owned absolute dedicated profile, and the current single-user principal shapes; reject external CDP and module auth until per-principal profile isolation exists. No authenticated V5 semantic tool is exposed yet.
 
 - Harden the experimental MCP Apps directions View against host differences: stable 2026-01-26 host context, safe areas/container sizing, size notifications, cancellation/error cleanup, teardown, and Google-recommended Embed referrer policy.

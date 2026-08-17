@@ -26,6 +26,10 @@ export class SemanticController {
     private readonly compiler: MapsUrlCompiler
   ) {}
 
+  async readAuthenticatedReadiness(): Promise<{ state: "signed_in" | "signed_out" | "unknown" }> {
+    return { state: await this.runtime.readAuthenticatedReadiness() };
+  }
+
   async selectResult(index: number, expectedLabel?: string): Promise<{ selected: string }> {
     if (!Number.isInteger(index) || index < 0 || index > 19) {
       throw new Error("index must be an integer between 0 and 19");

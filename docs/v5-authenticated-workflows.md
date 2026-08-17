@@ -90,6 +90,16 @@ Multi-account/account-switching UI is Human-only in the initial V5 design. The a
 
 ## Proposed V5 slices
 
+### V5-A live readiness evidence (2026-08-18)
+
+Fresh observation of the dedicated server-owned Chrome profile confirmed both signed-out and signed-in Maps states without returning account identity to MCP. The readiness probe uses only coarse Maps controls.
+
+- signed out: a visible Sign in surface is present and no Google Account control is present
+- signed in: the Sign in surface is absent and a Google Account control is present
+- contradictory, incomplete, or non-Maps states fail closed to `unknown`
+
+`maps_read_authenticated_readiness` is exposed only when the V5 opt-in is enabled and returns only `signed_in | signed_out | unknown`. It does not read or return email, account name, profile photo, account ID, cookies, or tokens.
+
 ### V5-A — authenticated-session foundation
 
 Goal: prove the authentication boundary without account mutation.

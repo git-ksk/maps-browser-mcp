@@ -90,6 +90,16 @@ Multi-account / account-switching UIはinitial V5ではHuman-onlyです。Agent�
 
 ## Proposed V5 Slices
 
+### V5-A Live Readiness Evidence（2026-08-18）
+
+専用server-owned Chrome profileでsigned-out / signed-inの両状態をfresh observationしました。MCPへaccount identityを返さず、Maps surface上のcoarse controlだけで判定できます。
+
+- signed-out: visible Sign in導線あり、Google Account controlなし
+- signed-in: Sign in導線なし、Google Account controlあり
+- contradictory / incomplete / non-Maps stateは `unknown` へfail closed
+
+`maps_read_authenticated_readiness` はV5 Opt-in時だけ公開し、`signed_in | signed_out | unknown` のみ返します。Email、account name、profile photo、account ID、cookie、tokenは読取・返却しません。
+
 ### V5-A — Authenticated-session Foundation
 
 Goal: account mutationなしでauthentication boundaryを証明する。
