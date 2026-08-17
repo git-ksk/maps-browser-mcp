@@ -10,6 +10,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 - Define the pre-v1 completion sequence: v0.3.0 for V5 plus the clean remote-auth foundation, v0.4.0 for MCP Apps production portability, v0.5.0 for reliability/UI-change resilience/observability, and v1.0.0 as stable graduation rather than a final feature dump.
 - Define the V5 authenticated-workflows design baseline without enabling implementation: Human-only sign-in, single-user/per-principal browser isolation gate, bounded saved-state reads, save-to-existing-list as the first mutation candidate, explicit ActionApproval before Send to phone, Maps-history privacy gating, and Timeline removal from the desktop Web candidate set.
+- Close the V5-E history privacy/surface gate without adding a history tool: fresh live observation shows Maps History crosses to My Activity, while Maps-local Recent is mutation-adjacent and lacks stable activity row semantics for bounded parsing. Keep My Activity outside the allowlist, keep Recent observation-gated, and keep Timeline outside the desktop-Web roadmap.
 
 ### Changed
 

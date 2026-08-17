@@ -99,7 +99,7 @@ V4-Fでは残りhigh/normal priorityもunsafe convenience APIを増やさず解�
 | 営業時間展開 | implemented | `maps_expand_opening_hours(expectedLabel)` がactive placeとlive観測済みhours controlのexact-oneを再検証する。inline展開はobserved expanded stateを検証してplace semanticsを維持し、JAで観測したdetail-surface variantはsame-place URL identityとbounded hours markerを検証後に古いplace stateを無効化する。週間営業時間harvestingは公開しない。 |
 | website / phone / address / Plus Code のcopy/open | lower priority / official overlap | panel action としては有用だが、data価値の多くは structured place interface と重なる。 |
 | place保存 / saved list | login required | 実ブラウザで未ログイン Save が Google Account sign-in へ遷移。V5。 |
-| recent/history のaccount同期 | login required | account-backed history はV5。ephemeral browser historyを public dataset にはしない。 |
+| recent/history のaccount同期 | V5-E評価済み / blocked | 2026-08-18 fresh observationではMaps Historyが `myactivity.google.com/search-services/history/maps` へ遷移するため、separate account-surface threat model / allowlist reviewが必要。Maps-local Recentは存在するが、current main surfaceはcheckbox + Delete/More + scrollingが同居するmutation-adjacent構造で、DOM順序/private labelへ依存せずbounded parseできるstableなactivity `listitem` / `row` semanticを確認できなかった。History/Recent read toolは公開しない。 |
 | place を mobile に送信 | login required | account/device linked として扱う。credential は MCP で扱わない。 |
 | directions を開く | implemented | `maps_directions` が documented Maps URL と bounded waypoint/avoid を使用。 |
 | route candidate を bounded に読む | implemented | `maps_read_route_summary`。 |
@@ -126,7 +126,7 @@ V4-Fでは残りhigh/normal priorityもunsafe convenience APIを増やさず解�
 | current map/view の共有URL | observation-gated / visible Maps share surfaceなし | JA/en-USのcoordinate/root-map bounded観測でvisible Share controlを確認できなかった。Browser current URLやclipboardを未観測のMaps-generated share stateに代用せず、bounded visible semantic share surfaceを観測できた場合だけ再開する。 |
 | sign-in / account切替 / credential入力 | login required | 自然発生したsign-inは Human Intervention へhandoff可能だが、MCPはcredentialを扱わない。 |
 | saved list / synced saved place | login required / V5 design-only | account-backed saved stateはV5 authentication/isolation entry gateの後段。最初の候補はboundedなselected-place save membership / existing-list identityであり、Saved library全体traversalは行わない。 |
-| Timeline | current desktop Maps Web capabilityではない | 現行Google公式情報ではcomputer版Mapsで利用不可かつdevice-based。V5 Web candidateから外し、Googleがofficial desktop Maps surfaceを復活させbounded semantic targetを観測できた場合だけre-openする。 |
+| Timeline | current desktop Maps Web capabilityではない | 現行Google公式情報ではcomputer版Mapsで利用不可かつdevice-based。2026-08-18 fresh observationでは `/maps/timeline` menu link自体は見えたが、navigation後はdedicated Timeline routeに留まらず通常map surfaceへ戻った。V5 Web candidateから外したままにし、Googleがofficial bounded desktop Maps surfaceを復活させた場合だけre-openする。 |
 | contribution / rating / review / edit / public photo upload | login required | account-backed state-changing contribution はV4外。 |
 | CAPTCHA / access challenge解決 | out of scope | Human handoffのみ。solver/bypass禁止。 |
 | raw DOM / AX tree / raw CDP / generic browser action | out of scope | 内部実装detail。MCP toolとして公開しない。 |

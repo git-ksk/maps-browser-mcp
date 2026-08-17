@@ -162,17 +162,17 @@ Canonical contract / security rule / evidence / completion criteriaは [MCP Apps
 
 それ以降のpre-v1 releaseは、実利用で得たevidenceに基づくsemantic capability gapやhardeningのため意図的に未確定とします。**v1.0.0は未決機能を最後に詰め込むreleaseにはしません**。すでに完成してbounded・documented・operationally matureになったproduct surfaceをstableへ昇格するreleaseとします。
 
-## V5 / v0.3.0 — Authenticated Google Maps Web Workflows（Design Baseline）
+## V5 / v0.3.0 — Authenticated Google Maps Web Workflows
 
-V5はdesign levelで **bounded authenticated Google Maps Web workflow。最初はread-orientedかつlow-consequenceなreversible account stateを優先** と定義します。V5 implementationはまだ有効化しません。
+V5は **bounded authenticated Google Maps Web workflow。最初はread-orientedかつlow-consequenceなreversible account stateを優先** と定義します。V5-A〜V5-Dは既存のfail-closed Opt-in / Interactive Assist boundary配下で実装済み、V5-Eはprivacy/browser-surface gateとして評価完了しhistory toolは意図的に追加していません。
 
-Current ordering:
+Current ordering / status:
 
-1. **V5-A authenticated-session foundation** — Human-only sign-in/account selection、安全に観測できる場合のcoarse account readiness、single-user/per-principal browser isolation、Human Intervention後fresh reissue
-2. **V5-B bounded saved-state reads** — selected-place save membership / existing list identityだけ。Saved-library crawlなし
-3. **V5-C existing listへのSave** — revalidated place 1件をexisting list 1件へexact postcondition付きで追加。First mutation sliceではnew-list text entry / unsave/removeなし
-4. **V5-D Send to phone** — 既存principal + epoch + exact-action `ActionApprovalManager` をreal approval flowへ統合した後だけ。Human Intervention completionとsend approvalを分離
-5. **V5-E Maps history** — separate privacy/browser-surface gate。Re-openする場合もread-only first
+1. **V5-A authenticated-session foundation — implemented** — Human-only sign-in/account selection、coarse account readiness、single-user/per-principal browser isolation gate、Human Intervention後fresh reissue
+2. **V5-B bounded saved-state reads — implemented** — selected-place save membership / existing list identityだけ。Saved-library crawlなし
+3. **V5-C existing listへのSave — implemented** — revalidated place 1件をexisting list 1件へexact postcondition付きで追加。First mutation sliceではnew-list text entry / unsave/removeなし
+4. **V5-D Send to phone — implemented** — principal + epoch + exact-action approvalをreal MCP form-elicitation flowへ統合済み。Human Intervention completionとsend approvalは分離
+5. **V5-E Maps history — evaluated / blocked** — HistoryはMy Activityへcrossするためseparate account-surface threat modelが必要。Maps-local Recentもcurrent surfaceにstableなbounded activity-row semanticがないためobservation gateを維持
 
 Timelineは、現行Google Maps公式情報でcomputer版Mapsでは利用不可のためV5 Web candidateから外します。Review/rating/edit/public-photo contribution workflowもinitial V5方向には含めません。
 

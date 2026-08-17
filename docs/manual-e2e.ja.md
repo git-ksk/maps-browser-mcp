@@ -242,6 +242,16 @@ Dedicated signed-in V5 profileで `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` と `IN
 
 Account name/email/profile identifier、cookie/token、chooser dump、raw private place/list contentをdurable checkpointやpublic validation logへ残しません。Human Intervention completionはaction approvalと別概念のまま、old Save attemptをreplayせずfresh semantic reissueを要求します。
 
+## 12. V5-E History Privacy / Surface Gate（Observation Only）
+
+V5-Eのhistory MCP toolはありません。Surfaceをre-open可能か再評価するときだけこのgateを実行し、dedicated signed-in profileを使ってredactedな構造結果だけを記録します。
+
+1. Maps top-level menuから、account identityを読まずにHistory / Recent / Timeline / `Your data in Maps` entryの有無を確認する。
+2. HistoryがMaps originを離れて `myactivity.google.com` 等のaccount surfaceへ遷移する場合は停止する。このchecklist内ではallowlistを広げずactivity contentをinspect/exportせず、`BLOCKED: separate account-surface threat model required` と記録する。
+3. Maps-local Recentが存在する場合もbounded visible structureだけを確認する。Safe candidateにはstableなsemantic row/container model、first-pageのstrict hard cap、DOM-order/private-label selector不要が必須。AdjacentなDelete/selection control、ambiguous row、scroll/pagination必須ならobservation gateを維持する。
+4. Activity setting変更、history deletion、auto-scroll、pagination、cookie/storage/account identity read、network/internal API interception、private activityを含むscreenshot/logの永続化は禁止。
+5. Timelineはofficial dedicated desktop Timeline surfaceに留まりbounded semantic targetをfresh observationできる場合だけWeb roadmapをre-openする。Menu linkがあるだけ、またはnormal mapへredirectされるだけでは不十分。
+
 ## Release Result
 
 記録するのはpass / fail、選択したruntime（該当する場合 `host` / `container`）、確認したsemantic operation、確認時のGoogle Maps UI date / localeだけにしてください。

@@ -213,23 +213,24 @@ Send operationはreal MCP 2026-07-28 `input_required` / form elicitation flowを
 
 Googleはdesktopのaccount-backed Maps historyとしてsearch、directions、viewed place、shared link、call等を文書化しています。Single selected placeのsave membershipよりprivacy-sensitiveです。
 
-また `maps.google.com` からGoogle My Activity/account surfaceへ移る可能性があり、current allowed top-level browser boundaryを広げることになります。
+2026-08-18のfresh live observationでは、1つの再利用可能なMaps datasetではなく、signed-in entry pointが3系統に分かれていることを確認しました。
 
-そのためMaps historyは **first V5 implementation sliceに含めません**。
+- Maps menuのHistory menu itemは、activateするとMaps originを離れて `myactivity.google.com/search-services/history/maps` へ遷移する
+- Maps menuにはRecent menu itemもありMaps surface内に残るが、current Recent main surfaceはmutation-adjacentかつbounded extraction向けsemanticが弱い。観測時は15個のcheckbox、Delete / More control、scrollable containerが同居する一方、activity entry自体にはDOM順序やprivate labelへ依存せずbindできるstableな `listitem` / `row` semanticを確認できなかった
+- `Your data in Maps` は明示的な `myaccount.google.com` account-surface linkであり、Maps allowlistの暗黙拡張とは扱わない
 
-将来re-openする場合:
+このため **V5-Eのhistory read toolは実装しません**。Historyは現時点で `BLOCKED: separate account-surface threat model required` とします。Maps-local Recentもsafe substituteとはみなさずobservation gateを維持し、private activityをDOM positionでparseしたり、adjacentなdelete controlを跨いだり、auto-scroll / paginationしたり、opaque/internal attributeからrow identityを推測しません。
 
-- read-only first
-- explicit user request必須
-- strict small result cap、automatic paginationなし
-- bulk export / persistence禁止
-- same milestoneでhistory deletionを扱わない
-- `myactivity.google.com` 等のaccount surface追加はseparate threat-model / allowlist reviewなしに行わない
-- history contentをunrelated Maps actionへsilent利用しない
+Re-open条件は次のどちらかです。
+
+- separate account-surface threat model + explicit top-level allowlist reviewによりnarrowなMy Activity read surfaceを許可できる
+- Maps Recentでstableなsemantic row/container modelをfresh observationでき、scroll/paginationなしのhard cap、account identity/private-label selector/generic DOM exposure/mutation-adjacent ambiguityなしでparseできる
+
+Re-open後もread-only first、explicit user invocation必須、strict small hard cap、bulk export / persistence / deletionなし、unrelated Maps actionへのsilent reuse禁止を維持します。
 
 ### Timeline — Web Roadmapから除外
 
-Timelineは現行Maps-on-computer capabilityではありません。Google公式情報ではdevice-basedで、desktop Mapsでは利用不可です。
+Timelineは現行Maps-on-computer capabilityではありません。Google公式情報ではdevice-basedで、desktop Mapsでは利用不可です。2026-08-18のfresh live observationではMaps menuに `/maps/timeline` targetのlink自体は見えましたが、direct navigation後はdedicated Timeline routeに留まらず通常Maps surfaceへ戻り、bounded desktop Timeline targetは確認できませんでした。
 
 V5でbrowser workaround、mobile automation、internal API access、synced Timeline scraping等を追加して再現しません。Googleがsupported desktop Maps surfaceを公式に復活させ、bounded semantic targetを観測できた場合だけre-openします。
 

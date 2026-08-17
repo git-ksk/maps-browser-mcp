@@ -160,17 +160,17 @@ The current planning sequence maps the remaining major pre-v1 work to release th
 
 Later pre-v1 releases remain intentionally open for evidence-driven semantic capability gaps or hardening discovered through real use. **v1.0.0 is not reserved for a final feature dump**: it should graduate an already-complete, bounded, documented, and operationally mature product surface to stable status.
 
-## V5 / v0.3.0 — authenticated Google Maps Web workflows (design baseline)
+## V5 / v0.3.0 — authenticated Google Maps Web workflows
 
-V5 is now defined at the design level as **bounded authenticated Google Maps Web workflows, starting with read-oriented and low-consequence reversible account state**. No V5 implementation is enabled yet.
+V5 is defined as **bounded authenticated Google Maps Web workflows, starting with read-oriented and low-consequence reversible account state**. V5-A through V5-D are implemented behind the existing fail-closed opt-in/Interactive Assist boundaries; V5-E has been evaluated as a privacy/browser-surface gate and intentionally adds no history tool.
 
-Current ordering:
+Current ordering/status:
 
-1. **V5-A authenticated-session foundation** — Human-only sign-in/account selection, coarse account readiness if safely observable, single-user/per-principal browser isolation, fresh reissue after Human Intervention.
-2. **V5-B bounded saved-state reads** — selected-place save membership / existing list identities only; no Saved-library crawl.
-3. **V5-C save to an existing list** — add one revalidated place to one existing list with an exact postcondition; no new-list text entry and no unsave/remove in the first mutation slice.
-4. **V5-D Send to phone** — only after the existing principal+epoch+exact-action `ActionApprovalManager` is integrated into a real approval flow; Human Intervention completion remains separate from send approval.
-5. **V5-E Maps history** — separate privacy/browser-surface gate, read-only first if ever reopened.
+1. **V5-A authenticated-session foundation — implemented** — Human-only sign-in/account selection, coarse account readiness, single-user/per-principal browser isolation gate, fresh reissue after Human Intervention.
+2. **V5-B bounded saved-state reads — implemented** — selected-place save membership / existing list identities only; no Saved-library crawl.
+3. **V5-C save to an existing list — implemented** — add one revalidated place to one existing list with an exact postcondition; no new-list text entry and no unsave/remove in the first mutation slice.
+4. **V5-D Send to phone — implemented** — principal+epoch+exact-action approval is integrated into the real MCP form-elicitation flow; Human Intervention completion remains separate from send approval.
+5. **V5-E Maps history — evaluated / blocked** — History crosses to My Activity and therefore requires a separate account-surface threat model; Maps-local Recent is still observation-gated because the current surface lacks stable bounded activity-row semantics.
 
 Timeline is removed from the V5 Web candidate set because current Google Maps documentation states that Timeline is not available in Maps on a computer. Review/rating/edit/public-photo contribution workflows remain outside the initial V5 direction.
 
