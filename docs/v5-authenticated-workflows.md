@@ -1,6 +1,6 @@
 # V5 authenticated workflows — design baseline
 
-V5 is the first milestone that may intentionally use Google Maps Web state which exists only after the user signs in. This document remains the design baseline for authenticated semantics. The V5-A **foundation gate** may be implemented before authenticated tools are exposed, but no authenticated semantic read or mutation is enabled until the live-observation entry gate below is satisfied.
+V5 is the first milestone that may intentionally use Google Maps Web state which exists only after the user signs in. This document remains the design baseline and implementation record for authenticated semantics. V5-A and V5-B are implemented behind the explicit V5 opt-in, and V5-C adds the first bounded mutation only after the live-observation and deterministic safety gates described below.
 
 V5 should preserve the project rule that the agent controls only bounded Maps-specific semantic operations. Authentication, account selection, consent, MFA/OTP, CAPTCHA, and other sensitive account steps remain Human authority.
 
@@ -175,6 +175,10 @@ Safety rules:
 - success requires an exact visible saved-membership postcondition;
 - state change advances the semantic resource epoch;
 - sign-in/consent/challenge causes Human Intervention and requires a fresh semantic reissue before any save attempt.
+
+Implementation status (2026-08-18): `maps_save_place_to_list({ expectedPlaceLabel, listIndex, expectedListLabel })` is implemented behind the V5 opt-in and Interactive Assist. Every invocation opens a fresh bounded save chooser, revalidates signed-in readiness, exact selected-place identity, the captured resource epoch, and both list index plus expected list label immediately before the single permitted row action. A target already observed as saved — including a race where it becomes saved immediately before the click — is an idempotent no-toggle success. A real mutation succeeds only after the exact target row is freshly observed with `aria-checked=true`; only then does the semantic resource epoch advance. Missing/reordered/duplicate/flattened list identity, new-list controls, postcondition failure, or stale state fail closed. The tool never creates a list, unsaves a place, traverses Saved-library contents, reads account identity/credentials, or automatically rolls back by removal. Human Intervention completion remains separate from action approval, and this V5-C slice does not add an ActionApproval requirement that the design reserves for V5-D.
+
+Fresh live compatibility observation on 2026-08-18 confirmed the signed-in selected-place Save surface, one bounded `role=menu` chooser, existing-list `role=menuitemradio` rows, and `aria-checked=false` membership without exposing private list labels. A live account mutation was intentionally **BLOCKED** because no uniquely identifiable existing test-purpose list was present. No user list was guessed, no new list was created, and no cleanup/remove semantic was added merely to make the live test convenient.
 
 Why `save` only: removing a saved place may discard associated per-list user state such as comments/notes or otherwise create data-loss semantics that are not safely assumed reversible. Removal therefore needs its own later observation and consequence review.
 

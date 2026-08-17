@@ -203,6 +203,20 @@ Expected: `POLICY_BLOCKED` before browser navigation.
 
 Do not split a rejected bulk request into many smaller calls. That would violate the intended project boundary even if each individual query were accepted.
 
+## 11. V5-C existing-list Save
+
+Run this only from the dedicated signed-in V5 profile with both `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` and `INTERACTIVE_ASSIST_MODE=true`. This is an account mutation check, so begin read-only and do not improvise a target.
+
+1. Establish one exact selected place through the bounded place workflow.
+2. Call `maps_read_place_save_state({ expectedLabel })`; confirm signed-in readiness, a bounded existing-list chooser, and one candidate that is clearly designated for testing and currently has `saved=false`. Do not publish or persist private list labels.
+3. If there is not exactly one safe existing test-purpose target, stop and record the live mutation as **BLOCKED**. Do not guess a personal list and do not create a new list merely for the check.
+4. If exactly one safe target exists, call `maps_save_place_to_list({ expectedPlaceLabel, listIndex, expectedListLabel })` exactly once using the fresh returned index + label.
+5. Confirm success only when the tool verifies the exact target as `aria-checked=true`; then perform one fresh `maps_read_place_save_state` and independently confirm the same target is `saved=true`.
+6. Confirm an already-saved target is a no-click idempotent success, while stale index/label, duplicate/missing/flattened rows, changed place, changed resource epoch, signed-out/unknown readiness, or unverifiable postcondition fail closed.
+7. Do not automate cleanup by unsaving/removing the place. If cleanup is required after deliberate dogfood, do it manually outside the MCP mutation surface.
+
+No account name/email/profile identifier, cookie/token, chooser dump, or raw private place/list content should enter durable checkpoints or public validation logs. Human Intervention completion remains separate from action approval and must force a fresh semantic reissue rather than replaying the old Save attempt.
+
 ## Release result
 
 Record only pass/fail, selected runtime (`host` or `container` when applicable), the specific semantic operation checked, and the Google Maps UI date/locale used for the check. Do not attach screenshots or logs containing account information, private locations, cookies, browser profiles, or personal identifiers to public issues.

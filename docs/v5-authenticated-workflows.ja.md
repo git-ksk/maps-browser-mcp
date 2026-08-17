@@ -1,6 +1,6 @@
 # V5 Authenticated Workflows — Design Baseline
 
-V5は、userがsign-inした後にだけ存在するGoogle Maps Web stateを意図的に扱う最初のmilestoneです。この文書はauthenticated semanticsのdesign baselineです。authenticated toolを公開する前にV5-Aの **foundation gate** は実装できますが、下記live-observation entry gateを満たすまではauthenticated semantic read / mutationを有効化しません。
+V5は、userがsign-inした後にだけ存在するGoogle Maps Web stateを意図的に扱う最初のmilestoneです。この文書はauthenticated semanticsのdesign baselineとimplementation recordです。V5-A / V5-Bはexplicit V5 opt-inの背後で実装済みで、V5-Cは下記live-observation / deterministic safety gateを満たした上で最初のbounded mutationを追加します。
 
 V5でもagentが操作できるのはboundedなMaps-specific semantic operationだけです。Authentication、account selection、consent、MFA/OTP、CAPTCHA、その他sensitiveなaccount stepはHuman authorityのまま維持します。
 
@@ -175,6 +175,10 @@ Safety rules:
 - exact visible saved-membership postconditionをsuccess条件にする
 - mutation成功時semantic resource epochをadvance
 - sign-in/consent/challenge発生時はHuman Interventionへ移り、fresh semantic reissueまでsaveしない
+
+Implementation status (2026-08-18): `maps_save_place_to_list({ expectedPlaceLabel, listIndex, expectedListLabel })` をV5 opt-in + Interactive Assistの背後で実装しました。各invocationはfresh bounded save chooserを開き、signed-in readiness、exact selected-place identity、captured resource epoch、さらにlist index + expected list labelの両方をsingle row action直前に再検証します。Fresh read時点ですでにsaved、またはclick直前のraceでsavedへ変化したtargetはtoggleせずidempotent successです。実際にmutationした場合は、exact target rowをfreshに `aria-checked=true` と確認できた場合だけsuccessとし、その時点でのみsemantic resource epochをadvanceします。Missing / reorder / duplicate / flattened list identity、new-list control、postcondition failure、stale stateはfail closeします。New list作成、unsave、Saved library traversal、account identity / credential read、cleanup目的のautomatic removalは実装しません。Human Intervention completionとaction approvalは別概念のままで、V5-DにreserveしているActionApproval requirementをV5-Cへ勝手に追加しません。
+
+2026-08-18のfresh live compatibility observationでは、signed-in selected-place Save surface、boundedな `role=menu` chooser、existing-listの `role=menuitemradio` row、`aria-checked=false` membershipをprivate list label非露出で確認しました。Live account mutationは、明確にtest-purposeと一意判定できるexisting listが存在しなかったため意図的に **BLOCKED** としました。User listを推測して変更せず、新規listも作成せず、live testのcleanup都合だけでremove semanticを追加していません。
 
 `save`だけに絞る理由: saved placeのremovalはper-list comment/note等のuser stateを失う可能性があり、安全にreversibleと仮定できません。Removalは別のobservation / consequence reviewが必要です。
 

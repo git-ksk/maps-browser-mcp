@@ -213,6 +213,20 @@ Test目的でaccess challengeを意図的に発生させないでください。
 
 拒否されたbulk requestを多数の小callへ分割して回避しないでください。
 
+## 11. V5-C Existing-list Save
+
+Dedicated signed-in V5 profileで `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` と `INTERACTIVE_ASSIST_MODE=true` の両方を有効にした場合だけ実行します。Account mutation checkなので、最初はread-onlyで観測し、targetを推測しません。
+
+1. Bounded place workflowでexact selected placeを1件確立する。
+2. `maps_read_place_save_state({ expectedLabel })` を呼び、signed-in readiness、bounded existing-list chooser、かつ明確にtest用と判断できる `saved=false` candidateを確認する。Private list labelはpublish / persistしない。
+3. Safeなexisting test-purpose targetをexactly 1件に絞れない場合はそこで停止し、live mutationを **BLOCKED** と記録する。Personal listを推測せず、testのためだけにnew listを作らない。
+4. Safe targetがexactly 1件ある場合だけ、freshに返ったindex + labelをそのまま使い `maps_save_place_to_list({ expectedPlaceLabel, listIndex, expectedListLabel })` を1回だけ呼ぶ。
+5. Exact targetが `aria-checked=true` とverifyされた場合だけsuccessとする。その後 `maps_read_place_save_state` をfreshに1回実行し、same targetが `saved=true` であることを独立確認する。
+6. Already-saved targetはno-click idempotent successとし、stale index/label、duplicate/missing/flattened row、changed place、changed resource epoch、signed-out/unknown readiness、unverifiable postconditionはfail closeする。
+7. Cleanup目的のunsave/removeを自動化しない。意図的なdogfood後にcleanupが必要なら、MCP mutation surface外でHumanがmanualに行う。
+
+Account name/email/profile identifier、cookie/token、chooser dump、raw private place/list contentをdurable checkpointやpublic validation logへ残しません。Human Intervention completionはaction approvalと別概念のまま、old Save attemptをreplayせずfresh semantic reissueを要求します。
+
 ## Release Result
 
 記録するのはpass / fail、選択したruntime（該当する場合 `host` / `container`）、確認したsemantic operation、確認時のGoogle Maps UI date / localeだけにしてください。

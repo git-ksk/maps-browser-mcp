@@ -20,6 +20,7 @@ import { getVerifiedRouteShareLink, type RouteShareLinkResult } from "./route-sh
 import { selectVerifiedRecommendedTravelMode, type RecommendedTravelModeResult } from "./recommended-mode.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
 import { readVerifiedPlaceSaveState, type PlaceSaveStateResult } from "./place-save-state.js";
+import { saveVerifiedPlaceToExistingList, type PlaceSaveToListResult } from "./place-save-action.js";
 
 export class SemanticController {
   constructor(
@@ -33,6 +34,10 @@ export class SemanticController {
 
   async readPlaceSaveState(expectedLabel: string): Promise<PlaceSaveStateResult> {
     return readVerifiedPlaceSaveState(this.runtime, expectedLabel);
+  }
+
+  async savePlaceToList(expectedPlaceLabel: string, listIndex: number, expectedListLabel: string): Promise<PlaceSaveToListResult> {
+    return saveVerifiedPlaceToExistingList(this.runtime, expectedPlaceLabel, listIndex, expectedListLabel);
   }
 
   async selectResult(index: number, expectedLabel?: string): Promise<{ selected: string }> {
