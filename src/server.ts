@@ -93,6 +93,7 @@ const handoffOwners = new Map<string, HandoffOwner>();
 const queryText = z.string().trim().min(1).max(500);
 const locationText = z.string().trim().min(1).max(300);
 const expectedLabelText = z.string().trim().min(1).max(240);
+const expectedListLabelText = z.string().trim().min(1).max(160);
 const handoffDecisionSchema = z.object({ decision: z.enum(["continue", "cancel"]) });
 
 function jsonResult(value: unknown): CallToolResult {
@@ -445,6 +446,37 @@ export function buildServer(): McpServer {
           policy.assertInteractiveAssistEnabled();
           policy.consumeVisibleRead();
           return controller.readPlaceSaveState(expectedLabel);
+        }
+      })
+    );
+  }
+
+  if (config.v5.authenticatedWorkflows) {
+    server.registerTool(
+      "maps_save_place_to_list",
+      {
+        description: "Save the currently selected, revalidated Google Maps place to exactly one already-existing list from a fresh bounded save-list chooser. Requires exact place label + list index + expected list label, treats already-saved as idempotent success, never creates/removes/renames/shares lists, and reports success only after aria-checked=true is freshly verified. V5 authenticated workflows and Interactive Assist must both be enabled.",
+        inputSchema: z.object({
+          expectedPlaceLabel: expectedLabelText,
+          listIndex: z.number().int().min(0).max(9),
+          expectedListLabel: expectedListLabelText
+        }),
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true
+        }
+      },
+      async ({ expectedPlaceLabel, listIndex, expectedListLabel }, ctx) => runToolWithHandoff({
+        toolName: "maps_save_place_to_list",
+        args: { expectedPlaceLabel, listIndex, expectedListLabel },
+        resumeStrategy: "require_fresh_semantic_action",
+        ctx,
+        task: async () => {
+          policy.assertInteractiveAssistEnabled();
+          policy.consumeVisibleRead();
+          policy.consumeAction();
+          return controller.savePlaceToList(expectedPlaceLabel, listIndex, expectedListLabel);
         }
       })
     );

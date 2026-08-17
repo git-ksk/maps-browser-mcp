@@ -38,7 +38,7 @@ V4 is intentionally broader than V1–V3 but keeps the same constrained architec
 
 Priority order is browser-native/UI-dependent behavior first; search/directions/place operations required to complete the browser workflow second; and capabilities that mostly duplicate official structured interfaces third.
 
-The canonical per-capability status table is **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**. Login-required features are deferred to V5; the current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.md)** is design-only and starts with account isolation plus bounded saved-state work rather than broad signed-in automation. V4 does not expose raw DOM, raw Accessibility Tree, raw CDP, generic browser actions, desktop actions, or shell execution through MCP.
+The canonical per-capability status table is **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**. Login-required features are staged in V5; the current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.md)** implements the identity-free readiness gate, bounded save-state reads, and one exact existing-list Save mutation behind an explicit opt-in rather than broad signed-in automation. V4 does not expose raw DOM, raw Accessibility Tree, raw CDP, generic browser actions, desktop actions, or shell execution through MCP.
 
 ## 5-minute quick start
 
@@ -338,7 +338,7 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MAPS_HEADLESS` | `false` | Headless Chrome |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable bounded visible-state reading and V4 semantic UI operations that require it |
-| `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | Enable the fail-closed V5 authenticated-workflow foundation gate; no V5 account tool is exposed by this flag alone |
+| `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | Enable the fail-closed bounded V5 authenticated tools; also requires Interactive Assist and the dedicated single-user profile gate |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | Optional restricted Maps Embed API key for the MCP Apps directions view; the text/structured render tool remains available without it |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent bounded visible-state/UI read budget |
@@ -351,7 +351,7 @@ Invalid boolean/integer configuration fails fast instead of being silently coerc
 
 ### V5 authenticated-workflow opt-in
 
-`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for the V5 authenticated-workflow foundation. It currently exposes **no authenticated V5 semantic tool by itself**. The setting requires `INTERACTIVE_ASSIST_MODE=true`, rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden.
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, and exact existing-list Save operation documented in the V5 baseline. The setting rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden.
 
 For the current remote single-user design, authenticate the public MCP client at an external gateway and use the private `static-bearer` hop to this core server. Do not forward a caller's public OAuth access token into the browser runtime. See [V5 authenticated workflows](docs/v5-authenticated-workflows.md) and [OAuth gateway pattern](docs/oauth-gateway.md).
 
