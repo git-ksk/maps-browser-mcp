@@ -141,7 +141,7 @@ Required constraints:
 - no persistence or dataset construction;
 - list names/raw user content are not written to durable audit/checkpoint logs.
 
-The exact tool names and caps remain design candidates until live observation confirms the semantic UI structure.
+Live implementation status (2026-08-18): `maps_read_place_save_state(expectedLabel)` is implemented behind the V5 opt-in. Fresh observation confirmed a bounded `Save to list` menu whose existing-list rows use `role=menuitemradio` with `aria-checked=true|false`. The tool revalidates signed-in readiness and exact place identity, returns at most 10 existing list names plus membership, does not paginate, never selects a row or creates a list, and closes the chooser with Escape. List-name identity is taken from the first stable visible text leaf inside each row; privacy/count metadata is intentionally excluded. Flattened, duplicate, missing, or otherwise ambiguous row structure fails closed. `maps_read_saved_lists()` remains unimplemented because the current workflow does not require Saved-library traversal.
 
 ### V5-C — save a place to an existing list
 

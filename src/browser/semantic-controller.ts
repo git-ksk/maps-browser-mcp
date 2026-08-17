@@ -19,6 +19,7 @@ import { swapVerifiedRouteEndpoints, type RouteSwapResult } from "./route-swap.j
 import { getVerifiedRouteShareLink, type RouteShareLinkResult } from "./route-share.js";
 import { selectVerifiedRecommendedTravelMode, type RecommendedTravelModeResult } from "./recommended-mode.js";
 import { MapsBrowserRuntime, BrowserRuntimeError } from "./runtime.js";
+import { readVerifiedPlaceSaveState, type PlaceSaveStateResult } from "./place-save-state.js";
 
 export class SemanticController {
   constructor(
@@ -28,6 +29,10 @@ export class SemanticController {
 
   async readAuthenticatedReadiness(): Promise<{ state: "signed_in" | "signed_out" | "unknown" }> {
     return { state: await this.runtime.readAuthenticatedReadiness() };
+  }
+
+  async readPlaceSaveState(expectedLabel: string): Promise<PlaceSaveStateResult> {
+    return readVerifiedPlaceSaveState(this.runtime, expectedLabel);
   }
 
   async selectResult(index: number, expectedLabel?: string): Promise<{ selected: string }> {
