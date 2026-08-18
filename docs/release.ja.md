@@ -120,6 +120,18 @@ CAPTCHA、consent、sign-in、access challengeを意図的に発生させたり�
 
 Docs-only等、明らかにruntimeへ影響しない変更では、Live compatibility baselineに疑いがない限り新しいLive Maps runは通常不要です。
 
+## 6.1. v0.3.2+ Sequential V5 Release Gate
+
+V5 authenticated workflow、credential-safe handoff、existing-list Save、Send to phoneを変更するreleaseでは、version / tag作業をrelease-complete扱いする前に同じdedicated profileで以下をsequential実行します。
+
+1. **V5-A readiness:** fresh Maps surfaceでidentity-free `signed_in` のみ確認。Account identityは記録しない。
+2. **V5-B save-state read:** public place 1件についてbounded existing-list membershipをreadし、private list labelをpublic logへ出さない。
+3. **V5-C existing-list Save:** exact safe target 1件を必須とする。Test-purpose listを優先するが、Humanがexisting list 1件の利用を明示許可してもよい。Save activationはexactly 1回、create/delete/unsave禁止、fresh readでsame hidden targetの `saved=true` を必須確認。
+4. **V5-D Cancel:** fresh simple route + bounded device read後にexplicit approvalを要求し、1回Cancelしてsend actionなしを確認。
+5. **V5-D approved send:** route/device stateを最初からfresh取得し、新しいexact Human approvalを得た上でdevice activationを1回だけ実行する。Ambiguous postcondition後はautomatic retryせず、Humanへphysical arrival確認を依頼する。
+
+Approved MCP activation 1回からdownstream platform notificationが重複した場合は別観測として記録し、agent/MCP replayとdownstream delivery duplicationを区別します。新しいHuman approvalなしに調査目的の再sendを行いません。
+
 ## 7. Security / Repository Settings
 
 Public release前と、その後も定期的に確認:

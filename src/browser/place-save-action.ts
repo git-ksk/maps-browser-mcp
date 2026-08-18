@@ -133,8 +133,13 @@ function targetExpression(
     const target=rows[${listIndex}];
     if(norm(target.label)!==${expectedList})return {ok:false,reason:'target_mismatch',listLabel:target.label};
     const wasSaved=target.checked;
-    if(${click ? "true" : "false"} && !wasSaved) target.el.click();
-    return {ok:true,placeLabel:places[0],listIndex:${listIndex},listLabel:target.label,checked:wasSaved,clicked:${click ? "!wasSaved" : "false"}};
+    if(${click ? "true" : "false"}){
+      const rect=target.el.getBoundingClientRect();
+      const x=rect.left+(rect.width/2), y=rect.top+(rect.height/2);
+      if(!(rect.width>0&&rect.height>0&&Number.isFinite(x)&&Number.isFinite(y)))return {ok:false,reason:'target_not_clickable'};
+      return {ok:true,placeLabel:places[0],listIndex:${listIndex},listLabel:target.label,checked:wasSaved,clicked:false,x,y};
+    }
+    return {ok:true,placeLabel:places[0],listIndex:${listIndex},listLabel:target.label,checked:wasSaved,clicked:false};
   })()`;
 }
 
@@ -143,7 +148,7 @@ export function parsePlaceSaveActionProbe(
   expectedPlaceLabel: string,
   listIndex: number,
   expectedListLabel: string
-): { placeLabel: string; listIndex: number; listLabel: string; wasSaved: boolean; clicked: boolean } | undefined {
+): { placeLabel: string; listIndex: number; listLabel: string; wasSaved: boolean; clicked: boolean; point?: { x: number; y: number } } | undefined {
   const probe = value as {
     ok?: unknown;
     reason?: unknown;
@@ -152,6 +157,8 @@ export function parsePlaceSaveActionProbe(
     listLabel?: unknown;
     checked?: unknown;
     clicked?: unknown;
+    x?: unknown;
+    y?: unknown;
   } | null | undefined;
 
   if (probe?.reason === "pending") return undefined;
@@ -171,7 +178,8 @@ export function parsePlaceSaveActionProbe(
       "duplicate_list",
       "new_list_in_radio",
       "target_missing",
-      "target_mismatch"
+      "target_mismatch",
+      "target_not_clickable"
     ].includes(String(probe?.reason))) {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "The Google Maps save target changed or became ambiguous; refusing to guess");
     }
@@ -186,12 +194,21 @@ export function parsePlaceSaveActionProbe(
   if (isNewListLabel(probe.listLabel)) {
     throw new BrowserRuntimeError("UI_STATE_CHANGED", "New-list creation is not an allowed V5-C save target");
   }
+  const hasPoint = probe.x !== undefined || probe.y !== undefined;
+  let point: { x: number; y: number } | undefined;
+  if (hasPoint) {
+    if (typeof probe.x !== "number" || typeof probe.y !== "number" || !Number.isFinite(probe.x) || !Number.isFinite(probe.y)) {
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "The verified Google Maps save-list target did not expose a stable click point");
+    }
+    point = { x: probe.x, y: probe.y };
+  }
   return {
     placeLabel: probe.placeLabel.replace(/\s+/g, " ").trim().slice(0, 240),
     listIndex,
     listLabel: probe.listLabel.replace(/\s+/g, " ").trim().slice(0, 160),
     wasSaved: probe.checked,
-    clicked: probe.clicked
+    clicked: probe.clicked,
+    ...(point ? { point } : {})
   };
 }
 
@@ -231,16 +248,23 @@ async function readFreshChooserState(
 async function reopenChooserForVerification(
   runtime: MapsBrowserRuntime,
   expectedPlaceLabel: string,
-  client: Awaited<ReturnType<MapsBrowserRuntime["getClient"]>>
+  client: Awaited<ReturnType<MapsBrowserRuntime["getClient"]>>,
+  timeoutMs = 2_000
 ): Promise<void> {
-  await runtime.assertReadableView("place");
-  const opened = await client.Runtime.evaluate({
-    expression: placeSaveOpenExpression(expectedPlaceLabel),
-    returnByValue: true,
-    awaitPromise: true
-  });
-  const value = opened.result.value as { ok?: unknown; reason?: unknown } | undefined;
-  if (value?.ok !== true) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    await runtime.assertReadableView("place");
+    const opened = await client.Runtime.evaluate({
+      expression: placeSaveOpenExpression(expectedPlaceLabel),
+      returnByValue: true,
+      awaitPromise: true
+    });
+    const value = opened.result.value as { ok?: unknown; reason?: unknown } | undefined;
+    if (value?.ok === true) return;
+    if ((value?.reason === "missing_save" || value?.reason === "pending") && Date.now() < deadline) {
+      await sleep(POLL_INTERVAL_MS);
+      continue;
+    }
     parsePlaceSaveStateProbe({ ...value, rows: [], total: 0 }, expectedPlaceLabel);
   }
 }
@@ -299,10 +323,9 @@ export async function saveVerifiedPlaceToExistingList(
     if (runtime.getResourceEpoch() !== resourceEpoch) {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "The Maps resource epoch changed immediately before the save click; refusing stale action replay");
     }
-    // Once the bounded action expression is issued, conservatively assume a click may
-    // have occurred even if CDP/result parsing fails afterward. Any failure from this
-    // point invalidates stale semantic context rather than allowing replay.
-    clickAttempted = true;
+    // Revalidate the exact row and obtain only its bounded viewport click point first.
+    // The actual mutation is performed with CDP Input so Google Maps receives a trusted
+    // pointer event rather than a synthetic HTMLElement.click().
     const actionEval = await client.Runtime.evaluate({
       expression: targetExpression(expectedPlaceLabel, listIndex, expectedListLabel, true),
       returnByValue: true,
@@ -312,7 +335,7 @@ export async function saveVerifiedPlaceToExistingList(
     if (!action) {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "The save-list chooser disappeared before the bounded save click");
     }
-    if (action.wasSaved && !action.clicked) {
+    if (action.wasSaved) {
       return {
         saved: true,
         alreadySaved: true,
@@ -322,9 +345,32 @@ export async function saveVerifiedPlaceToExistingList(
         source: "google_maps_save_menu"
       };
     }
-    if (action.wasSaved || !action.clicked) {
+    if (action.clicked || !action.point) {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "The save target changed immediately before the bounded save click");
     }
+
+    // From the first pointer dispatch onward, conservatively assume the mutation may
+    // have happened even if CDP fails afterward. Never auto-replay this click.
+    clickAttempted = true;
+    await client.Input.dispatchMouseEvent({
+      type: "mousePressed",
+      x: action.point.x,
+      y: action.point.y,
+      button: "left",
+      buttons: 1,
+      clickCount: 1
+    });
+    await client.Input.dispatchMouseEvent({
+      type: "mouseReleased",
+      x: action.point.x,
+      y: action.point.y,
+      button: "left",
+      buttons: 0,
+      clickCount: 1
+    });
+    // Let Google Maps finish the trusted row activation before probing/reopening the
+    // chooser. Reopening during the close/update transition can race the save state.
+    await sleep(200);
 
     let reopened = false;
     const deadline = Date.now() + postconditionTimeoutMs;

@@ -464,7 +464,7 @@ Contributions are welcome within the project's constrained scope. Read **[CONTRI
 
 ## Release status
 
-The repository metadata for the v0.3.1 release baseline is versioned as `0.3.1`. V5-A through V5-D are implemented but remain disabled by default behind the authenticated-workflow opt-in. `maps-browser-mcp` is not published to npm in this release; use the GitHub source tag/Release.
+The repository metadata for the v0.3.2 release baseline is versioned as `0.3.2`. V5-A through V5-D are implemented but remain disabled by default behind the authenticated-workflow opt-in. `maps-browser-mcp` is not published to npm in this release; use the GitHub source tag/Release.
 
 See **[Release checklist](docs/release.md)** before tagging or publishing.
 

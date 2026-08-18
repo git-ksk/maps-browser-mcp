@@ -114,6 +114,18 @@ Do not deliberately trigger or attempt to bypass CAPTCHA, consent, sign-in, or a
 
 For documentation-only or obviously non-runtime changes, a new live Maps run is normally unnecessary unless the live compatibility baseline is already in doubt.
 
+## 6.1. Sequential V5 release gate for v0.3.2+
+
+For releases that change V5 authenticated workflows, credential-safe handoff, existing-list Save, or Send to phone, run these live checks sequentially against the same dedicated profile before version/tag work is considered release-complete:
+
+1. **V5-A readiness:** fresh Maps surface, identity-free `signed_in` only. Never record account identity.
+2. **V5-B save-state read:** one public place, bounded existing-list membership read, no private list labels in public logs.
+3. **V5-C existing-list Save:** require one exact safe target. A clearly test-purpose list is preferred; a Human may explicitly authorize one existing list instead. Perform exactly one save activation, never create/delete/unsave, and require a fresh read confirming the same hidden target as `saved=true`.
+4. **V5-D Cancel:** fresh simple route + bounded device read, request explicit approval, Cancel once, and verify no send action.
+5. **V5-D approved send:** reacquire route/device state from scratch, obtain a new exact Human approval, activate the exact device once, never automatically retry after ambiguous postcondition, and ask the Human to confirm physical arrival.
+
+If one approved MCP activation results in duplicated downstream platform notifications, record the observation separately. The release gate must distinguish agent/MCP replay from downstream delivery duplication and must not issue an investigative re-send without a new Human approval.
+
 ## 7. Security/repository settings
 
 Before the first public release and periodically afterward, confirm:

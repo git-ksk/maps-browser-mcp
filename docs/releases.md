@@ -4,14 +4,14 @@ This page explains how to choose between a stable release and the current `main`
 
 ## Latest stable release
 
-The release baseline documented here is **v0.3.1**. The GitHub tag/Release is the authoritative record for the exact tested release commit.
+The release baseline documented here is **v0.3.2**. The GitHub tag/Release is the authoritative record for the exact tested release commit.
 
-- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.1
+- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.2
 - Draft: no
 - Prerelease: no
 - npm: **not published**
 
-v0.3.1 documents the already-implemented V5 tool surface in the top-level READMEs and adds repository-policy coverage preventing registered tools from disappearing from either README. v0.3.0 added the bounded V5 authenticated-workflow slices (A–D) behind the existing fail-closed opt-in, completed the clean external OAuth/MCP Runtime reference path and ChatGPT dogfood migration, and hardened remote/headless bounded reads. V5 remains disabled by default, account-backed automation remains single-user/dedicated-profile only, and npm remains unpublished.
+v0.3.2 hardens credential-safe Cua focus handling and the live V5-C existing-list Save activation/postcondition path, then re-runs the sequential V5-A through V5-D release gate on the dedicated signed-in profile. The approved Send-to-phone path issued one MCP-side device activation with no retry and the Human confirmed iPhone arrival; three identical downstream iOS notifications were observed from that single activation and are recorded as an external delivery-duplication observation. v0.3.0 introduced the bounded V5 authenticated-workflow slices (A–D) behind the existing fail-closed opt-in, while v0.3.1 synchronized the top-level README tool inventory. V5 remains disabled by default, account-backed automation remains single-user/dedicated-profile only, and npm remains unpublished.
 
 For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 
@@ -20,7 +20,7 @@ For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 If you want the exact source that was validated and released, check out the release tag:
 
 ```bash
-git clone --branch v0.3.1 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
+git clone --branch v0.3.2 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm ci --ignore-scripts
 npm run build
@@ -48,11 +48,9 @@ Use `main` when you intentionally want the newest merged development state.
 
 For contributors, branch from the current `main` unless a maintainer explicitly asks for a release-branch fix.
 
-## v0.3.1 validation record
+## v0.3.2 validation record
 
-v0.3.1 is a documentation/version-metadata patch: it changes no Maps navigation, browser-control, OAuth, or V5 action semantics. The exact release commit must still pass Node.js 20/22/24 required CI, macOS/Windows browser smoke, CodeQL, package/repository policy checks, and local stdio/HTTP/browser/package release validation.
-
-A new Live Maps E2E run is intentionally not required for this documentation-only patch under the release checklist; the v0.3.0 exact-release container Live Maps baseline was green immediately before this patch and no runtime behavior changed.
+v0.3.2 is a runtime hardening patch. The exact release commit must pass Node.js 20/22/24 required CI, macOS/Windows browser smoke, CodeQL, package/repository policy checks, and local stdio/HTTP/browser/package release validation. The sequential authenticated V5 gate was also re-run locally: A readiness PASS, B bounded save-state PASS, C one Human-authorized existing-list save PASS with fresh `saved=true`, D approval Cancel/no-send PASS, then one approved route/device activation with no retry and Human-confirmed iPhone arrival. Three identical iOS notifications appeared from the one approved activation; this is documented as downstream duplication rather than MCP replay.
 
 ## v0.3.0 validation record
 

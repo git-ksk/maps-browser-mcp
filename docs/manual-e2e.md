@@ -223,9 +223,9 @@ Do not split a rejected bulk request into many smaller calls. That would violate
 Run this only from the dedicated signed-in V5 profile with both `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` and `INTERACTIVE_ASSIST_MODE=true`. This is an account mutation check, so begin read-only and do not improvise a target.
 
 1. Establish one exact selected place through the bounded place workflow.
-2. Call `maps_read_place_save_state({ expectedLabel })`; confirm signed-in readiness, a bounded existing-list chooser, and one candidate that is clearly designated for testing and currently has `saved=false`. Do not publish or persist private list labels.
-3. If there is not exactly one safe existing test-purpose target, stop and record the live mutation as **BLOCKED**. Do not guess a personal list and do not create a new list merely for the check.
-4. If exactly one safe target exists, call `maps_save_place_to_list({ expectedPlaceLabel, listIndex, expectedListLabel })` exactly once using the fresh returned index + label.
+2. Call `maps_read_place_save_state({ expectedLabel })`; confirm signed-in readiness, a bounded existing-list chooser, and at least one `saved=false` candidate. Do not publish or persist private list labels.
+3. Select a target only when either (a) exactly one existing list is clearly designated for testing, or (b) the Human explicitly authorizes using one existing list for this validation. If the authorized target is not uniquely resolvable from the fresh bounded state, stop and record **BLOCKED**. Never guess a personal list and never create a new list merely for the check.
+4. Call `maps_save_place_to_list({ expectedPlaceLabel, listIndex, expectedListLabel })` exactly once using that fresh, exact index + hidden label.
 5. Confirm success only when the tool verifies the exact target as `aria-checked=true`; then perform one fresh `maps_read_place_save_state` and independently confirm the same target is `saved=true`.
 6. Confirm an already-saved target is a no-click idempotent success, while stale index/label, duplicate/missing/flattened rows, changed place, changed resource epoch, signed-out/unknown readiness, or unverifiable postcondition fail closed.
 7. Do not automate cleanup by unsaving/removing the place. If cleanup is required after deliberate dogfood, do it manually outside the MCP mutation surface.
@@ -241,6 +241,14 @@ There is no V5-E history MCP tool. Re-run this gate only when evaluating whether
 3. If Maps-local Recent exists, inspect only bounded visible structure. A safe candidate must expose a stable semantic row/container model, a strict first-page hard cap, and no need for DOM-order/private-label selectors. Adjacent Delete/selection controls, ambiguous rows, or required scrolling/pagination keep the feature observation-gated.
 4. Do not change activity settings, delete history, auto-scroll, paginate, read cookies/storage/account identity, intercept network/internal APIs, or persist screenshots/logs containing private activity.
 5. Timeline remains outside the desktop-Web roadmap unless navigation remains on an official dedicated desktop Timeline surface with a freshly observable bounded semantic target; a menu link or redirect back to the normal map is insufficient.
+
+### v0.3.2 sequential V5 release validation — 2026-08-19 / ja-JP
+
+- V5-A: **PASS** — fresh dedicated-profile readiness returned `signed_in`; no account identity was read.
+- V5-B: **PASS** — bounded existing-list membership read completed for a public place; private list labels were not published.
+- V5-C: **PASS** — after explicit Human authorization to use an existing list, the MCP performed one save activation and a fresh bounded read independently confirmed the same hidden target as `saved=true`. No list create/delete/unsave occurred.
+- V5-D approval boundary: **PASS** — the first exact route/device approval was cancelled and no send was attempted; route/device state was then freshly reacquired.
+- V5-D approved send: **PASS at MCP action boundary and physical arrival** — one approved device activation was issued with no automatic retry, and the Human confirmed the expected route arrived on the iPhone. The iPhone displayed three identical downstream notifications for that one activation; record this as an external duplicate-delivery observation rather than evidence of MCP replay. Do not re-send merely to investigate it.
 
 ## Release result
 

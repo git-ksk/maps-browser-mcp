@@ -122,6 +122,7 @@ function fakeRuntime(input: {
   let mutationCount = 0;
   let invalidationCount = 0;
   let keyEventCount = 0;
+  let mouseEventCount = 0;
   const client = {
     Runtime: {
       async evaluate() {
@@ -132,6 +133,9 @@ function fakeRuntime(input: {
     Input: {
       async dispatchKeyEvent() {
         keyEventCount += 1;
+      },
+      async dispatchMouseEvent() {
+        mouseEventCount += 1;
       }
     }
   };
@@ -175,6 +179,7 @@ function fakeRuntime(input: {
     mutationCount: () => mutationCount,
     invalidationCount: () => invalidationCount,
     keyEventCount: () => keyEventCount,
+    mouseEventCount: () => mouseEventCount,
     epoch: () => epoch
   };
 }
@@ -182,7 +187,7 @@ function fakeRuntime(input: {
 const openProbe = { ok: true, placeLabel: "Example Place" };
 const freshUnsaved = { ok: true, placeLabel: "Example Place", rows: [{ label: "List A", checked: false }], total: 1 };
 const freshSaved = { ok: true, placeLabel: "Example Place", rows: [{ label: "List A", checked: true }], total: 1 };
-const actionClicked = { ok: true, placeLabel: "Example Place", listIndex: 0, listLabel: "List A", checked: false, clicked: true };
+const actionTarget = { ok: true, placeLabel: "Example Place", listIndex: 0, listLabel: "List A", checked: false, clicked: false, x: 120, y: 240 };
 const postSaved = { ok: true, placeLabel: "Example Place", listIndex: 0, listLabel: "List A", checked: true, clicked: false };
 const postUnsaved = { ok: true, placeLabel: "Example Place", listIndex: 0, listLabel: "List A", checked: false, clicked: false };
 
@@ -225,7 +230,7 @@ test("target becoming saved immediately before click is still an idempotent no-t
 });
 
 test("one bounded save click followed by checked=true verifies success and advances epoch once", async () => {
-  const fake = fakeRuntime({ evaluations: [openProbe, freshUnsaved, actionClicked, postSaved] });
+  const fake = fakeRuntime({ evaluations: [openProbe, freshUnsaved, actionTarget, postSaved] });
   const before = fake.epoch();
   const result = await saveVerifiedPlaceToExistingList(fake.runtime, "Example Place", 0, "List A");
   assert.equal(result.saved, true);
@@ -235,10 +240,11 @@ test("one bounded save click followed by checked=true verifies success and advan
   assert.equal(fake.invalidationCount(), 0);
   assert.equal(fake.epoch(), before + 1);
   assert.equal(fake.keyEventCount(), 2);
+  assert.equal(fake.mouseEventCount(), 2);
 });
 
 test("checked=false after click is failure, returns no success, invalidates stale semantic context, and never retries the mutation", async () => {
-  const fake = fakeRuntime({ evaluations: [openProbe, freshUnsaved, actionClicked, postUnsaved] });
+  const fake = fakeRuntime({ evaluations: [openProbe, freshUnsaved, actionTarget, postUnsaved] });
   await assert.rejects(
     () => saveVerifiedPlaceToExistingList(fake.runtime, "Example Place", 0, "List A", { postconditionTimeoutMs: 0, pollIntervalMs: 0 }),
     isRuntimeCode("UI_STATE_CHANGED")
@@ -247,11 +253,12 @@ test("checked=false after click is failure, returns no success, invalidates stal
   assert.equal(fake.mutationCount(), 0);
   assert.equal(fake.invalidationCount(), 1);
   assert.equal(fake.keyEventCount(), 2);
+  assert.equal(fake.mouseEventCount(), 2);
 });
 
 test("postcondition timeout fails closed even if chooser must be reopened for verification", async () => {
   const pending = { ok: false, reason: "pending" };
-  const fake = fakeRuntime({ evaluations: [openProbe, freshUnsaved, actionClicked, pending, openProbe, pending] });
+  const fake = fakeRuntime({ evaluations: [openProbe, freshUnsaved, actionTarget, pending, openProbe, pending] });
   await assert.rejects(
     () => saveVerifiedPlaceToExistingList(fake.runtime, "Example Place", 0, "List A", { postconditionTimeoutMs: 0, pollIntervalMs: 0 }),
     isRuntimeCode("UI_STATE_CHANGED")
@@ -260,6 +267,7 @@ test("postcondition timeout fails closed even if chooser must be reopened for ve
   assert.equal(fake.mutationCount(), 0);
   assert.equal(fake.invalidationCount(), 1);
   assert.equal(fake.keyEventCount(), 2);
+  assert.equal(fake.mouseEventCount(), 2);
 });
 
 test("UI structure change after fresh read fails closed before any reported mutation", async () => {
@@ -269,7 +277,8 @@ test("UI structure change after fresh read fails closed before any reported muta
     isRuntimeCode("UI_STATE_CHANGED")
   );
   assert.equal(fake.mutationCount(), 0);
-  assert.equal(fake.invalidationCount(), 1);
+  assert.equal(fake.invalidationCount(), 0);
+  assert.equal(fake.mouseEventCount(), 0);
   assert.equal(fake.keyEventCount(), 2);
 });
 
@@ -304,4 +313,6 @@ test("V5-C source does not read credentials/account identifiers or persist raw p
   assert.doesNotMatch(actionSource, /writeFile|appendFile|checkpoint|durable/i);
   assert.match(actionSource, /\[role=\\?"menuitemradio\\?"\]/);
   assert.match(actionSource, /aria-checked/);
+  assert.match(actionSource, /dispatchMouseEvent/);
+  assert.doesNotMatch(actionSource, /target\.el\.click\(\)/);
 });

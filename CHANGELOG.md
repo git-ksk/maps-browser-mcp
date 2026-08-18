@@ -6,11 +6,19 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+## [v0.3.2] - 2026-08-19
+
 - Add an opt-in `cua_takeover` credential-safe transport that reuses the existing authenticated short-lived Takeover UI while normal Chrome remains free of CDP/remote-debugging. A local Cua Driver MCP bridge is bound to the exact dedicated Chrome PID and single visible window, accepts only a fixed seven-tool native capture/input allowlist, keeps Human-entered text out of northbound Maps MCP/model context/process argv/repository logs, and was live-validated end to end on a benign local page for frame delivery, tap, scroll, text, Enter, outer Bearer coexistence, Done capability revocation, and normal-Chrome teardown.
 
 ### Added
 
 - Add an opt-in credential-safe Human sign-in ceremony for V5. `maps_request_human_sign_in` keeps Google account selection, credentials and MFA Human-only; it fully stops the server-owned CDP Chrome, opens the same dedicated profile in normal Chrome without remote-debugging/automation attachment, optionally points the Human at an existing OS-level remote-access product, then closes that browser and requires a fresh identity-free readiness verification before automation can resume. The external remote-access product remains outside this repository, pre-auth semantic state is never replayed, and the feature is disabled by default.
+
+### Changed
+
+- Harden V5-C existing-list Save against the current Google Maps live UI: retain exact place/index/list/duplicate/`aria-checked` revalidation, obtain a bounded verified row click point, dispatch one CDP pointer activation instead of a synthetic DOM click, and tolerate only the bounded post-click UI settle needed to re-open and verify the exact target as saved. Live release validation completed one explicitly Human-authorized existing-list save exactly once and confirmed the same hidden list as `saved=true` with a fresh read.
+- Harden the Cua browser-takeover fallback input path by remembering the last Human tap point and re-focusing it before bounded text/key input. This remains a fallback transport; credential entry stays Human-only and normal Chrome remains the primary credential-safe surface.
+- Re-ran the v0.3.2 sequential V5 release gate against the dedicated signed-in profile: identity-free readiness, bounded save-state read, one existing-list save, approval Cancel/no-send, fresh route/device re-read, one approved Send-to-phone activation, and physical iPhone arrival all completed. The single approved activation produced three identical iOS notifications downstream; the MCP issued no automatic retry and retains one device-click site per approved invocation.
 
 ### Security
 

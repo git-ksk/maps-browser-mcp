@@ -65,13 +65,13 @@ test("Cua credential takeover binds one exact visible window and carries PNG fra
   const click = cua.calls.find(([name]) => name === "click")?.[1];
   assert.deepEqual(click, { pid: 1234, window_id: 44, x: 300, y: 200, delivery_mode: "foreground" });
   const text = cua.calls.find(([name]) => name === "type_text")?.[1];
-  assert.deepEqual(text, { pid: 1234, window_id: 44, text: "benign-probe", delivery_mode: "foreground" });
+  assert.deepEqual(text, { pid: 1234, window_id: 44, x: 300, y: 200, text: "benign-probe", delivery_mode: "foreground" });
   const scroll = cua.calls.find(([name]) => name === "scroll")?.[1];
   assert.equal(scroll?.direction, "down");
   assert.equal(scroll?.x, 600);
   assert.equal(scroll?.y, 450);
   const key = cua.calls.find(([name]) => name === "press_key")?.[1];
-  assert.equal(key?.key, "return");
+  assert.deepEqual(key, { pid: 1234, window_id: 44, x: 300, y: 200, key: "return", delivery_mode: "foreground" });
 
   await adapter.end("intervention-1", 7);
   assert.equal(cua.closed, 1);
