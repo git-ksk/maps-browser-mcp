@@ -1,0 +1,93 @@
+import http from "node:http";
+import { Readable } from "node:stream";
+import { createOAuthBoundary } from "./oauth.mjs";
+import { assertPrivateBearer, proxyMcpRequest, safeCoreUrl } from "./proxy.mjs";
+
+function env(name) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+function port() {
+  const raw = process.env.PORT?.trim() || "8080";
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error("PORT must be between 1 and 65535");
+  return value;
+}
+
+function requestFromNode(req) {
+  const origin = env("MCP_PUBLIC_BASE_URL");
+  const url = new URL(req.url || "/", origin);
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (Array.isArray(value)) for (const item of value) headers.append(name, item);
+    else if (value !== undefined) headers.set(name, value);
+  }
+  const init = { method: req.method || "GET", headers };
+  if (init.method !== "GET" && init.method !== "HEAD") {
+    init.body = Readable.toWeb(req);
+    init.duplex = "half";
+  }
+  return new Request(url, init);
+}
+
+async function writeNodeResponse(res, response) {
+  res.statusCode = response.status;
+  for (const [name, value] of response.headers) res.setHeader(name, value);
+  if (!response.body) return res.end();
+  Readable.fromWeb(response.body).pipe(res);
+}
+
+const coreUrl = safeCoreUrl(env("MCP_CORE_URL"));
+const privateBearer = assertPrivateBearer(env("MCP_CORE_BEARER_TOKEN"));
+const oauth = await createOAuthBoundary();
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const request = requestFromNode(req);
+    const path = new URL(request.url).pathname;
+
+    if (path === "/healthz" && request.method === "GET") {
+      return await writeNodeResponse(res, new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+      }));
+    }
+
+    if (oauth.handlesPath(path)) {
+      return await writeNodeResponse(res, await oauth.handle(request));
+    }
+
+    if (path === "/mcp") {
+      const decision = await oauth.authorizePublicMcp(request);
+      if (!decision.allowed) {
+        return await writeNodeResponse(res, new Response(JSON.stringify({ error: decision.code }), {
+          status: decision.status,
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+            ...(decision.headers || {})
+          }
+        }));
+      }
+      return await writeNodeResponse(res, await proxyMcpRequest(request, { coreUrl, privateBearer }));
+    }
+
+    // Remote browser takeover is intentionally not proxied by this initial reference gateway.
+    return await writeNodeResponse(res, new Response(JSON.stringify({ error: "not_found" }), {
+      status: 404,
+      headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+    }));
+  } catch (error) {
+    console.error("[maps-oauth-gateway] request failed", error instanceof Error ? error.message : "unknown error");
+    res.statusCode = 500;
+    res.setHeader("content-type", "application/json; charset=utf-8");
+    res.setHeader("cache-control", "no-store");
+    res.end(JSON.stringify({ error: "gateway_error" }));
+  }
+});
+
+server.listen(port(), "0.0.0.0", () => {
+  console.error(`[maps-oauth-gateway] listening on :${port()}`);
+});

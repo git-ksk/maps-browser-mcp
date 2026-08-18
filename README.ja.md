@@ -350,7 +350,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 
 `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` はbounded authenticated V5 semantics用の追加fail-closed Opt-inです。`INTERACTIVE_ASSIST_MODE=true` と組み合わせると、V5 baselineに記載したidentity-free readiness、bounded selected-place save-state read、exact existing-list Save、bounded selected-route Send-to-phone target read、approval-gated single-device sendだけを公開します。既存CDP attachを拒否し、per-principal profile isolation実装前の `MCP_AUTH_PROVIDER=module` を拒否し、`MAPS_CHROME_PROFILE_DIR` overrideにはabsoluteなdedicated profile pathを要求します。Send mutationはさらにform elicitationをadvertiseするmodern MCP 2026-07-28 clientが必要です。
 
-現在のremote single-user設計では、public MCP clientの認証はexternal gatewayで行い、このcore serverへのprivate hopは `static-bearer` を使います。callerのpublic OAuth access tokenをbrowser runtimeへ転送しません。詳細は [V5 authenticated workflows](docs/v5-authenticated-workflows.ja.md) と [OAuth gateway pattern](docs/oauth-gateway.ja.md) を参照してください。
+現在のremote single-user設計では、public MCP clientの認証はexternal gatewayで行い、このcore serverへのprivate hopは `static-bearer` を使います。callerのpublic OAuth access tokenをbrowser runtimeへ転送しません。Versionedな [reference OAuth gateway](reference/oauth-gateway/README.ja.md) がこの構成をisolated dogfood packageとして実装しますが、published root npm packageには含めません。詳細は [V5 authenticated workflows](docs/v5-authenticated-workflows.ja.md) と [OAuth gateway pattern](docs/oauth-gateway.ja.md) を参照してください。
 
 ### 既存CDP endpoint
 

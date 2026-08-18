@@ -138,3 +138,11 @@ Browser / container側の制約は [Container / headless Linux 日本語版](con
 OAuth providerの選択、user store、consent UI、client registration policy、token persistence、refresh-token lifecycle、account lifecycleはdeployment-specificです。Concrete providerをbrowser controllerへ組み込むとsecurity surfaceが広がり、現在のsingle-user browser boundaryも曖昧になります。
 
 再利用するcore contractはより狭く、stable authenticated principalを受け取り、handoff / takeover stateをそれへbindし、Maps/browser safetyをlocalで強制し、OAuth protocol / token処理をexternal gatewayまたはadapter boundaryへ置く、という形です。
+
+## Versioned Reference Gateway（#74）
+
+Repositoryにはremote single-user dogfood用のisolatedな [reference OAuth gateway](../reference/oauth-gateway/README.ja.md) を追加しました。Public OAuth boundaryとcurrent-checkout Maps coreを別processで動かし、coreをloopback `static-bearer` hopへ固定し、callerのpublic OAuth credentialをMCP proxy前に除去します。Reference sourceはroot packageのpublished npm `files` set外です。
+
+Initial referenceではbrowser-session authenticationを推測実装せず、`/takeover/*` を無効のままにします。CoreのHuman Intervention / principal-binding machineryを弱めるものではなく、remote/mobile takeoverをfirst clean-gateway migrationに含めないという意味です。将来public takeoverを追加する場合は、takeover page/API trafficをproxyする前にbrowser sessionをsame logical single userとしてauthenticateする必要があります。
+
+Historical `map-browser-mcp-test` deploymentはmigration inputとしてだけ扱います。Legitimate MCP/refresh trafficが旧token stateへ依存している可能性がある間はin-place replacementしません。Clean referenceはOAuth control-plane collectionを分離し、client reconnect / traffic retirement checkの前にdistinct service URLへdeployします。

@@ -150,7 +150,7 @@ The current planning sequence maps the remaining major pre-v1 work to release th
 
 - **v0.3.0 — V5 authenticated workflows + clean remote-auth foundation**
   - Implement V5 in the staged order below rather than enabling broad signed-in browser automation.
-  - Treat the clean external OAuth reference gateway tracked in issue #74 as foundation/pre-work for this release: a reproducible Maps-specific remote-auth path, current-main backend, stable-principal propagation, `mcp-interop`/target-client validation, and migration away from the historical Monokura-derived dogfood gateway without modifying it in place while active clients depend on it.
+  - Treat the clean external OAuth reference gateway tracked in issue #74 as foundation/pre-work for this release. A versioned isolated reference implementation now provides the Maps-specific OAuth boundary plus loopback private hop to the current-checkout core; live deployment, MCP interoperability/target-client validation, and safe migration away from the historical Monokura-derived dogfood gateway remain before #74 can close.
 - **v0.4.0 — MCP Apps production portability**
   - Re-validate the existing host-neutral MCP Apps surface on a suitable second production host with a real restricted Google Maps Embed key.
   - Reconsider the experimental UI label only after production-host evidence; preserve useful text/structured fallback and avoid turning rich UI into a core requirement.
