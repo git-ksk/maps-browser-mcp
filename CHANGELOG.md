@@ -14,6 +14,8 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
+- Fix the reference OAuth gateway refresh lifecycle so the initial authorization-code refresh-token record carries the same single-user account binding as rotated refresh tokens; missing identity binding now fails closed in the shared record builder.
+
 - Fix the reference OAuth gateway private-hop header allowlist to preserve bounded MCP 2026-07-28 `Mcp-Method` / `Mcp-Name` control headers while continuing to strip caller credentials, cookies, and forwarding headers.
 
 - Add an isolated `reference/oauth-gateway` dogfood implementation for issue #74: MCP 2026-07-28-shaped OAuth/CIMD + PKCE, `maps:use` resource scope, `offline_access` refresh support, separate reference OAuth state, an exact single-user UID-or-verified-email identity gate whose derived binding invalidates stale tokens after allowlist changes, and a loopback `static-bearer` private hop that strips public OAuth credentials before current-main core traffic. Remote `/takeover/*` remains intentionally disabled pending a separate browser-session auth boundary.
