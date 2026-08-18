@@ -16,6 +16,8 @@
 
 ### 変更
 
+- Reference gatewayのhuman sign-inをshared MCP Runtime identity boundaryへ移行。BrowserからFirebase Identity Toolkitへemail/passwordを直接送りgatewayはID Tokenだけを受け取る形にし、MCP間ではimmutable Firebase UIDだけを共通化する。OAuth token/state、service account、private-hop bearer secret、Firestore namespaceはMCPごとに分離する。
+
 - Reference OAuth gatewayのrefresh lifecycleを修正し、authorization-code直後の初回refresh-token recordにもrotation後と同じsingle-user account bindingを必須保存する。Identity binding欠落は共通record builderでfail closeする。
 
 - Reference OAuth gatewayのprivate-hop header allowlistを修正し、caller credential / cookie / forwarding headerを除去したままMCP 2026-07-28のbounded `Mcp-Method` / `Mcp-Name` control headerを保持する。

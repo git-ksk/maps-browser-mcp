@@ -14,6 +14,8 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
+- Move the reference gateway's human sign-in toward the shared MCP Runtime identity boundary: use Firebase email/password sign-in directly from the browser to Identity Toolkit, keep the gateway ID-token-only, prefer one immutable shared Firebase UID across MCPs, and explicitly keep OAuth token/state, service accounts, private-hop bearer secrets, and Firestore namespaces isolated per MCP.
+
 - Fix the reference OAuth gateway refresh lifecycle so the initial authorization-code refresh-token record carries the same single-user account binding as rotated refresh tokens; missing identity binding now fails closed in the shared record builder.
 
 - Fix the reference OAuth gateway private-hop header allowlist to preserve bounded MCP 2026-07-28 `Mcp-Method` / `Mcp-Name` control headers while continuing to strip caller credentials, cookies, and forwarding headers.

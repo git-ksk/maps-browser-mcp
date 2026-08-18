@@ -66,11 +66,9 @@ MCP_OAUTH_TRANSACTION_SECRET=<32+ byte secret>
 MCP_OAUTH_MAX_REQUESTS_PER_MINUTE=60
 
 MCP_FIREBASE_PROJECT_ID=<project id>
-MCP_FIREBASE_ALLOWED_EMAIL=<exact single allowed email>
-# Or use MCP_FIREBASE_ALLOWED_UID=<exact immutable uid>; configure exactly one, never both.
+MCP_FIREBASE_ALLOWED_UID=<exact immutable uid>
+# Or use MCP_FIREBASE_ALLOWED_EMAIL=<exact single allowed email>; configure exactly one, never both.
 MCP_FIREBASE_WEB_API_KEY=<Firebase web API key>
-MCP_FIREBASE_AUTH_DOMAIN=<Firebase auth domain>
-MCP_FIREBASE_WEB_APP_ID=<Firebase web app id>
 ```
 
 Private hop:
@@ -93,12 +91,13 @@ MAPS_V5_AUTHENTICATED_WORKFLOWS=true
 
 The reference uses Firebase Authentication only for the single human sign-in and Firestore only for OAuth control-plane state. It does not store Maps result datasets.
 
-1. Enable the Google provider in Firebase Authentication. Configure exactly one `MCP_FIREBASE_ALLOWED_EMAIL` or `MCP_FIREBASE_ALLOWED_UID`; email mode requires Firebase's verified-email claim and stores only a derived binding in OAuth state.
-2. Configure the Firebase web app values above.
-3. Allow the new gateway hostname in Firebase Authentication when required.
-4. Ensure Firestore exists.
-5. Run with a dedicated service account that can perform the required Firebase Auth verification and access only the reference OAuth Firestore state needed by the deployment.
-6. Configure Firestore TTL for `expiresAt` fields if desired so expired control-plane state is reclaimed.
+1. Enable Firebase Email/Password Authentication in the shared MCP Runtime identity project. Prefer `MCP_FIREBASE_ALLOWED_UID` so every MCP can bind to the same immutable human identity; email mode remains available for isolated single-user deployments.
+2. Configure the Firebase Web API key. The browser sends email/password directly to Firebase Identity Toolkit and clears the password field immediately; the gateway receives only the resulting short-lived Firebase ID Token.
+3. Ensure Firestore exists for this MCP's namespaced OAuth control-plane state.
+4. Run with a dedicated per-MCP service account that can perform Firebase Auth verification and access only this MCP's required Firestore state.
+5. Configure Firestore TTL for `expiresAt` fields if desired so expired control-plane state is reclaimed.
+
+For a shared MCP Runtime project, centralize **human identity only**. Keep OAuth codes/tokens, private-hop bearer secrets, service accounts, and Firestore namespaces separate per MCP. Do not share one MCP's resource tokens with another MCP.
 
 Never place Firebase credentials, transaction secrets, private core bearer values, OAuth access/refresh tokens, or browser profiles in the repository or container image.
 
