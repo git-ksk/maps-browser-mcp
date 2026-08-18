@@ -131,10 +131,23 @@ Historical `map-browser-mcp-test` は更新せず、**別serviceとして並行d
 
 - dedicated service account
 - secretはSecret Manager
+- Chromium + Interactive Assistを同一Cloud Run instanceで動かす場合は `1` vCPU / **最低 `2Gi` memory**
 - max instances `1`
-- single-browser runtimeに合わせた低concurrency
+- single-browser runtimeに合わせて concurrency `1`
 - HTTPS only
 - `MAPS_REMOTE_TAKEOVER` はbrowser-session auth boundaryが完成するまで無効
+
+Reference deploymentではCloud Run default任せにせず、capacity boundaryを明示します:
+
+```bash
+gcloud run services update maps-browser-mcp \
+  --cpu=1 \
+  --memory=2Gi \
+  --concurrency=1 \
+  --max-instances=1
+```
+
+`1Gi` instanceではheadlessの `maps_search` + `maps_read_place_summary` を繰り返した際にmemory limitを超え、Cloud Runがcontainerを終了してHTTP `503` を返す事象を実観測しました。Remote MCP clientではこのtransport failureが `UNKNOWN` / TaskGroup系exceptionとして見えます。これはMCP process内でcatchすべきbounded-reader exceptionではなく、deployment capacity failureです。
 
 Default container Chrome profileはephemeralです。OAuth/protocol dogfoodには使えますが、durableなsigned-in Maps stateではありません。Signed-in profile/cookie/account credentialをimageへ焼き込まないでください。Persistent authenticated Maps workflowが必要なら、V5 isolation ruleを維持できるcontrolled single-user runtimeでpersistent profile strategyを別途用意します。
 

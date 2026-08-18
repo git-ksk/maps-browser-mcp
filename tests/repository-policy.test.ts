@@ -95,6 +95,18 @@ test("readiness, MCP, and takeover paths use the configured HTTP auth provider",
   assert.match(authSource, /createAuthProvider/);
 });
 
+test("reference Cloud Run profile protects the single Chromium runtime from OOM/parallelism regressions", () => {
+  for (const doc of ["reference/oauth-gateway/README.md", "reference/oauth-gateway/README.ja.md"]) {
+    const source = read(doc);
+    assert.match(source, /--cpu=1/);
+    assert.match(source, /--memory=2Gi/);
+    assert.match(source, /--concurrency=1/);
+    assert.match(source, /--max-instances=1/);
+    assert.match(source, /503/);
+    assert.match(source, /TaskGroup/);
+  }
+});
+
 test("container base image is digest-pinned and monitored", () => {
   const dockerfile = read("Dockerfile");
   const fromLines = dockerfile.split(/\r?\n/).filter((line) => line.startsWith("FROM "));
