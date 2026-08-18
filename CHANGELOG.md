@@ -14,6 +14,8 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
+- Fix the reference OAuth gateway private-hop header allowlist to preserve bounded MCP 2026-07-28 `Mcp-Method` / `Mcp-Name` control headers while continuing to strip caller credentials, cookies, and forwarding headers.
+
 - Add an isolated `reference/oauth-gateway` dogfood implementation for issue #74: MCP 2026-07-28-shaped OAuth/CIMD + PKCE, `maps:use` resource scope, `offline_access` refresh support, separate reference OAuth state, an exact single-user UID-or-verified-email identity gate whose derived binding invalidates stale tokens after allowlist changes, and a loopback `static-bearer` private hop that strips public OAuth credentials before current-main core traffic. Remote `/takeover/*` remains intentionally disabled pending a separate browser-session auth boundary.
 
 - Add V5-D bounded Send to phone: `maps_read_route_send_targets` exposes at most six currently visible device targets for one exact selected simple route, excluding email and notification settings; `maps_send_route_to_device` uses real MCP 2026-07-28 form elicitation plus one-shot expiring `ActionApprovalManager` binding to principal + resource epoch + exact route/device. Fresh live read/approval/cancel compatibility passed, then one explicitly approved live send reached the target iOS device. The initial `aria-live` postcondition matcher failed closed without retry; it is now baseline-aware, deduplicates repeated announcements, requires one newly observed exact-device send-semantic confirmation, and keeps exactly one device-click site per approved invocation.

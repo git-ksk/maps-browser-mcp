@@ -27,6 +27,8 @@ test("public OAuth credentials are never forwarded to the core", () => {
     cookie: "session=private",
     "mcp-session-id": "session-1",
     "mcp-protocol-version": "2026-07-28",
+    "mcp-method": "tools/list",
+    "mcp-name": "maps_search",
     "content-type": "application/json",
     "x-forwarded-for": "203.0.113.1"
   });
@@ -34,6 +36,8 @@ test("public OAuth credentials are never forwarded to the core", () => {
   assert.equal(headers.get("authorization"), "Bearer 0123456789abcdefghijklmn");
   assert.equal(headers.get("mcp-session-id"), "session-1");
   assert.equal(headers.get("mcp-protocol-version"), "2026-07-28");
+  assert.equal(headers.get("mcp-method"), "tools/list");
+  assert.equal(headers.get("mcp-name"), "maps_search");
   assert.equal(headers.get("cookie"), null);
   assert.equal(headers.get("x-forwarded-for"), null);
   assert.equal([...headers.values()].some((value) => value.includes("public-oauth-token")), false);

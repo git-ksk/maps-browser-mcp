@@ -16,6 +16,8 @@
 
 ### 変更
 
+- Reference OAuth gatewayのprivate-hop header allowlistを修正し、caller credential / cookie / forwarding headerを除去したままMCP 2026-07-28のbounded `Mcp-Method` / `Mcp-Name` control headerを保持する。
+
 - Issue #74向けにisolatedな `reference/oauth-gateway` dogfood実装を追加。MCP 2026-07-28 shapeのOAuth/CIMD + PKCE、`maps:use` resource scope、`offline_access` refresh、reference専用OAuth state、UIDまたはverified emailのexact single-user identity gate + allowlist変更時に旧tokenを無効化するderived binding、public OAuth credentialを除去してcurrent-main coreへ送るloopback `static-bearer` private hopを実装。Remote `/takeover/*` はbrowser-session auth boundaryを別途設計するまで意図的に無効のまま。
 
 - V5-D bounded Send to phoneを追加。`maps_read_route_send_targets` はexact selected simple routeについてcurrently visible device targetを最大6件だけ返し、email / notification settingを除外する。`maps_send_route_to_device` はreal MCP 2026-07-28 form elicitationとone-shot + expiry付き `ActionApprovalManager` を使い、approvalをprincipal + resource epoch + exact route/deviceへbindする。Fresh live read / approval / cancel compatibilityを確認後、explicitly approvedなlive sendを1回実行しtarget iOS deviceへのdeliveryを確認。初期 `aria-live` postcondition matcherはfail closeしretryしなかったため、click前baseline、duplicate announcement dedupe、click後のnew exact-device + send-semantic confirmation 1件だけをsuccessとする形へhardeningし、approved invocationごとのdevice-click siteをexact 1箇所に固定した。
