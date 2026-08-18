@@ -41,6 +41,17 @@ function semanticAnnotations(
   return annotations;
 }
 
+function isStaleAccessibilityNodeError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    message?: unknown;
+    request?: { method?: unknown };
+    response?: { message?: unknown };
+  };
+  const message = candidate.response?.message ?? candidate.message;
+  return candidate.request?.method === "Accessibility.getChildAXNodes" && message === "Invalid ID";
+}
+
 export class VisibleStateReader {
   constructor(
     private readonly runtime: MapsBrowserRuntime,
@@ -48,6 +59,24 @@ export class VisibleStateReader {
   ) {}
 
   async read(kind: "place" | "route"): Promise<VisibleStateSummary> {
+    try {
+      return await this.readOnce(kind);
+    } catch (error) {
+      if (!isStaleAccessibilityNodeError(error)) throw error;
+    }
+
+    try {
+      return await this.readOnce(kind);
+    } catch (error) {
+      if (!isStaleAccessibilityNodeError(error)) throw error;
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Google Maps changed its accessibility tree during the bounded read. Re-run the read against the fresh UI state."
+      );
+    }
+  }
+
+  private async readOnce(kind: "place" | "route"): Promise<VisibleStateSummary> {
     const view = await this.runtime.assertReadableView(kind);
     const rawItems = kind === "place"
       ? await this.runtime.listPlaceResults()
