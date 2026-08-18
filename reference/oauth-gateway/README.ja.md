@@ -64,11 +64,9 @@ MCP_OAUTH_TRANSACTION_SECRET=<32+ byte secret>
 MCP_OAUTH_MAX_REQUESTS_PER_MINUTE=60
 
 MCP_FIREBASE_PROJECT_ID=<project id>
-MCP_FIREBASE_ALLOWED_EMAIL=<exact single allowed email>
-# または MCP_FIREBASE_ALLOWED_UID=<exact immutable uid>。両方同時には設定しない。
+MCP_FIREBASE_ALLOWED_UID=<exact immutable uid>
+# または MCP_FIREBASE_ALLOWED_EMAIL=<exact single allowed email>。両方同時には設定しない。
 MCP_FIREBASE_WEB_API_KEY=<Firebase web API key>
-MCP_FIREBASE_AUTH_DOMAIN=<Firebase auth domain>
-MCP_FIREBASE_WEB_APP_ID=<Firebase web app id>
 ```
 
 Private hop:
@@ -91,12 +89,13 @@ MAPS_V5_AUTHENTICATED_WORKFLOWS=true
 
 Firebase Authenticationはsingle human sign-in、FirestoreはOAuth control-plane stateだけに使います。Maps result datasetは保存しません。
 
-1. Firebase AuthenticationでGoogle providerを有効化。`MCP_FIREBASE_ALLOWED_EMAIL` または `MCP_FIREBASE_ALLOWED_UID` をexact 1つだけ設定する。Email modeではFirebaseのverified-email claimを必須にし、OAuth stateへはderived bindingだけを保存する
-2. 上記Firebase web app値を設定
-3. 必要ならnew gateway hostnameをFirebase Authentication authorized domainへ追加
-4. Firestoreを用意
-5. Firebase Auth verificationとreference OAuth stateに必要な最小権限だけを持つ専用service accountで実行
-6. 必要なら `expiresAt` にFirestore TTLを設定
+1. 共通MCP Runtime identity projectでFirebase Email/Password Authenticationを有効化する。全MCPを同じimmutable human identityへbindする場合は `MCP_FIREBASE_ALLOWED_UID` を推奨し、email modeはisolated single-user deployment向けに残す
+2. Firebase Web API keyを設定する。email/passwordはbrowserからFirebase Identity Toolkitへ直接送信し、password fieldは直後にclearする。Gatewayが受け取るのはshort-lived Firebase ID Tokenだけ
+3. このMCP専用namespaceのOAuth control-plane state用にFirestoreを用意する
+4. Firebase Auth verificationとこのMCPに必要なFirestore stateだけへアクセスできるper-MCP専用service accountで実行する
+5. 必要なら `expiresAt` にFirestore TTLを設定する
+
+共通MCP Runtime projectでは **human identityだけを一元化** する。OAuth code/token、private-hop bearer secret、service account、Firestore namespaceはMCPごとに分離し、別MCPのresource tokenを共有しない
 
 Firebase credential、transaction secret、private core bearer、OAuth access/refresh token、browser profileをrepository/container imageへ入れないでください。
 

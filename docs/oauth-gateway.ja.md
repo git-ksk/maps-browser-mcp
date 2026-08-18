@@ -143,6 +143,8 @@ OAuth providerの選択、user store、consent UI、client registration policy�
 
 Repositoryにはremote single-user dogfood用のisolatedな [reference OAuth gateway](../reference/oauth-gateway/README.ja.md) を追加しました。Public OAuth boundaryとcurrent-checkout Maps coreを別processで動かし、coreをloopback `static-bearer` hopへ固定し、callerのpublic OAuth credentialをMCP proxy前に除去します。Reference sourceはroot packageのpublished npm `files` set外です。
 
+複数MCPを1つのFirebase projectへ集約するdeploymentでは、共有するboundaryは **human identityだけ** です。各MCPは同じimmutable Firebase UIDを検証できますが、authorization code、access/refresh token、token family、private-hop bearer secret、service account、Firestore namespaceはMCPごとに分離します。Reference browser loginではemail/passwordをFirebase Identity Toolkitへ直接送り、gatewayへ渡すのは返却されたshort-lived ID Tokenだけです。Gatewayはpasswordを受け取りません。
+
 Initial referenceではbrowser-session authenticationを推測実装せず、`/takeover/*` を無効のままにします。CoreのHuman Intervention / principal-binding machineryを弱めるものではなく、remote/mobile takeoverをfirst clean-gateway migrationに含めないという意味です。将来public takeoverを追加する場合は、takeover page/API trafficをproxyする前にbrowser sessionをsame logical single userとしてauthenticateする必要があります。
 
 Historical `map-browser-mcp-test` deploymentはmigration inputとしてだけ扱います。Legitimate MCP/refresh trafficが旧token stateへ依存している可能性がある間はin-place replacementしません。Clean referenceはOAuth control-plane collectionを分離し、client reconnect / traffic retirement checkの前にdistinct service URLへdeployします。

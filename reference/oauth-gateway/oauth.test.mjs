@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   accountMatchesDecodedToken,
   bearerFromRequest,
+  buildFirebasePasswordLoginPage,
   buildMetadata,
   buildRefreshTokenRecord,
   parseAllowedAccountConfig,
@@ -85,6 +86,21 @@ test("public OAuth bearer is read from Web Request Headers", () => {
   });
   assert.equal(bearerFromRequest(request), "public-token-value");
   assert.equal(bearerFromRequest(new Request("https://maps.example.com/mcp")), undefined);
+});
+
+test("Firebase password login sends credentials only to Firebase and keeps the server ID-token-only", async () => {
+  const response = buildFirebasePasswordLoginPage({ webApiKey: "public-web-api-key" });
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-security-policy") || "", /connect-src https:\/\/identitytoolkit\.googleapis\.com/);
+  assert.match(response.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.match(body, /accounts:signInWithPassword/);
+  assert.match(body, /credentials:"omit"/);
+  assert.match(body, /passwordInput\.value=""/);
+  assert.match(body, /JSON\.stringify\(\{idToken:payload\.idToken\}\)/);
+  assert.doesNotMatch(body, /GoogleAuthProvider|signInWithPopup|gstatic\.com\/firebasejs/);
 });
 
 

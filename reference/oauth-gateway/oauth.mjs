@@ -13,7 +13,6 @@ const ACCESS_TTL_MS = 60 * 60 * 1000;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CODE_TTL_MS = 5 * 60 * 1000;
 const TX_TTL_MS = 10 * 60 * 1000;
-const FIREBASE_WEB_SDK_VERSION = "12.17.1";
 const TX_COOKIE = "mbm_ref_oauth_tx";
 const REQUIRED_SCOPE = "maps:use";
 const OPTIONAL_SCOPE = "offline_access";
@@ -182,9 +181,7 @@ function readConfig() {
       optionalEnv("MCP_FIREBASE_ALLOWED_UID"),
       optionalEnv("MCP_FIREBASE_ALLOWED_EMAIL")
     ),
-    webApiKey: env("MCP_FIREBASE_WEB_API_KEY"),
-    authDomain: env("MCP_FIREBASE_AUTH_DOMAIN"),
-    webAppId: env("MCP_FIREBASE_WEB_APP_ID")
+    webApiKey: env("MCP_FIREBASE_WEB_API_KEY")
   };
 }
 
@@ -220,17 +217,12 @@ export function buildMetadata(config) {
   };
 }
 
-function loginPage(config) {
+export function buildFirebasePasswordLoginPage(config) {
   const nonce = randomBytes(18).toString("base64url");
-  const firebaseConfig = JSON.stringify({
-    apiKey: config.webApiKey,
-    authDomain: config.authDomain,
-    projectId: config.projectId,
-    appId: config.webAppId
-  }).replaceAll("<", "\\u003c");
-  const body = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize maps-browser-mcp</title><style>body{font-family:system-ui;max-width:34rem;margin:4rem auto;padding:0 1rem}button{font:inherit;padding:.7rem 1rem}#status{margin-top:1rem}</style></head><body><h1>Authorize maps-browser-mcp</h1><p>Sign in with the single Firebase account allowed by this server.</p><button id="login">Continue with Google</button><p id="status"></p><script type="module" nonce="${nonce}">import{initializeApp}from"https://www.gstatic.com/firebasejs/${FIREBASE_WEB_SDK_VERSION}/firebase-app.js";import{getAuth,GoogleAuthProvider,signInWithPopup}from"https://www.gstatic.com/firebasejs/${FIREBASE_WEB_SDK_VERSION}/firebase-auth.js";const app=initializeApp(${firebaseConfig});const auth=getAuth(app);const status=document.querySelector("#status");document.querySelector("#login").onclick=async()=>{try{status.textContent="Signing in…";const result=await signInWithPopup(auth,new GoogleAuthProvider());const idToken=await result.user.getIdToken();const response=await fetch("/oauth/firebase/complete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idToken})});if(!response.ok){status.textContent="Authorization failed.";return}const data=await response.json();location.assign(data.redirect)}catch{status.textContent="Authorization failed."}};</script></body></html>`;
-  const csp = `default-src 'none'; script-src 'nonce-${nonce}' https://www.gstatic.com https://apis.google.com; connect-src https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com; frame-src https://accounts.google.com https://*.firebaseapp.com; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`;
-  return html(200, body, { "content-security-policy": csp, "referrer-policy": "no-referrer" });
+  const apiKey = JSON.stringify(config.webApiKey).replaceAll("<", "\\u003c");
+  const body = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize maps-browser-mcp</title><style>body{font-family:system-ui;max-width:34rem;margin:4rem auto;padding:0 1rem}label{display:block;margin:.9rem 0 .3rem}input{box-sizing:border-box;width:100%;font:inherit;padding:.65rem}button{font:inherit;margin-top:1rem;padding:.7rem 1rem}#status{margin-top:1rem}</style></head><body><h1>Authorize maps-browser-mcp</h1><p>Sign in with the Firebase account allowed by this MCP runtime.</p><label for="email">Email</label><input id="email" type="email" autocomplete="username" inputmode="email" required><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required><button id="login" type="button">Sign in</button><p id="status"></p><script nonce="${nonce}">const apiKey=${apiKey};const status=document.querySelector("#status");const button=document.querySelector("#login");button.addEventListener("click",async()=>{status.textContent="";button.disabled=true;const email=document.querySelector("#email").value.trim();const passwordInput=document.querySelector("#password");const password=passwordInput.value;try{status.textContent="Signing in…";const auth=await fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key="+encodeURIComponent(apiKey),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password,returnSecureToken:true}),credentials:"omit",referrerPolicy:"no-referrer"});passwordInput.value="";if(!auth.ok){status.textContent="Sign-in failed.";return}const payload=await auth.json();if(!payload.idToken){status.textContent="Sign-in failed.";return}const response=await fetch("/oauth/firebase/complete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idToken:payload.idToken}),credentials:"omit",referrerPolicy:"no-referrer"});if(!response.ok){status.textContent="Authorization failed.";return}const data=await response.json();location.assign(data.redirect)}catch{passwordInput.value="";status.textContent="Authorization service is unavailable."}finally{button.disabled=false}});</script></body></html>`;
+  const csp = `default-src 'none'; script-src 'nonce-${nonce}'; connect-src https://identitytoolkit.googleapis.com; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+  return html(200, body, { "content-security-policy": csp, "referrer-policy": "no-referrer", "x-content-type-options": "nosniff" });
 }
 
 function cookieValue(request, name) {
@@ -320,7 +312,7 @@ export async function createOAuthBoundary() {
     } catch {
       return oauthError("invalid_request", "authorization request is too large");
     }
-    const response = loginPage(config);
+    const response = buildFirebasePasswordLoginPage(config);
     response.headers.set("set-cookie", `${TX_COOKIE}=${signedTransaction}; HttpOnly; Secure; SameSite=Lax; Path=/oauth; Max-Age=600`);
     return response;
   }
