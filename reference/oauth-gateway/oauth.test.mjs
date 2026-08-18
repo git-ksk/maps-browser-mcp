@@ -92,7 +92,7 @@ test("Firebase password login sends credentials only to Firebase and keeps the s
   const response = buildFirebasePasswordLoginPage({ webApiKey: "public-web-api-key" });
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-security-policy") || "", /connect-src https:\/\/identitytoolkit\.googleapis\.com/);
+  assert.match(response.headers.get("content-security-policy") || "", /connect-src 'self' https:\/\/identitytoolkit\.googleapis\.com/);
   assert.match(response.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
   assert.equal(response.headers.get("referrer-policy"), "no-referrer");
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
@@ -100,6 +100,7 @@ test("Firebase password login sends credentials only to Firebase and keeps the s
   assert.match(body, /credentials:"omit"/);
   assert.match(body, /passwordInput\.value=""/);
   assert.match(body, /JSON\.stringify\(\{idToken:payload\.idToken\}\)/);
+  assert.match(body, /credentials:\"same-origin\"/);
   assert.doesNotMatch(body, /GoogleAuthProvider|signInWithPopup|gstatic\.com\/firebasejs/);
 });
 

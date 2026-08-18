@@ -14,6 +14,9 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
+- Fix the MCP Runtime Firebase authorization page so the same-origin completion request is allowed by CSP and carries the HttpOnly OAuth transaction cookie; Firebase credentials still go only to Identity Toolkit.
+
+
 - Move the reference gateway's human sign-in toward the shared MCP Runtime identity boundary: use Firebase email/password sign-in directly from the browser to Identity Toolkit, keep the gateway ID-token-only, prefer one immutable shared Firebase UID across MCPs, and explicitly keep OAuth token/state, service accounts, private-hop bearer secrets, and Firestore namespaces isolated per MCP.
 
 - Fix the reference OAuth gateway refresh lifecycle so the initial authorization-code refresh-token record carries the same single-user account binding as rotated refresh tokens; missing identity binding now fails closed in the shared record builder.
