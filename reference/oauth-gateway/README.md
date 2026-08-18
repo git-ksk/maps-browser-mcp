@@ -133,11 +133,24 @@ Recommended constraints for the new service:
 
 - dedicated service account;
 - secrets supplied from Secret Manager;
+- `1` vCPU and at least `2Gi` memory when Chromium + Interactive Assist run in the same Cloud Run instance;
 - max instances `1`;
-- low concurrency matching the single-browser runtime;
+- concurrency `1`, matching the single-browser runtime;
 - HTTPS only;
 - no public access except through the OAuth-protected `/mcp` workflow and required public metadata/authorization endpoints;
 - no `MAPS_REMOTE_TAKEOVER` until a browser-session auth boundary is designed and tested.
+
+For the reference deployment, keep the capacity boundary explicit rather than relying on Cloud Run defaults:
+
+```bash
+gcloud run services update maps-browser-mcp \
+  --cpu=1 \
+  --memory=2Gi \
+  --concurrency=1 \
+  --max-instances=1
+```
+
+A `1Gi` instance was observed to cross its memory limit during repeated headless `maps_search` + `maps_read_place_summary` calls, causing Cloud Run to terminate the container and return HTTP `503`. The remote MCP client surfaced that transport failure as an `UNKNOWN`/TaskGroup-style exception. This is a deployment-capacity failure, not a bounded-reader exception to catch inside the MCP process.
 
 The default container Chrome profile is ephemeral. That is acceptable for OAuth/protocol dogfood, but it is **not durable signed-in Maps state**. Do not bake a signed-in Chrome profile, cookies, or account credentials into an image. If persistent authenticated Maps workflows are required, use a controlled single-user runtime with an appropriate persistent profile strategy and the same V5 isolation rules.
 

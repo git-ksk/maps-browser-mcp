@@ -16,6 +16,8 @@
 
 ### 変更
 
+- Cloud Run headless / Interactive Assistのdeployment profileを1 vCPU / 2Gi memory / concurrency 1 / max instance 1として明文化・回帰固定。1Gi instanceのOOMがHTTP 503となり、remote側ではUNKNOWN / TaskGroup transport exceptionとして見えた実障害に対応。
+
 - Google MapsのAccessibility tree node IDが再描画で一時失効するケースに対してbounded visible-state readをhardening。fresh full snapshotの再取得を1回だけ許可し、連続stale時はgeneric `INTERNAL_ERROR` ではなく `UI_STATE_CHANGED` でfail closeする。
 
 - MCP Runtime Firebase authorization pageを修正し、same-origin completion requestをCSPで許可しつつHttpOnly OAuth transaction cookieを送信する。Firebase credentialは引き続きIdentity Toolkitへだけ送る。
