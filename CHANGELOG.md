@@ -6,6 +6,8 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-08-18
+
 ### Documentation
 
 - Define the pre-v1 completion sequence: v0.3.0 for V5 plus the clean remote-auth foundation, v0.4.0 for MCP Apps production portability, v0.5.0 for reliability/UI-change resilience/observability, and v1.0.0 as stable graduation rather than a final feature dump.

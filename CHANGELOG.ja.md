@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-08-18
+
 ### Documentation
 
 - pre-v1 completion sequenceを定義。v0.3.0をV5 + clean remote-auth foundation、v0.4.0をMCP Apps production portability、v0.5.0をreliability / UI-change resilience / observabilityとし、v1.0.0は未決機能の詰め込みではなくstable昇格とする。

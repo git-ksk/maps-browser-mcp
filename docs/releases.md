@@ -4,14 +4,14 @@ This page explains how to choose between a stable release and the current `main`
 
 ## Latest stable release
 
-The release baseline documented here is **v0.2.0**. The GitHub tag/Release is the authoritative record for the exact tested release commit.
+The release baseline documented here is **v0.3.0**. The GitHub tag/Release is the authoritative record for the exact tested release commit.
 
-- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.2.0
+- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.0
 - Draft: no
 - Prerelease: no
 - npm: **not published**
 
-v0.2.0 closes out V4 for the current unauthenticated Google Maps Web scope, synchronizes Maps to the validated `mcp-execution-handoff` v0.1.0 source-release baseline, and carries the experimental MCP Apps directions-rendering PoC as a progressive enhancement. UI-dependent operations remain compatibility-sensitive.
+v0.3.0 adds the bounded V5 authenticated-workflow slices (A–D) behind the existing fail-closed opt-in, completes the clean external OAuth/MCP Runtime reference path and ChatGPT dogfood migration, and hardens remote/headless bounded reads. V5 remains disabled by default, account-backed automation remains single-user/dedicated-profile only, and npm remains unpublished.
 
 For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 
@@ -20,7 +20,7 @@ For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 If you want the exact source that was validated and released, check out the release tag:
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
+git clone --branch v0.3.0 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm ci --ignore-scripts
 npm run build
@@ -47,6 +47,12 @@ Use `main` when you intentionally want the newest merged development state.
 `main` is protected and changes land through required CI/CodeQL checks, but it may move ahead of the latest public tag. Do not assume that a commit on `main` has been published as a GitHub Release.
 
 For contributors, branch from the current `main` unless a maintainer explicitly asks for a release-branch fix.
+
+## v0.3.0 validation record
+
+The release procedure requires the exact v0.3.0 release commit to pass Node.js 20/22/24 required CI, macOS/Windows browser smoke, CodeQL, package/repository policy checks, and the bounded manual Live Maps compatibility path appropriate to this runtime release. The exact commit and workflow run are recorded in the GitHub Release rather than hard-coded here before the protected-branch merge exists.
+
+Remote dogfood acceptance also includes the clean MCP Runtime OAuth deployment, ChatGPT reconnect/tool execution, bounded headless reads, and verified retirement of the historical Monokura-derived Maps services after traffic observation. V5 account-backed tools remain opt-in and disabled on the public dogfood deployment.
 
 ## v0.2.0 validation record
 

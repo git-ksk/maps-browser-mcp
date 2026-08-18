@@ -6,14 +6,14 @@
 
 ## 最新安定版
 
-この文書で扱うrelease baselineは **v0.2.0** です。Exact tested release commitはGitHub tag / Releaseを正本とします。
+この文書で扱うrelease baselineは **v0.3.0** です。Exact tested release commitはGitHub tag / Releaseを正本とします。
 
-- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.2.0
+- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.0
 - Draft: いいえ
 - Prerelease: いいえ
 - npm: **未公開**
 
-v0.2.0では現行未認証Google Maps Web scopeのV4をcloseoutし、Mapsを検証済み `mcp-execution-handoff` v0.1.0 source-release baselineへ同期します。ExperimentalなMCP Apps directions rendering PoCもprogressive enhancementとして含みます。UI依存operationは引き続きcompatibility-sensitiveです。
+v0.3.0ではboundedなV5 authenticated workflow（A〜D）を既存のfail-closed opt-in配下で追加し、clean external OAuth / MCP Runtime reference pathとChatGPT dogfood migrationを完了、remote/headless bounded readもhardeningします。V5はdefault無効、account-backed automationはsingle-user / dedicated-profile限定、npmは引き続き未公開です。
 
 詳細な変更履歴は [CHANGELOG 日本語版](../CHANGELOG.ja.md) を参照してください。
 
@@ -22,7 +22,7 @@ v0.2.0では現行未認証Google Maps Web scopeのV4をcloseoutし、Mapsを検
 検証・公開されたsourceをそのまま使う場合はrelease tagをcheckoutしてください。
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
+git clone --branch v0.3.0 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm ci --ignore-scripts
 npm run build
@@ -49,6 +49,12 @@ Release tagを指定すると、今後 `main` に未releaseの変更が入った
 `main` はprotected branchで、変更はrequired CI / CodeQL経由でmergeされます。ただし、将来の `main` は最新公開tagより先行する可能性があります。`main` のcommitがGitHub Releaseとして公開済みとは限りません。
 
 Contributorは特別な指示がない限り現在の `main` からbranchを作成してください。
+
+## v0.3.0 検証記録
+
+v0.3.0では、exact release commitに対してNode.js 20/22/24 required CI、macOS / Windows browser smoke、CodeQL、package / repository policy check、およびこのruntime releaseに適したbounded manual Live Maps compatibility pathを通すrelease procedureを要求します。Protected branch merge前にはexact commitが存在しないため、commitとworkflow runはGitHub Releaseを正本として記録します。
+
+Remote dogfood acceptanceにはclean MCP Runtime OAuth deployment、ChatGPT reconnect / tool execution、bounded headless read、traffic観測後のhistorical Monokura-derived Maps service retirementも含みます。V5 account-backed toolはopt-inのままで、public dogfood deploymentでは無効を維持します。
 
 ## v0.2.0 検証記録
 

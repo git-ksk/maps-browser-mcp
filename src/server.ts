@@ -62,7 +62,7 @@ import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import { TakeoverBroker } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
-const SERVER_VERSION = "0.2.0";
+const SERVER_VERSION = "0.3.0";
 const config = loadConfig();
 const compiler = new MapsUrlCompiler();
 const policy = new PolicyEngine({
