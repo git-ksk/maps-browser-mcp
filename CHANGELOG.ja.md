@@ -8,11 +8,19 @@
 
 ## [Unreleased]
 
+## [v0.3.2] - 2026-08-19
+
 - credential-safe transportにopt-inの `cua_takeover` を追加。normal ChromeはCDP / remote-debuggingなしのまま、既存authenticated short-lived Takeover UIを再利用し、local Cua Driver MCP bridgeをexact dedicated Chrome PID + visible window 1件へbindする。Native capture/inputは固定7 tool allowlistだけ許可し、Human入力textをnorthbound Maps MCP / model context / process argv / repository logへ返さない。Benign local pageでframe、tap、scroll、text、Enter、outer Bearer coexistence、Done capability revoke、normal-Chrome teardownまでend-to-end live validation済み。
 
 ### 追加
 
 - V5向けにdefault OFFのcredential-safe Human sign-in ceremonyを追加。`maps_request_human_sign_in` はGoogle Account選択、credential、MFAをHuman-onlyのまま維持し、server-owned CDP Chromeを完全停止→同じdedicated profileをremote-debugging / automation attachmentなしのnormal Chromeで起動→必要なら既存OS-level remote-access製品へのoperator locatorだけを提示→Human完了後にnormal browserを閉じてidentity-free readinessをfresh再検証、というflowを提供する。External remote-access製品自体はこのrepositoryで実装せず、pre-auth semantic stateもreplayしない。
+
+### 変更
+
+- 現行Google Maps live UIに対してV5-C existing-list Saveをhardening。Exact place / index / list / duplicate / `aria-checked` のfresh再検証は維持しつつ、対象rowのbounded click pointを検証してsynthetic DOM clickではなくCDP pointerを1回だけdispatchし、click後はexact targetのsaved状態を再取得するためのbounded UI settleだけ許可する。Release live validationではHumanが明示的に許可したexisting list 1件へexactly one saveを実行し、fresh readで同じ非公開listが `saved=true` になったことを確認した。
+- Cua browser-takeover fallbackの入力focusをhardening。最後のHuman tap位置を保持し、bounded text/key入力前にその位置へfocusを戻す。Cua takeoverは引き続きfallbackで、credential入力はHuman-only、normal Chromeがcredential-safe surfaceのprimary path。
+- v0.3.2向けV5 sequential release gateをdedicated signed-in profileで再実行。Identity-free readiness、bounded save-state read、existing-listへの1回save、approval Cancel/no-send、fresh route/device re-read、approved Send-to-phone activation 1回、physical iPhone到着まで確認した。1回のapproved activationからiOS側では同一通知3件が観測されたが、MCPはautomatic retryを行っておらず、approved invocationごとのdevice-click siteも1箇所のまま。
 
 ### セキュリティ
 

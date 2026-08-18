@@ -469,7 +469,7 @@ Project scope内のcontributionは歓迎です。PR前に **[Contributing 日本
 
 ## Release Status
 
-v0.3.1 release baselineのrepository metadataは `0.3.1` です。V5-A〜V5-Dは実装済みですがauthenticated-workflow Opt-in配下でdefault無効を維持します。このreleaseでは `maps-browser-mcp` をnpm公開せず、GitHub source tag / Releaseを配布物とします。
+v0.3.2 release baselineのrepository metadataは `0.3.2` です。V5-A〜V5-Dは実装済みですがauthenticated-workflow Opt-in配下でdefault無効を維持します。このreleaseでは `maps-browser-mcp` をnpm公開せず、GitHub source tag / Releaseを配布物とします。
 
 Tag / publish前は **[Release Checklist 日本語版](docs/release.ja.md)** を参照してください。
 

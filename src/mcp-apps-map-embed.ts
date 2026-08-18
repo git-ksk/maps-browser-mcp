@@ -3,7 +3,7 @@ import type { TravelMode } from "./types.js";
 export const MAP_DIRECTIONS_APP_RESOURCE_URI = "ui://maps-browser-mcp/directions.html";
 export const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 export const MCP_APP_PROTOCOL_VERSION = "2026-01-26";
-export const MAP_DIRECTIONS_APP_VERSION = "0.3.1";
+export const MAP_DIRECTIONS_APP_VERSION = "0.3.2";
 export const MAP_DIRECTIONS_FRAME_DOMAINS = ["https://www.google.com"] as const;
 
 export interface MapDirectionsAppData {

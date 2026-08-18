@@ -233,9 +233,9 @@ Test目的でaccess challengeを意図的に発生させないでください。
 Dedicated signed-in V5 profileで `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` と `INTERACTIVE_ASSIST_MODE=true` の両方を有効にした場合だけ実行します。Account mutation checkなので、最初はread-onlyで観測し、targetを推測しません。
 
 1. Bounded place workflowでexact selected placeを1件確立する。
-2. `maps_read_place_save_state({ expectedLabel })` を呼び、signed-in readiness、bounded existing-list chooser、かつ明確にtest用と判断できる `saved=false` candidateを確認する。Private list labelはpublish / persistしない。
-3. Safeなexisting test-purpose targetをexactly 1件に絞れない場合はそこで停止し、live mutationを **BLOCKED** と記録する。Personal listを推測せず、testのためだけにnew listを作らない。
-4. Safe targetがexactly 1件ある場合だけ、freshに返ったindex + labelをそのまま使い `maps_save_place_to_list({ expectedPlaceLabel, listIndex, expectedListLabel })` を1回だけ呼ぶ。
+2. `maps_read_place_save_state({ expectedLabel })` を呼び、signed-in readiness、bounded existing-list chooser、少なくとも1件の `saved=false` candidateを確認する。Private list labelはpublish / persistしない。
+3. Targetは、(a)明確にtest-purposeと判断できるexisting listがexactly 1件ある場合、または(b)Humanがexisting list 1件の利用を明示許可した場合だけ選択する。Fresh bounded stateからauthorized targetを一意に解決できない場合は **BLOCKED**。Personal listを推測せず、testだけのためにnew listを作らない。
+4. Freshなexact index + hidden labelを使い `maps_save_place_to_list({ expectedPlaceLabel, listIndex, expectedListLabel })` を1回だけ呼ぶ。
 5. Exact targetが `aria-checked=true` とverifyされた場合だけsuccessとする。その後 `maps_read_place_save_state` をfreshに1回実行し、same targetが `saved=true` であることを独立確認する。
 6. Already-saved targetはno-click idempotent successとし、stale index/label、duplicate/missing/flattened row、changed place、changed resource epoch、signed-out/unknown readiness、unverifiable postconditionはfail closeする。
 7. Cleanup目的のunsave/removeを自動化しない。意図的なdogfood後にcleanupが必要なら、MCP mutation surface外でHumanがmanualに行う。
@@ -251,6 +251,14 @@ V5-Eのhistory MCP toolはありません。Surfaceをre-open可能か再評価�
 3. Maps-local Recentが存在する場合もbounded visible structureだけを確認する。Safe candidateにはstableなsemantic row/container model、first-pageのstrict hard cap、DOM-order/private-label selector不要が必須。AdjacentなDelete/selection control、ambiguous row、scroll/pagination必須ならobservation gateを維持する。
 4. Activity setting変更、history deletion、auto-scroll、pagination、cookie/storage/account identity read、network/internal API interception、private activityを含むscreenshot/logの永続化は禁止。
 5. Timelineはofficial dedicated desktop Timeline surfaceに留まりbounded semantic targetをfresh observationできる場合だけWeb roadmapをre-openする。Menu linkがあるだけ、またはnormal mapへredirectされるだけでは不十分。
+
+### v0.3.2 sequential V5 release validation — 2026-08-19 / ja-JP
+
+- V5-A: **PASS** — dedicated profileのfresh readinessが `signed_in`。Account identityは取得しない。
+- V5-B: **PASS** — public placeに対するbounded existing-list membership read完了。Private list labelはpublic logへ出さない。
+- V5-C: **PASS** — Humanがexisting list利用を明示許可後、MCPがsave activationを1回だけ実行し、fresh bounded readでsame hidden targetの `saved=true` を独立確認。List create/delete/unsaveなし。
+- V5-D approval boundary: **PASS** — 最初のexact route/device approvalをCancelし、send attemptなし。その後route/device stateをfresh取得。
+- V5-D approved send: **MCP action boundary + physical arrival PASS** — approved device activationを1回だけ実行しautomatic retryなし。Humanがexpected routeのiPhone到着を確認。1 activationに対してiPhone側で同一通知3件を表示したため、MCP replayではなくexternal duplicate-delivery observationとして記録し、調査目的の再sendは行わない。
 
 ## Release Result
 
