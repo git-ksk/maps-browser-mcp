@@ -110,6 +110,34 @@ function env(name) {
   return value;
 }
 
+function optionalEnv(name) {
+  return process.env[name]?.trim() || undefined;
+}
+
+export function parseAllowedAccountConfig(uidRaw, emailRaw) {
+  const uid = uidRaw?.trim() || undefined;
+  const email = emailRaw?.trim().toLowerCase() || undefined;
+  if ((uid ? 1 : 0) + (email ? 1 : 0) !== 1) {
+    throw new Error("Configure exactly one of MCP_FIREBASE_ALLOWED_UID or MCP_FIREBASE_ALLOWED_EMAIL");
+  }
+  if (uid) {
+    if (uid.length > 128 || /\s/.test(uid)) throw new Error("MCP_FIREBASE_ALLOWED_UID is invalid");
+    return { kind: "uid", value: uid, binding: sha256(`maps-browser-mcp/ref-account/v1\0uid\0${uid}`) };
+  }
+  if (email.length > 320 || !/^[^@\s]+@[^@\s]+$/.test(email)) {
+    throw new Error("MCP_FIREBASE_ALLOWED_EMAIL is invalid");
+  }
+  return { kind: "email", value: email, binding: sha256(`maps-browser-mcp/ref-account/v1\0email\0${email}`) };
+}
+
+export function accountMatchesDecodedToken(decoded, allowedAccount) {
+  if (!decoded || typeof decoded.uid !== "string" || !decoded.uid) return false;
+  if (allowedAccount.kind === "uid") return decoded.uid === allowedAccount.value;
+  return decoded.email_verified === true &&
+    typeof decoded.email === "string" &&
+    decoded.email.trim().toLowerCase() === allowedAccount.value;
+}
+
 function envInt(name, fallback, min, max) {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -132,7 +160,10 @@ function readConfig() {
     transactionSecret,
     maxAuthRequestsPerMinute: envInt("MCP_OAUTH_MAX_REQUESTS_PER_MINUTE", 60, 10, 600),
     projectId: env("MCP_FIREBASE_PROJECT_ID"),
-    allowedUid: env("MCP_FIREBASE_ALLOWED_UID"),
+    allowedAccount: parseAllowedAccountConfig(
+      optionalEnv("MCP_FIREBASE_ALLOWED_UID"),
+      optionalEnv("MCP_FIREBASE_ALLOWED_EMAIL")
+    ),
     webApiKey: env("MCP_FIREBASE_WEB_API_KEY"),
     authDomain: env("MCP_FIREBASE_AUTH_DOMAIN"),
     webAppId: env("MCP_FIREBASE_WEB_APP_ID")
@@ -224,7 +255,7 @@ export async function createOAuthBoundary() {
     const doc = await collections.access.doc(sha256(token)).get();
     if (!doc.exists) return { allowed: false, status: 401, code: "invalid_token", headers: { "www-authenticate": challenge } };
     const data = doc.data();
-    if (!data || millis(data.expiresAt) <= now() || data.resource !== config.resource || data.uid !== config.allowedUid || !data.scopes?.includes(REQUIRED_SCOPE)) {
+    if (!data || millis(data.expiresAt) <= now() || data.resource !== config.resource || typeof data.uid !== "string" || !data.uid || data.accountBinding !== config.allowedAccount.binding || !data.scopes?.includes(REQUIRED_SCOPE)) {
       return { allowed: false, status: 401, code: "invalid_token", headers: { "www-authenticate": challenge } };
     }
     if (data.familyId) {
@@ -291,11 +322,14 @@ export async function createOAuthBoundary() {
     try { body = JSON.parse(await readBoundedText(request)); } catch { return oauthError("invalid_request", "invalid JSON"); }
     if (typeof body?.idToken !== "string" || body.idToken.length > 16_384) return oauthError("invalid_request", "Firebase ID token missing");
     const decoded = await auth.verifyIdToken(body.idToken, true).catch(() => null);
-    if (!decoded || decoded.uid !== config.allowedUid) return oauthError("access_denied", "account is not allowed", 403);
+    if (!accountMatchesDecodedToken(decoded, config.allowedAccount)) {
+      return oauthError("access_denied", "account is not allowed", 403);
+    }
     const code = randomToken();
     await collections.codes.doc(sha256(code)).create({
       ...tx,
       uid: decoded.uid,
+      accountBinding: config.allowedAccount.binding,
       expiresAt: timestamp(now() + CODE_TTL_MS),
       usedAt: null
     });
@@ -338,13 +372,14 @@ export async function createOAuthBoundary() {
       const codeRef = collections.codes.doc(sha256(code));
       const snapshot = await transaction.get(codeRef);
       const data = snapshot.data();
-      if (!data || data.usedAt || millis(data.expiresAt) <= now() || data.clientId !== client.clientId || data.redirectUri !== redirectUri || data.resource !== config.resource || pkceChallenge(verifier) !== data.codeChallenge) {
+      if (!data || data.usedAt || millis(data.expiresAt) <= now() || data.clientId !== client.clientId || data.redirectUri !== redirectUri || data.resource !== config.resource || data.accountBinding !== config.allowedAccount.binding || pkceChallenge(verifier) !== data.codeChallenge) {
         return null;
       }
       const familyExpiresAt = now() + (data.scopes.includes(OPTIONAL_SCOPE) ? REFRESH_TTL_MS : ACCESS_TTL_MS);
       transaction.update(codeRef, { usedAt: timestamp(now()) });
       transaction.create(collections.families.doc(familyId), {
         uid: data.uid,
+        accountBinding: data.accountBinding,
         clientId: client.clientId,
         createdAt: timestamp(now()),
         expiresAt: timestamp(familyExpiresAt),
@@ -352,6 +387,7 @@ export async function createOAuthBoundary() {
       });
       transaction.create(collections.access.doc(sha256(accessToken)), {
         uid: data.uid,
+        accountBinding: data.accountBinding,
         clientId: client.clientId,
         resource: config.resource,
         scopes: data.scopes,
@@ -391,7 +427,7 @@ export async function createOAuthBoundary() {
       const ref = collections.refresh.doc(sha256(refreshToken));
       const snapshot = await transaction.get(ref);
       const data = snapshot.data();
-      if (!data || millis(data.expiresAt) <= now() || data.clientId !== client.clientId || data.resource !== config.resource) return { status: "invalid" };
+      if (!data || millis(data.expiresAt) <= now() || data.clientId !== client.clientId || data.resource !== config.resource || data.accountBinding !== config.allowedAccount.binding) return { status: "invalid" };
       const familyRef = collections.families.doc(data.familyId);
       const familySnapshot = await transaction.get(familyRef);
       if (!familySnapshot.exists || familySnapshot.data()?.revokedAt) return { status: "invalid" };
@@ -407,6 +443,7 @@ export async function createOAuthBoundary() {
       transaction.update(familyRef, { expiresAt: timestamp(refreshExpiresAt) });
       transaction.create(collections.access.doc(sha256(nextAccess)), {
         uid: data.uid,
+        accountBinding: data.accountBinding,
         clientId: client.clientId,
         resource: config.resource,
         scopes,
@@ -415,6 +452,7 @@ export async function createOAuthBoundary() {
       });
       transaction.create(collections.refresh.doc(sha256(nextRefresh)), {
         uid: data.uid,
+        accountBinding: data.accountBinding,
         clientId: client.clientId,
         resource: config.resource,
         scopes,

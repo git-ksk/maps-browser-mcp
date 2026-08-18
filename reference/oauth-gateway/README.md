@@ -25,7 +25,7 @@ The combined reference image runs the gateway and current checkout of the core a
 
 This is intentionally narrow:
 
-- one allowed Firebase UID / one logical user;
+- exactly one allowed Firebase identity: immutable UID **or** verified email / one logical user;
 - one gateway instance / one core browser runtime;
 - OAuth Authorization Code + PKCE `S256`;
 - exact RFC 8707 resource binding to `${MCP_PUBLIC_BASE_URL}/mcp`;
@@ -66,7 +66,8 @@ MCP_OAUTH_TRANSACTION_SECRET=<32+ byte secret>
 MCP_OAUTH_MAX_REQUESTS_PER_MINUTE=60
 
 MCP_FIREBASE_PROJECT_ID=<project id>
-MCP_FIREBASE_ALLOWED_UID=<exact single allowed uid>
+MCP_FIREBASE_ALLOWED_EMAIL=<exact single allowed email>
+# Or use MCP_FIREBASE_ALLOWED_UID=<exact immutable uid>; configure exactly one, never both.
 MCP_FIREBASE_WEB_API_KEY=<Firebase web API key>
 MCP_FIREBASE_AUTH_DOMAIN=<Firebase auth domain>
 MCP_FIREBASE_WEB_APP_ID=<Firebase web app id>
@@ -92,7 +93,7 @@ MAPS_V5_AUTHENTICATED_WORKFLOWS=true
 
 The reference uses Firebase Authentication only for the single human sign-in and Firestore only for OAuth control-plane state. It does not store Maps result datasets.
 
-1. Enable the Google provider in Firebase Authentication.
+1. Enable the Google provider in Firebase Authentication. Configure exactly one `MCP_FIREBASE_ALLOWED_EMAIL` or `MCP_FIREBASE_ALLOWED_UID`; email mode requires Firebase's verified-email claim and stores only a derived binding in OAuth state.
 2. Configure the Firebase web app values above.
 3. Allow the new gateway hostname in Firebase Authentication when required.
 4. Ensure Firestore exists.

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bearerFromRequest, buildMetadata, pkceChallenge, readBoundedText } from "./oauth.mjs";
+import {
+  accountMatchesDecodedToken,
+  bearerFromRequest,
+  buildMetadata,
+  parseAllowedAccountConfig,
+  pkceChallenge,
+  readBoundedText
+} from "./oauth.mjs";
 import {
   isPublicIpAddress,
   parseAllowedClientHosts,
@@ -90,4 +97,24 @@ test("OAuth request bodies are bounded even without Content-Length", async () =>
   assert.equal(await readBoundedText(ok, 16), "a=1");
   const oversized = new Request("https://maps.example.com/oauth/token", { method: "POST", body: "x".repeat(17) });
   await assert.rejects(() => readBoundedText(oversized, 16), /oauth_request_too_large/);
+});
+
+
+test("single-user identity config accepts exactly one UID or verified email", () => {
+  const uid = parseAllowedAccountConfig("firebase-uid-1", undefined);
+  assert.equal(uid.kind, "uid");
+  assert.equal(accountMatchesDecodedToken({ uid: "firebase-uid-1" }, uid), true);
+  assert.equal(accountMatchesDecodedToken({ uid: "other" }, uid), false);
+
+  const email = parseAllowedAccountConfig(undefined, "User@Example.COM");
+  assert.equal(email.kind, "email");
+  assert.equal(email.value, "user@example.com");
+  assert.match(email.binding, /^[0-9a-f]{64}$/);
+  assert.equal(email.binding.includes("user@example.com"), false);
+  assert.equal(accountMatchesDecodedToken({ uid: "stable-uid", email: "USER@example.com", email_verified: true }, email), true);
+  assert.equal(accountMatchesDecodedToken({ uid: "stable-uid", email: "user@example.com", email_verified: false }, email), false);
+  assert.equal(accountMatchesDecodedToken({ uid: "stable-uid", email: "other@example.com", email_verified: true }, email), false);
+
+  assert.throws(() => parseAllowedAccountConfig(undefined, undefined), /exactly one/);
+  assert.throws(() => parseAllowedAccountConfig("uid", "user@example.com"), /exactly one/);
 });
