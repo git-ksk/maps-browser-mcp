@@ -138,3 +138,11 @@ See [Container / headless Linux](container.md) for the browser/container constra
 OAuth provider choice, user store, consent UI, client registration policy, token persistence, refresh-token lifecycle, and account lifecycle are deployment-specific concerns. Building a concrete provider into the browser controller would enlarge the security surface and blur the current single-user browser boundary.
 
 The reusable core contract is narrower: accept a stable authenticated principal, bind handoff/takeover state to it, enforce Maps/browser safety locally, and keep OAuth protocol/token handling at the external gateway or adapter boundary.
+
+## Versioned reference gateway (#74)
+
+The repository now contains an isolated [reference OAuth gateway](../reference/oauth-gateway/README.md) for remote single-user dogfood. It runs the public OAuth boundary and current-checkout Maps core as separate processes, forces the core onto a loopback `static-bearer` hop, and strips the caller's public OAuth credential before proxying MCP traffic. The reference source is intentionally outside the root package's published npm `files` set.
+
+The initial reference keeps `/takeover/*` disabled rather than inventing a browser-session authentication mechanism. This does not weaken the core Human Intervention or principal-binding machinery; it means remote/mobile takeover is not part of the first clean gateway migration. A future public takeover path must authenticate the browser session as the same logical single user before proxying takeover page/API traffic.
+
+The historical `map-browser-mcp-test` deployment is migration input only. Do not replace it in place while legitimate MCP/refresh traffic may still depend on its token state. The clean reference uses separate OAuth control-plane collections and should be deployed under a distinct service URL before client reconnection and traffic retirement checks.

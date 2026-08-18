@@ -152,7 +152,7 @@ Canonical contract / security rule / evidence / completion criteriaは [MCP Apps
 
 - **v0.3.0 — V5 authenticated workflows + clean remote-auth foundation**
   - broad signed-in browser automationを有効化せず、下記V5を段階的に実装する。
-  - Issue #74のclean external OAuth reference gatewayをこのreleaseのfoundation / pre-workとして扱う。Maps専用で再現可能なremote-auth path、current-main backend、stable principal propagation、`mcp-interop` / target client検証を整え、稼働clientが依存している間はhistoricalなMonokura由来dogfood gatewayをin-place変更せず安全に移行する。
+  - Issue #74のclean external OAuth reference gatewayをこのreleaseのfoundation / pre-workとして扱う。Versionedなisolated reference implementationでMaps専用OAuth boundary + current-checkout coreへのloopback private hopまでは追加済み。#74 close前にlive deployment、MCP interoperability / target client検証、historicalなMonokura由来dogfood gatewayからの安全なmigrationを完了する。
 - **v0.4.0 — MCP Apps production portability**
   - 既存host-neutral MCP Apps surfaceを、適切なsecond production host + real restricted Google Maps Embed keyで再検証する。
   - production-host evidenceが揃った後だけexperimental labelを再評価し、text / structured fallbackを維持してrich UIをcore必須にはしない。

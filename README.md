@@ -353,7 +353,7 @@ Invalid boolean/integer configuration fails fast instead of being silently coerc
 
 `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. The setting rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden. The send mutation additionally requires a modern MCP 2026-07-28 client with form elicitation support.
 
-For the current remote single-user design, authenticate the public MCP client at an external gateway and use the private `static-bearer` hop to this core server. Do not forward a caller's public OAuth access token into the browser runtime. See [V5 authenticated workflows](docs/v5-authenticated-workflows.md) and [OAuth gateway pattern](docs/oauth-gateway.md).
+For the current remote single-user design, authenticate the public MCP client at an external gateway and use the private `static-bearer` hop to this core server. Do not forward a caller's public OAuth access token into the browser runtime. The versioned [reference OAuth gateway](reference/oauth-gateway/README.md) implements this shape as an isolated dogfood package; it is not included in the published root npm package. See [V5 authenticated workflows](docs/v5-authenticated-workflows.md) and [OAuth gateway pattern](docs/oauth-gateway.md).
 
 ### Existing CDP endpoint
 

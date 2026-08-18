@@ -27,6 +27,15 @@ jobs:
         run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npm run build
+      - name: Install reference OAuth gateway dependencies
+        if: matrix.node == 22
+        run: npm ci --ignore-scripts --prefix reference/oauth-gateway
+      - name: Audit reference OAuth gateway dependencies
+        if: matrix.node == 22
+        run: npm audit --audit-level=moderate --prefix reference/oauth-gateway
+      - name: Test reference OAuth gateway
+        if: matrix.node == 22
+        run: npm test --prefix reference/oauth-gateway
       - name: stdio MCP smoke test
         if: matrix.node == 22
         run: npm run smoke:stdio
@@ -42,6 +51,14 @@ jobs:
       - name: Build container image
         if: matrix.node == 22
         run: docker build --tag maps-browser-mcp:ci .
+      - name: Build reference OAuth gateway image
+        if: matrix.node == 22
+        run: docker build -f reference/oauth-gateway/Dockerfile --tag maps-browser-mcp-oauth-reference:ci .
+      - name: Record reference gateway runtime versions
+        if: matrix.node == 22
+        run: >-
+          docker run --rm --entrypoint sh maps-browser-mcp-oauth-reference:ci
+          -lc 'node --version && /usr/bin/chromium --version'
       - name: Record container runtime versions
         if: matrix.node == 22
         run: >-
