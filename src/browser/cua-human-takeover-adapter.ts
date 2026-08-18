@@ -8,6 +8,7 @@ interface ActiveCredentialTakeover {
   pid: number;
   client: CuaToolClient;
   lastFrame?: BoundWindow;
+  lastTap?: { x: number; y: number; windowId: number };
 }
 interface CuaWindowRecord {
   pid?: unknown;
@@ -102,6 +103,7 @@ export class CuaHumanTakeoverAdapter implements TakeoverBrowserAdapter {
       y,
       delivery_mode: "foreground"
     });
+    active.lastTap = { x, y, windowId: frame.windowId };
   }
 
   async scrollHumanTakeover(interventionId: string, epoch: number, deltaY: number): Promise<void> {
@@ -124,9 +126,11 @@ export class CuaHumanTakeoverAdapter implements TakeoverBrowserAdapter {
     if (!text || text.length > 2_048) throw new Error("Invalid credential-safe text input");
     const { active, frame } = await this.requireCurrentFrame(interventionId, epoch);
     // Never log tool args/results here: credential text stays broker -> local Cua MCP stdin -> normal Chrome.
+    const target = active.lastTap?.windowId === frame.windowId ? active.lastTap : undefined;
     await active.client.callTool("type_text", {
       pid: active.pid,
       window_id: frame.windowId,
+      ...(target ? { x: target.x, y: target.y } : {}),
       text,
       delivery_mode: "foreground"
     });
@@ -136,9 +140,11 @@ export class CuaHumanTakeoverAdapter implements TakeoverBrowserAdapter {
     const cuaKey = this.cuaKey(key);
     if (!cuaKey) throw new Error("Unsupported credential-safe key");
     const { active, frame } = await this.requireCurrentFrame(interventionId, epoch);
+    const target = active.lastTap?.windowId === frame.windowId ? active.lastTap : undefined;
     await active.client.callTool("press_key", {
       pid: active.pid,
       window_id: frame.windowId,
+      ...(target ? { x: target.x, y: target.y } : {}),
       key: cuaKey,
       delivery_mode: "foreground"
     });
