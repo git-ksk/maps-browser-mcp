@@ -6,6 +6,8 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+- Add an opt-in `cua_takeover` credential-safe transport that reuses the existing authenticated short-lived Takeover UI while normal Chrome remains free of CDP/remote-debugging. A local Cua Driver MCP bridge is bound to the exact dedicated Chrome PID and single visible window, accepts only a fixed seven-tool native capture/input allowlist, keeps Human-entered text out of northbound Maps MCP/model context/process argv/repository logs, and was live-validated end to end on a benign local page for frame delivery, tap, scroll, text, Enter, outer Bearer coexistence, Done capability revocation, and normal-Chrome teardown.
+
 ### Added
 
 - Add an opt-in credential-safe Human sign-in ceremony for V5. `maps_request_human_sign_in` keeps Google account selection, credentials and MFA Human-only; it fully stops the server-owned CDP Chrome, opens the same dedicated profile in normal Chrome without remote-debugging/automation attachment, optionally points the Human at an existing OS-level remote-access product, then closes that browser and requires a fresh identity-free readiness verification before automation can resume. The external remote-access product remains outside this repository, pre-auth semantic state is never replayed, and the feature is disabled by default.

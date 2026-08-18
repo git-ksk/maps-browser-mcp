@@ -89,9 +89,11 @@ Implementationにaccount-continuity checkが必要なら、local opaque/HMAC bin
 
 ### Credential-safe Human sign-in ceremony
 
-`MAPS_CREDENTIAL_SAFE_HANDOFF=true` の場合、`maps_request_human_sign_in` が `signed_out` から明示的なHuman-only entry pathを提供します。Sign in click、Google Account選択、credential/MFA入力、account identity読取、cookie/token exportは一切行いません。既存Execution Handoff boundaryへ入り、server-owned CDP Chromeを完全停止し、同じdedicated non-default profileをremote-debugging/automation attachmentなしのnormal Chromeで開きます。必要なら既存OS-level remote-access製品へのoperator locatorだけを提示します。
+`MAPS_CREDENTIAL_SAFE_HANDOFF=true` の場合、`maps_request_human_sign_in` が `signed_out` から明示的なHuman-only entry pathを提供します。Sign in click、Google Account選択、Humanに代わるcredential/MFA入力、account identity読取、cookie/token exportは行いません。既存Execution Handoff boundaryへ入り、server-owned CDP Chromeを完全停止し、同じdedicated non-default profileをremote-debugging/automation attachmentなしのnormal Chromeで開きます。
 
-Human completionは特定Google Accountのactive証明ではありません。automation再開前にnormal browserを終了しdedicated profile解放を確認、CDP runtimeをfreshに再起動し、clientは `maps_read_authenticated_readiness` を再実行します。pre-auth semantic stateはreplayしません。Remote desktop自体はこのrepositoryの責務にせず既存providerを利用します。
+Transportは2種類です。defaultの `MAPS_CREDENTIAL_SAFE_TRANSPORT=external` は既存OS-level remote-access surfaceへHumanを案内します。`cua_takeover` はauthenticatedな短命browser Takeover UIを再利用しつつ、backendをCDPからlocal Cua Driver native capture/input bridgeへ差し替えます。Bridgeはexact dedicated normal-Chrome PIDとvisible window 1件へbindし、maximally boundedなscreenshot stateを要求、bring-to-front、PID-filtered window discovery、frame capture、tap、scroll、text、key deliveryだけを固定allowlistで許可します。他のCua toolはruntimeで拒否します。Human入力textはnorthbound Maps MCP、model context、process argv、repository logへ返さず、このtransportではTakeover brokerからlocal `cua-driver mcp` processのstdinへ一時的にだけ流れます。`cua_takeover` はauthenticated Remote Takeoverの有効化も必須です。
+
+Human completionは特定Google Accountのactive証明ではありません。automation再開前にnormal browserとlocal Cua transportをrevokeしdedicated profile解放を確認、CDP runtimeをfreshに再起動し、clientは `maps_read_authenticated_readiness` を再実行します。pre-auth semantic stateはreplayしません。`cua_takeover` では追加remote-desktop製品は不要で、既存製品を使いたいdeployment向けには `external` を残します。
 
 Multi-account / account-switching UIはinitial V5ではHuman-onlyです。AgentはGoogle Accountを選択しません。
 

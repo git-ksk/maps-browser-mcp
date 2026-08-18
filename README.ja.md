@@ -353,7 +353,9 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなbounded V5 authenticated toolを有効化。Interactive Assistと専用single-user profile gateも必須 |
 | `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | sign-in / consent時にnormal browserへHuman authorityを渡すcredential-safe handoffを有効化。credential entry前にmanaged CDP Chromeを停止 |
-| `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | 既存OS-level remote-access製品へのoptional HTTPS locator。maps-browser-mcp自身はremote desktopを実装しない |
+| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` は既存OS-level remote-access surface、`cua_takeover` はauthenticated Takeover UI + local Cua Driver native capture/inputを利用 |
+| `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | `external` transport専用のfixed HTTPS locator。credential/query/fragment付きURLは拒否 |
+| `MAPS_CUA_DRIVER_COMMAND` | `cua-driver` | `cua_takeover` 専用Cua Driver executable。Human transport用の固定7 tool allowlist以外は呼ばない |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | MCP Apps directions view用のoptional restricted Maps Embed API key。未設定でもtext/structured render toolは利用可能 |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | process-local操作上限 |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | 独立したbounded visible-state/UI read上限 |
@@ -366,7 +368,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 
 ### V5 authenticated workflow Opt-in
 
-`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` はbounded authenticated V5 semantics用の追加fail-closed Opt-inです。`INTERACTIVE_ASSIST_MODE=true` と組み合わせると、V5 baselineに記載したidentity-free readiness、bounded selected-place save-state read、exact existing-list Save、bounded selected-route Send-to-phone target read、approval-gated single-device sendだけを公開します。 さらに `MAPS_CREDENTIAL_SAFE_HANDOFF=true` を有効化すると `maps_request_human_sign_in` を追加し、managed CDP browserを完全停止→同じdedicated profileをremote-debugging/automation attachmentなしのnormal Chromeで開く→Human認証→normal browser終了→fresh readiness再確認、というceremonyを提供します。既存CDP attachを拒否し、per-principal profile isolation実装前の `MCP_AUTH_PROVIDER=module` を拒否し、`MAPS_CHROME_PROFILE_DIR` overrideにはabsoluteなdedicated profile pathを要求します。Send mutationはさらにform elicitationをadvertiseするmodern MCP 2026-07-28 clientが必要です。
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` はbounded authenticated V5 semantics用の追加fail-closed Opt-inです。`INTERACTIVE_ASSIST_MODE=true` と組み合わせると、V5 baselineに記載したidentity-free readiness、bounded selected-place save-state read、exact existing-list Save、bounded selected-route Send-to-phone target read、approval-gated single-device sendだけを公開します。 さらに `MAPS_CREDENTIAL_SAFE_HANDOFF=true` を有効化すると `maps_request_human_sign_in` を追加し、managed CDP browserを完全停止→同じdedicated profileをremote-debugging/automation attachmentなしのnormal Chromeで開く→Human認証→normal browser終了→fresh readiness再確認、というceremonyを提供します。`MAPS_CREDENTIAL_SAFE_TRANSPORT=external` は既存OS-level remote-access製品を利用し、`cua_takeover` はauthenticatedな短命Takeover UIとlocal Cua Driver bridgeを再利用します。Cua bridgeはexact dedicated Chrome PID/windowへbindし、frame capture + tap/scroll/text/keyだけの固定allowlistに限定します。Human入力textはnorthbound Maps MCP、model context、process argv、repository logへ返さず、local Cua MCP stdin上だけを一時通過します。`cua_takeover` はRemote Takeover有効化が必須です。既存CDP attachを拒否し、per-principal profile isolation実装前の `MCP_AUTH_PROVIDER=module` を拒否し、`MAPS_CHROME_PROFILE_DIR` overrideにはabsoluteなdedicated profile pathを要求します。Send mutationはさらにform elicitationをadvertiseするmodern MCP 2026-07-28 clientが必要です。
 
 現在のremote single-user設計では、public MCP clientの認証はexternal gatewayで行い、このcore serverへのprivate hopは `static-bearer` を使います。callerのpublic OAuth access tokenをbrowser runtimeへ転送しません。Versionedな [reference OAuth gateway](reference/oauth-gateway/README.ja.md) がこの構成をisolated dogfood packageとして実装しますが、published root npm packageには含めません。詳細は [V5 authenticated workflows](docs/v5-authenticated-workflows.ja.md) と [OAuth gateway pattern](docs/oauth-gateway.ja.md) を参照してください。
 

@@ -36,6 +36,10 @@ export class SystemBrowserCredentialSession {
     return Boolean(this.child && this.child.exitCode === null);
   }
 
+  getPid(): number | undefined {
+    return this.isActive() ? this.child?.pid : undefined;
+  }
+
   async start(): Promise<void> {
     if (this.isActive()) return;
     this.child = undefined;
