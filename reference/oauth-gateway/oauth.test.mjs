@@ -57,7 +57,9 @@ test("OAuth browser transaction cookie is integrity protected", () => {
   const secret = "0123456789abcdefghijklmnopqrstuvwxyz";
   const value = signOAuthTransaction({ clientId: "https://chatgpt.com/oauth/client.json", expiresAt: 123 }, secret);
   assert.deepEqual(verifyOAuthTransaction(value, secret), { clientId: "https://chatgpt.com/oauth/client.json", expiresAt: 123 });
-  const tampered = `${value.slice(0, -1)}${value.endsWith("A") ? "B" : "A"}`;
+  const parts = value.split(".");
+  parts[3] = `${parts[3].startsWith("A") ? "B" : "A"}${parts[3].slice(1)}`;
+  const tampered = parts.join(".");
   assert.throws(() => verifyOAuthTransaction(tampered, secret), /invalid_oauth_transaction/);
 });
 
