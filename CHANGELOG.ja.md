@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+- credential-safe transportにopt-inの `cua_takeover` を追加。normal ChromeはCDP / remote-debuggingなしのまま、既存authenticated short-lived Takeover UIを再利用し、local Cua Driver MCP bridgeをexact dedicated Chrome PID + visible window 1件へbindする。Native capture/inputは固定7 tool allowlistだけ許可し、Human入力textをnorthbound Maps MCP / model context / process argv / repository logへ返さない。Benign local pageでframe、tap、scroll、text、Enter、outer Bearer coexistence、Done capability revoke、normal-Chrome teardownまでend-to-end live validation済み。
+
 ### 追加
 
 - V5向けにdefault OFFのcredential-safe Human sign-in ceremonyを追加。`maps_request_human_sign_in` はGoogle Account選択、credential、MFAをHuman-onlyのまま維持し、server-owned CDP Chromeを完全停止→同じdedicated profileをremote-debugging / automation attachmentなしのnormal Chromeで起動→必要なら既存OS-level remote-access製品へのoperator locatorだけを提示→Human完了後にnormal browserを閉じてidentity-free readinessをfresh再検証、というflowを提供する。External remote-access製品自体はこのrepositoryで実装せず、pre-auth semantic stateもreplayしない。

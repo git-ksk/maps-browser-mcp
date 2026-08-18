@@ -21,7 +21,9 @@ const KEYS = [
   "MAPS_TAKEOVER_PUBLIC_BASE_URL",
   "MAPS_TAKEOVER_TTL_SECONDS",
   "MAPS_CREDENTIAL_SAFE_HANDOFF",
+  "MAPS_CREDENTIAL_SAFE_TRANSPORT",
   "MAPS_CREDENTIAL_SAFE_OPERATOR_URL",
+  "MAPS_CUA_DRIVER_COMMAND",
   "MAPS_HANDOFF_CHECKPOINT_FILE",
   "MAPS_HANDOFF_CHECKPOINT_KEY",
   "MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS",
@@ -329,7 +331,9 @@ test("credential-safe Human handoff is opt-in and keeps external remote access o
   await withEnv({}, () => {
     const config = loadConfig();
     assert.equal(config.credentialSafeHandoff.enabled, false);
+    assert.equal(config.credentialSafeHandoff.transport, "external");
     assert.equal(config.credentialSafeHandoff.operatorUrl, undefined);
+    assert.equal(config.credentialSafeHandoff.cuaCommand, "cua-driver");
   });
 
   await withEnv({
@@ -348,6 +352,51 @@ test("credential-safe Human handoff is opt-in and keeps external remote access o
   }, () => {
     const config = loadConfig();
     assert.equal(config.credentialSafeHandoff.operatorUrl, "https://remote.example.test/access/path");
+  });
+});
+
+test("credential-safe Cua takeover is explicit and reuses the authenticated takeover gateway", async () => {
+  await withEnv({ MAPS_CREDENTIAL_SAFE_TRANSPORT: "cua_takeover" }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_CREDENTIAL_SAFE_HANDOFF=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "cua_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "cua_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_CUA_DRIVER_COMMAND: "/opt/local/bin/cua-driver"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.credentialSafeHandoff.transport, "cua_takeover");
+    assert.equal(config.credentialSafeHandoff.cuaCommand, "/opt/local/bin/cua-driver");
+    assert.equal(config.takeover.enabled, true);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "cua_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_CREDENTIAL_SAFE_OPERATOR_URL: "https://other.example/access"
+  }, () => {
+    assert.throws(() => loadConfig(), /cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=cua_takeover/);
+  });
+
+  await withEnv({ MAPS_CREDENTIAL_SAFE_TRANSPORT: "unknown" }, () => {
+    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover/);
   });
 });
 

@@ -54,6 +54,10 @@ import { MapsUrlCompiler } from "./maps/url-compiler.js";
 import { PolicyEngine, PolicyError } from "./policy/policy-engine.js";
 import { currentRequestPrincipal, principalBinding } from "./request-principal.js";
 import { ChromeProcess } from "./browser/chrome-process.js";
+import { CuaMcpClient } from "./browser/cua-mcp-client.js";
+import { CuaHumanTakeoverAdapter } from "./browser/cua-human-takeover-adapter.js";
+import { CredentialAwareTakeoverAdapter } from "./browser/credential-aware-takeover-adapter.js";
+import { CuaTakeoverHumanProvider } from "./browser/cua-takeover-human-provider.js";
 import { SystemBrowserCredentialSession } from "./browser/system-browser-credential-session.js";
 import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provider.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
@@ -77,7 +81,11 @@ const policy = new PolicyEngine({
 });
 const chrome = new ChromeProcess(config.browser);
 const runtime = new MapsBrowserRuntime(chrome, policy);
-const takeoverBroker = new TakeoverBroker(runtime, config.takeover);
+const credentialSafeCuaAdapter = new CuaHumanTakeoverAdapter(
+  () => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand)
+);
+const takeoverAdapter = new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter);
+const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover);
 const credentialSafeBrowser = config.credentialSafeHandoff.enabled
   ? new SystemBrowserCredentialSession({
       executable: config.browser.executable,
@@ -85,11 +93,16 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled
       startUrl: "https://www.google.com/maps"
     })
   : undefined;
-const credentialSafeSurface = credentialSafeBrowser
-  ? new CredentialSafeHumanSurfaceRuntime(new SystemBrowserHumanProvider(
-      credentialSafeBrowser,
-      config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
-    ))
+const credentialSafeProvider = credentialSafeBrowser
+  ? config.credentialSafeHandoff.transport === "cua_takeover"
+    ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
+    : new SystemBrowserHumanProvider(
+        credentialSafeBrowser,
+        config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
+      )
+  : undefined;
+const credentialSafeSurface = credentialSafeProvider
+  ? new CredentialSafeHumanSurfaceRuntime(credentialSafeProvider)
   : undefined;
 const controller = new SemanticController(runtime, compiler);
 const reader = new VisibleStateReader(runtime, {
@@ -1413,6 +1426,7 @@ export async function shutdownRuntime(): Promise<void> {
   const active = runtime.getActiveIntervention();
   if (active) takeoverBroker.revokeForIntervention(active.id);
   await operationQueue.drain();
+  await credentialSafeCuaAdapter.close().catch(() => undefined);
   await credentialSafeBrowser?.close().catch(() => undefined);
   await runtime.close();
 }

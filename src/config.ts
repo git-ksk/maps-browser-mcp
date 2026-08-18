@@ -104,6 +104,12 @@ function externalHumanOperatorUrl(name: string): string | undefined {
   return url.toString();
 }
 
+function credentialSafeTransport(name: string): "external" | "cua_takeover" {
+  const raw = process.env[name]?.trim().toLowerCase() || "external";
+  if (raw === "external" || raw === "cua_takeover") return raw;
+  throw new Error(`${name} must be one of: external, cua_takeover`);
+}
+
 export interface AppConfig {
   auth: {
     provider: "none" | "static-bearer" | "module";
@@ -132,7 +138,9 @@ export interface AppConfig {
   };
   credentialSafeHandoff: {
     enabled: boolean;
+    transport: "external" | "cua_takeover";
     operatorUrl?: string;
+    cuaCommand: string;
   };
   mcpApps: {
     googleMapsEmbedApiKey?: string;
@@ -243,9 +251,25 @@ export function loadConfig(): AppConfig {
   const profileDir = process.env.MAPS_CHROME_PROFILE_DIR ??
     path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile");
   const credentialSafeHandoff = envBool("MAPS_CREDENTIAL_SAFE_HANDOFF", false);
+  const credentialSafeTransportMode = credentialSafeTransport("MAPS_CREDENTIAL_SAFE_TRANSPORT");
   const credentialSafeOperatorUrl = externalHumanOperatorUrl("MAPS_CREDENTIAL_SAFE_OPERATOR_URL");
+  const cuaCommand = process.env.MAPS_CUA_DRIVER_COMMAND?.trim() || "cua-driver";
   if (credentialSafeOperatorUrl && !credentialSafeHandoff) {
     throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
+  }
+  if (credentialSafeTransportMode !== "external" && !credentialSafeHandoff) {
+    throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when set to cua_takeover");
+  }
+  if (credentialSafeTransportMode === "cua_takeover") {
+    if (!remoteTakeover) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=cua_takeover requires MAPS_REMOTE_TAKEOVER=true");
+    }
+    if (credentialSafeOperatorUrl) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=cua_takeover because the broker issues the operator locator");
+    }
+    if (!cuaCommand || cuaCommand.includes("\0")) {
+      throw new Error("MAPS_CUA_DRIVER_COMMAND must name one executable without NUL characters");
+    }
   }
   if (credentialSafeHandoff) {
     if (allowExternalCdp) {
@@ -308,7 +332,9 @@ export function loadConfig(): AppConfig {
     },
     credentialSafeHandoff: {
       enabled: credentialSafeHandoff,
-      operatorUrl: credentialSafeOperatorUrl
+      transport: credentialSafeTransportMode,
+      operatorUrl: credentialSafeOperatorUrl,
+      cuaCommand
     },
     mcpApps: {
       googleMapsEmbedApiKey: process.env.GOOGLE_MAPS_EMBED_API_KEY?.trim() || undefined
