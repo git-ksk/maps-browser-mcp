@@ -6,14 +6,14 @@
 
 ## 最新安定版
 
-この文書で扱うrelease baselineは **v0.3.0** です。Exact tested release commitはGitHub tag / Releaseを正本とします。
+この文書で扱うrelease baselineは **v0.3.1** です。Exact tested release commitはGitHub tag / Releaseを正本とします。
 
-- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.0
+- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.1
 - Draft: いいえ
 - Prerelease: いいえ
 - npm: **未公開**
 
-v0.3.0ではboundedなV5 authenticated workflow（A〜D）を既存のfail-closed opt-in配下で追加し、clean external OAuth / MCP Runtime reference pathとChatGPT dogfood migrationを完了、remote/headless bounded readもhardeningします。V5はdefault無効、account-backed automationはsingle-user / dedicated-profile限定、npmは引き続き未公開です。
+v0.3.1では実装済みV5 tool surfaceをtop-level EN/JA READMEへ正しく反映し、registered toolがどちらかのREADMEから欠落した場合にrepository policy testで検出します。v0.3.0ではboundedなV5 authenticated workflow（A〜D）を既存のfail-closed opt-in配下で追加し、clean external OAuth / MCP Runtime reference pathとChatGPT dogfood migrationを完了、remote/headless bounded readもhardeningします。V5はdefault無効、account-backed automationはsingle-user / dedicated-profile限定、npmは引き続き未公開です。
 
 詳細な変更履歴は [CHANGELOG 日本語版](../CHANGELOG.ja.md) を参照してください。
 
@@ -22,7 +22,7 @@ v0.3.0ではboundedなV5 authenticated workflow（A〜D）を既存のfail-close
 検証・公開されたsourceをそのまま使う場合はrelease tagをcheckoutしてください。
 
 ```bash
-git clone --branch v0.3.0 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
+git clone --branch v0.3.1 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm ci --ignore-scripts
 npm run build
@@ -49,6 +49,12 @@ Release tagを指定すると、今後 `main` に未releaseの変更が入った
 `main` はprotected branchで、変更はrequired CI / CodeQL経由でmergeされます。ただし、将来の `main` は最新公開tagより先行する可能性があります。`main` のcommitがGitHub Releaseとして公開済みとは限りません。
 
 Contributorは特別な指示がない限り現在の `main` からbranchを作成してください。
+
+## v0.3.1 検証記録
+
+v0.3.1はdocumentation / version metadataだけのpatchで、Maps navigation、browser control、OAuth、V5 action semanticsは変更しません。それでもexact release commitにNode.js 20/22/24 required CI、macOS / Windows browser smoke、CodeQL、package / repository policy check、local stdio / HTTP / browser / package release validationを要求します。
+
+Release checklistに従い、このdocumentation-only patchでは新しいLive Maps E2Eを要求しません。直前のv0.3.0 exact-release container Live Maps baselineはgreenで、このpatchにruntime behavior変更はありません。
 
 ## v0.3.0 検証記録
 

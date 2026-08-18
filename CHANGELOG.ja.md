@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+## [v0.3.1] - 2026-08-18
+
+### Documentation
+
+- Top-level EN/JA READMEをrelease済みV5-A〜V5-D tool surfaceへ同期し、日本語版で欠落していたbounded read toolも復旧。Registered MCP toolが両READMEから欠落した場合にrepository policy testで検出する。
+
 ## [v0.3.0] - 2026-08-18
 
 ### Documentation

@@ -6,6 +6,12 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+## [v0.3.1] - 2026-08-18
+
+### Documentation
+
+- Synchronize the top-level English/Japanese READMEs with the released V5-A through V5-D tool surface, restore the missing Japanese bounded-read entries, and regression-check that every registered MCP tool remains documented in both READMEs.
+
 ## [v0.3.0] - 2026-08-18
 
 ### Documentation

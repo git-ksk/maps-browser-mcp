@@ -4,7 +4,7 @@
 
 Google Mapsのuser-visible Web UIを、専用Chrome / Chromiumセッションから限定的に操作する、制約重視・ExperimentalなMCP browser controllerです。
 
-> **ステータス:** 現行の未認証scopeではV1〜V4 coverageを実装・closeout済みです。残るpartial capabilityはguessで埋めずcanonical inventory上で明示的にobservation/design-gatedとしています。実UI依存のsemantic interactionとbounded visible-state readingは、UI変更の影響を受けるためExperimentalです。
+> **ステータス:** 現行の未認証scopeではV1〜V4を実装・closeout済みです。V5-A〜V5-D authenticated workflowも、default無効・fail-closed・single-user / dedicated-profile限定のOpt-in配下で実装済みです。V5-E historyは評価済みですが意図的にhistory toolを追加していません。残るpartial capabilityはguessで埋めずobservation/design-gatedとし、実UI依存のsemantic interaction / bounded visible-state readingはExperimentalです。
 
 ## このプロジェクトの狙い
 
@@ -30,7 +30,7 @@ supported Google Maps Platform APIやGoogle-managed Maps MCPで、**render済み
 
 詳細は **[Project positioning 日本語版](docs/positioning.ja.md)**、**[V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md)**、**[Compliance / Safety 日本語版](docs/compliance.ja.md)** を参照してください。
 
-## V4の方向性
+## V4 closeoutとV5 authenticated workflowの方向性
 
 V4はV1〜V3よりcoverageを広げますが、制約付きarchitectureは維持します。
 
@@ -40,7 +40,7 @@ V4はV1〜V3よりcoverageを広げますが、制約付きarchitectureは維持
 
 優先順位は、browser-native / UI-dependent機能を最優先、browser workflow完結に必要なsearch / directions / placeを次、公式structured interfaceとほぼ同等の機能をその次とします。
 
-機能単位のcanonical status表は **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md)** です。ログイン必須機能はV5へ送ります。Current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.ja.md)** は、identity-free readiness、bounded save-state read、exact existing-list Save、explicit one-shot MCP action approval付きのbounded selected-route Send-to-phone flowまで実装し、broad signed-in automationは公開しません。V4でもraw DOM、raw Accessibility Tree、raw CDP、generic browser action、desktop action、shell executionをMCPへ公開しません。
+未認証capabilityのcanonical status表は **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.ja.md)** です。Current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.ja.md)** は、V5-A identity-free readiness、V5-B bounded save-state read、V5-C exact existing-list Save、V5-D explicit one-shot MCP action approval付きbounded selected-route Send-to-phoneまで実装済みです。V5-E historyは、観測したHistory surfaceがMy Activityへcrossし、Maps-local Recentにもstableなbounded activity-row contractがないためtool追加を意図的にblockしています。V4 / V5ともraw DOM、raw Accessibility Tree、raw CDP、generic browser action、desktop action、shell executionをMCPへ公開しません。
 
 ## 5分クイックスタート
 
@@ -195,6 +195,21 @@ maps_directions({ origin, destination, mode: "transit" })
 - `maps_set_transit_time` — V4-D、当日 `depart_at|arrive_by`、Interactive Assist必須
 - `maps_swap_route_endpoints` — V4-D、fresh simple route限定・documented URL再構築
 - `maps_get_route_share_link` — V4-D、selected simple transit route share dialog、Interactive Assist必須
+
+### Optional bounded visible-state reading
+
+- `maps_read_place_summary`
+- `maps_read_route_summary`
+
+### V5 authenticated workflows（Opt-in）
+
+以下は `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` がdedicated-profile / single-user gateを満たした場合だけ登録されます。
+
+- `maps_read_authenticated_readiness` — V5-A、identity-freeな `signed_in | signed_out | unknown` readinessのみ
+- `maps_read_place_save_state` — V5-B、revalidate済みselected placeのbounded existing-list membership
+- `maps_save_place_to_list` — V5-C、1つのrevalidated selected placeをexact existing list 1件へ保存。create / unsave / removeなし
+- `maps_read_route_send_targets` — V5-D、exact selected simple routeに対するbounded visible device target
+- `maps_send_route_to_device` — V5-D、one-shot MCP form approval後のexact device 1件へのsend。credential / generic text-entry surfaceなし
 
 ### Display-only / Optional MCP Apps UI
 
@@ -449,7 +464,7 @@ Project scope内のcontributionは歓迎です。PR前に **[Contributing 日本
 
 ## Release Status
 
-v0.2.0 release baselineのrepository metadataは `0.2.0` です。公開済みGitHub Releaseが未リリースの`main`より古い状態はあり得ます。Releaseでnpm package公開が明示されるまでは、npm install可能と仮定しないでください。
+v0.3.1 release baselineのrepository metadataは `0.3.1` です。V5-A〜V5-Dは実装済みですがauthenticated-workflow Opt-in配下でdefault無効を維持します。このreleaseでは `maps-browser-mcp` をnpm公開せず、GitHub source tag / Releaseを配布物とします。
 
 Tag / publish前は **[Release Checklist 日本語版](docs/release.ja.md)** を参照してください。
 
