@@ -14,6 +14,8 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
+- Harden bounded visible-state reads against transient Google Maps Accessibility-tree node invalidation: one fresh full snapshot retry is allowed, and repeated stale AX IDs now fail closed as `UI_STATE_CHANGED` instead of surfacing a generic `INTERNAL_ERROR`.
+
 - Fix the MCP Runtime Firebase authorization page so the same-origin completion request is allowed by CSP and carries the HttpOnly OAuth transaction cookie; Firebase credentials still go only to Identity Toolkit.
 
 

@@ -16,6 +16,8 @@
 
 ### 変更
 
+- Google MapsのAccessibility tree node IDが再描画で一時失効するケースに対してbounded visible-state readをhardening。fresh full snapshotの再取得を1回だけ許可し、連続stale時はgeneric `INTERNAL_ERROR` ではなく `UI_STATE_CHANGED` でfail closeする。
+
 - MCP Runtime Firebase authorization pageを修正し、same-origin completion requestをCSPで許可しつつHttpOnly OAuth transaction cookieを送信する。Firebase credentialは引き続きIdentity Toolkitへだけ送る。
 
 
