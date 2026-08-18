@@ -2,6 +2,8 @@ const REQUEST_HEADERS = new Set([
   "accept",
   "content-type",
   "mcp-protocol-version",
+  "mcp-method",
+  "mcp-name",
   "mcp-session-id",
   "last-event-id",
   "user-agent"
