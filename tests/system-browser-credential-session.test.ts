@@ -8,7 +8,7 @@ test("credential-safe normal Chrome uses the dedicated profile without remote de
     startUrl: "https://www.google.com/maps"
   });
   assert.ok(args.includes("--user-data-dir=/tmp/maps-dedicated-profile"));
-  assert.ok(args.includes("https://www.google.com/maps"));
+  assert.equal(args.at(-1), "https://www.google.com/maps");
   assert.equal(args.some((value) => value.startsWith("--remote-debugging")), false);
   assert.equal(args.some((value) => /automation/i.test(value)), false);
   assert.equal(args.some((value) => value === "--headless" || value.startsWith("--headless=")), false);
