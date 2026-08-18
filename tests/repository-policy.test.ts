@@ -31,6 +31,26 @@ test("package, lockfile, and MCP server versions stay synchronized", () => {
   assert.equal(appMatch[1], packageJson.version);
 });
 
+test("top-level READMEs document every registered MCP tool and current release version", () => {
+  const serverSource = read("src/server.ts");
+  const registeredTools = [...serverSource.matchAll(/server\.registerTool\(\s*"(maps_[a-z0-9_]+)"/g)]
+    .map((match) => match[1])
+    .filter((name): name is string => Boolean(name));
+  assert.ok(registeredTools.length > 0, "src/server.ts must register MCP tools");
+
+  const packageJson = JSON.parse(read("package.json")) as { version?: unknown };
+  assert.equal(typeof packageJson.version, "string");
+
+  for (const readme of ["README.md", "README.ja.md"]) {
+    const source = read(readme);
+    for (const tool of registeredTools) {
+      assert.ok(source.includes(`\`${tool}\``), `${readme} must document registered tool ${tool}`);
+    }
+    assert.ok(source.includes(`v${packageJson.version}`), `${readme} must mention current release v${packageJson.version}`);
+    assert.ok(source.includes(`\`${packageJson.version}\``), `${readme} must mention current metadata version ${packageJson.version}`);
+  }
+});
+
 test("execution handoff upstream source release is pinned to an immutable commit", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(

@@ -4,7 +4,7 @@
 
 A constrained, experimental MCP browser controller for user-directed interaction with Google Maps through a dedicated Chrome/Chromium session.
 
-> **Status:** V1–V4 coverage is implemented/closed out for the current unauthenticated scope. Remaining partial capabilities are explicitly observation/design-gated in the canonical inventory rather than guessed. Google Maps UI-dependent interaction and bounded visible-state reading remain experimental because the live Maps UI can change.
+> **Status:** V1–V4 are implemented/closed out for the current unauthenticated scope. V5-A through V5-D authenticated workflows are implemented behind a disabled-by-default, fail-closed single-user/dedicated-profile opt-in; V5-E history was evaluated and intentionally adds no history tool. Remaining partial capabilities stay explicitly observation/design-gated rather than guessed. Google Maps UI-dependent interaction and bounded visible-state reading remain experimental because the live Maps UI can change.
 
 ## Why this project exists
 
@@ -30,7 +30,7 @@ If a supported Google Maps Platform API or Google-managed Maps MCP already satis
 
 See **[Project positioning](docs/positioning.md)**, **[V4 Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**, and **[Compliance boundaries](docs/compliance.md)** for the detailed category, coverage, and safety boundaries.
 
-## V4 direction
+## V4 closeout and V5 authenticated direction
 
 V4 is intentionally broader than V1–V3 but keeps the same constrained architecture:
 
@@ -38,7 +38,7 @@ V4 is intentionally broader than V1–V3 but keeps the same constrained architec
 
 Priority order is browser-native/UI-dependent behavior first; search/directions/place operations required to complete the browser workflow second; and capabilities that mostly duplicate official structured interfaces third.
 
-The canonical per-capability status table is **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**. Login-required features are staged in V5; the current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.md)** implements identity-free readiness, bounded save-state reads, one exact existing-list Save mutation, and a bounded selected-route Send-to-phone flow gated by explicit one-shot MCP action approval rather than broad signed-in automation. V4 does not expose raw DOM, raw Accessibility Tree, raw CDP, generic browser actions, desktop actions, or shell execution through MCP.
+The canonical unauthenticated per-capability status table is **[Google Maps Web Capability Inventory](docs/maps-web-capability-inventory.md)**. The current **[V5 authenticated-workflows baseline](docs/v5-authenticated-workflows.md)** implements V5-A identity-free readiness, V5-B bounded save-state reads, V5-C one exact existing-list Save mutation, and V5-D bounded selected-route Send-to-phone with explicit one-shot MCP action approval. V5-E history is intentionally blocked from adding a tool because the observed History surface crosses into My Activity and Maps-local Recent lacks a stable bounded activity-row contract. Neither V4 nor V5 exposes raw DOM, raw Accessibility Tree, raw CDP, generic browser actions, desktop actions, or shell execution through MCP.
 
 ## 5-minute quick start
 
@@ -198,6 +198,16 @@ maps_directions({ origin, destination, mode: "transit" })
 
 - `maps_read_place_summary`
 - `maps_read_route_summary`
+
+### V5 authenticated workflows (opt-in)
+
+These tools are registered only when `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` passes the dedicated-profile/single-user gate:
+
+- `maps_read_authenticated_readiness` — V5-A, identity-free `signed_in | signed_out | unknown` readiness only
+- `maps_read_place_save_state` — V5-B, bounded existing-list membership for the revalidated selected place
+- `maps_save_place_to_list` — V5-C, save one revalidated selected place to one exact existing list; no create/unsave/remove
+- `maps_read_route_send_targets` — V5-D, bounded visible device targets for one exact selected simple route
+- `maps_send_route_to_device` — V5-D, one exact device send after one-shot MCP form approval; no credential or generic text-entry surface
 
 ### Display-only / optional MCP Apps UI
 
@@ -449,7 +459,7 @@ Contributions are welcome within the project's constrained scope. Read **[CONTRI
 
 ## Release status
 
-The repository metadata for the v0.2.0 release baseline is versioned as `0.2.0`. The latest published GitHub release may intentionally lag unreleased `main`. Do not assume npm installation is available until a release explicitly documents a published npm package.
+The repository metadata for the v0.3.1 release baseline is versioned as `0.3.1`. V5-A through V5-D are implemented but remain disabled by default behind the authenticated-workflow opt-in. `maps-browser-mcp` is not published to npm in this release; use the GitHub source tag/Release.
 
 See **[Release checklist](docs/release.md)** before tagging or publishing.
 

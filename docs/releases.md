@@ -4,14 +4,14 @@ This page explains how to choose between a stable release and the current `main`
 
 ## Latest stable release
 
-The release baseline documented here is **v0.3.0**. The GitHub tag/Release is the authoritative record for the exact tested release commit.
+The release baseline documented here is **v0.3.1**. The GitHub tag/Release is the authoritative record for the exact tested release commit.
 
-- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.0
+- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.1
 - Draft: no
 - Prerelease: no
 - npm: **not published**
 
-v0.3.0 adds the bounded V5 authenticated-workflow slices (A–D) behind the existing fail-closed opt-in, completes the clean external OAuth/MCP Runtime reference path and ChatGPT dogfood migration, and hardens remote/headless bounded reads. V5 remains disabled by default, account-backed automation remains single-user/dedicated-profile only, and npm remains unpublished.
+v0.3.1 documents the already-implemented V5 tool surface in the top-level READMEs and adds repository-policy coverage preventing registered tools from disappearing from either README. v0.3.0 added the bounded V5 authenticated-workflow slices (A–D) behind the existing fail-closed opt-in, completed the clean external OAuth/MCP Runtime reference path and ChatGPT dogfood migration, and hardened remote/headless bounded reads. V5 remains disabled by default, account-backed automation remains single-user/dedicated-profile only, and npm remains unpublished.
 
 For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 
@@ -20,7 +20,7 @@ For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 If you want the exact source that was validated and released, check out the release tag:
 
 ```bash
-git clone --branch v0.3.0 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
+git clone --branch v0.3.1 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm ci --ignore-scripts
 npm run build
@@ -47,6 +47,12 @@ Use `main` when you intentionally want the newest merged development state.
 `main` is protected and changes land through required CI/CodeQL checks, but it may move ahead of the latest public tag. Do not assume that a commit on `main` has been published as a GitHub Release.
 
 For contributors, branch from the current `main` unless a maintainer explicitly asks for a release-branch fix.
+
+## v0.3.1 validation record
+
+v0.3.1 is a documentation/version-metadata patch: it changes no Maps navigation, browser-control, OAuth, or V5 action semantics. The exact release commit must still pass Node.js 20/22/24 required CI, macOS/Windows browser smoke, CodeQL, package/repository policy checks, and local stdio/HTTP/browser/package release validation.
+
+A new Live Maps E2E run is intentionally not required for this documentation-only patch under the release checklist; the v0.3.0 exact-release container Live Maps baseline was green immediately before this patch and no runtime behavior changed.
 
 ## v0.3.0 validation record
 
