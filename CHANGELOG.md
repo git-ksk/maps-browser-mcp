@@ -6,6 +6,14 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+### Added
+
+- Add an opt-in credential-safe Human sign-in ceremony for V5. `maps_request_human_sign_in` keeps Google account selection, credentials and MFA Human-only; it fully stops the server-owned CDP Chrome, opens the same dedicated profile in normal Chrome without remote-debugging/automation attachment, optionally points the Human at an existing OS-level remote-access product, then closes that browser and requires a fresh identity-free readiness verification before automation can resume. The external remote-access product remains outside this repository, pre-auth semantic state is never replayed, and the feature is disabled by default.
+
+### Security
+
+- Pin `mcp-execution-handoff` to the upstream credential-safe external Human surface implementation and bind the external session to the existing Human authority lifecycle. External-CDP attachment is rejected, operator locators cannot contain credentials/query/fragment, the normal-browser session must be revoked before automation restoration, and a false Continue while still signed out returns control to the Human instead of treating authentication as successful.
+
 ## [v0.3.1] - 2026-08-18
 
 ### Documentation

@@ -8,6 +8,14 @@
 
 ## [Unreleased]
 
+### 追加
+
+- V5向けにdefault OFFのcredential-safe Human sign-in ceremonyを追加。`maps_request_human_sign_in` はGoogle Account選択、credential、MFAをHuman-onlyのまま維持し、server-owned CDP Chromeを完全停止→同じdedicated profileをremote-debugging / automation attachmentなしのnormal Chromeで起動→必要なら既存OS-level remote-access製品へのoperator locatorだけを提示→Human完了後にnormal browserを閉じてidentity-free readinessをfresh再検証、というflowを提供する。External remote-access製品自体はこのrepositoryで実装せず、pre-auth semantic stateもreplayしない。
+
+### セキュリティ
+
+- `mcp-execution-handoff` をcredential-safe external Human surface実装済みupstream commitへ更新し、external sessionを既存Human authority lifecycleへbind。External CDPとの併用を拒否し、operator locatorのcredential/query/fragmentを禁止、automation authority復帰前のnormal-browser session revokeを必須化する。Humanが実際にはsign-inしていない状態でContinueしても成功扱いせず、fresh verification後にHuman controlへ戻す。
+
 ## [v0.3.1] - 2026-08-18
 
 ### Documentation

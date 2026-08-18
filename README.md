@@ -203,6 +203,7 @@ maps_directions({ origin, destination, mode: "transit" })
 
 These tools are registered only when `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` passes the dedicated-profile/single-user gate:
 
+- `maps_request_human_sign_in` — credential-safe Human-only sign-in ceremony; registered only when both V5 and `MAPS_CREDENTIAL_SAFE_HANDOFF=true` are enabled; never enters credentials or selects an account
 - `maps_read_authenticated_readiness` — V5-A, identity-free `signed_in | signed_out | unknown` readiness only
 - `maps_read_place_save_state` — V5-B, bounded existing-list membership for the revalidated selected place
 - `maps_save_place_to_list` — V5-C, save one revalidated selected place to one exact existing list; no create/unsave/remove
@@ -349,6 +350,8 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable bounded visible-state reading and V4 semantic UI operations that require it |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | Enable the fail-closed bounded V5 authenticated tools; also requires Interactive Assist and the dedicated single-user profile gate |
+| `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Enable normal-browser Human authentication handoff for sign-in/consent; managed CDP Chrome is stopped before credential entry |
+| `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | Optional HTTPS locator for an existing OS-level remote-access product; maps-browser-mcp does not implement remote desktop |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | Optional restricted Maps Embed API key for the MCP Apps directions view; the text/structured render tool remains available without it |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent bounded visible-state/UI read budget |
@@ -361,7 +364,7 @@ Invalid boolean/integer configuration fails fast instead of being silently coerc
 
 ### V5 authenticated-workflow opt-in
 
-`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. The setting rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden. The send mutation additionally requires a modern MCP 2026-07-28 client with form elicitation support.
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. When `MAPS_CREDENTIAL_SAFE_HANDOFF=true` is also enabled, `maps_request_human_sign_in` adds a Human-only authentication ceremony: the managed CDP browser is fully stopped, the same dedicated profile is opened in normal Chrome without remote-debugging/automation attachment, and automation resumes only after the normal browser is closed and fresh readiness is re-read. The setting rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden. The send mutation additionally requires a modern MCP 2026-07-28 client with form elicitation support.
 
 For the current remote single-user design, authenticate the public MCP client at an external gateway and use the private `static-bearer` hop to this core server. Do not forward a caller's public OAuth access token into the browser runtime. The versioned [reference OAuth gateway](reference/oauth-gateway/README.md) implements this shape as an isolated dogfood package; it is not included in the published root npm package. See [V5 authenticated workflows](docs/v5-authenticated-workflows.md) and [OAuth gateway pattern](docs/oauth-gateway.md).
 

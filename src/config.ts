@@ -90,6 +90,20 @@ function takeoverBaseUrl(name: string): string | undefined {
   return url.origin;
 }
 
+function externalHumanOperatorUrl(name: string): string | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const url = new URL(raw);
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error(`${name} must not contain URL credentials, query, or fragment`);
+  }
+  const loopback = isLoopbackBind(url.hostname);
+  if (url.protocol !== "https:" && !(loopback && url.protocol === "http:")) {
+    throw new Error(`${name} must use HTTPS except for loopback development`);
+  }
+  return url.toString();
+}
+
 export interface AppConfig {
   auth: {
     provider: "none" | "static-bearer" | "module";
@@ -115,6 +129,10 @@ export interface AppConfig {
     enabled: boolean;
     publicBaseUrl?: string;
     ttlMs: number;
+  };
+  credentialSafeHandoff: {
+    enabled: boolean;
+    operatorUrl?: string;
   };
   mcpApps: {
     googleMapsEmbedApiKey?: string;
@@ -224,6 +242,19 @@ export function loadConfig(): AppConfig {
 
   const profileDir = process.env.MAPS_CHROME_PROFILE_DIR ??
     path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile");
+  const credentialSafeHandoff = envBool("MAPS_CREDENTIAL_SAFE_HANDOFF", false);
+  const credentialSafeOperatorUrl = externalHumanOperatorUrl("MAPS_CREDENTIAL_SAFE_OPERATOR_URL");
+  if (credentialSafeOperatorUrl && !credentialSafeHandoff) {
+    throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
+  }
+  if (credentialSafeHandoff) {
+    if (allowExternalCdp) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_HANDOFF=true cannot be combined with MAPS_ALLOW_EXTERNAL_CDP=true because the server must stop and relaunch its dedicated browser profile");
+    }
+    if (!path.isAbsolute(profileDir)) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_HANDOFF=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path");
+    }
+  }
   const interactiveAssist = envBool("INTERACTIVE_ASSIST_MODE", false);
   const v5AuthenticatedWorkflows = envBool("MAPS_V5_AUTHENTICATED_WORKFLOWS", false);
   if (v5AuthenticatedWorkflows) {
@@ -274,6 +305,10 @@ export function loadConfig(): AppConfig {
       enabled: remoteTakeover,
       publicBaseUrl,
       ttlMs: takeoverTtlMs
+    },
+    credentialSafeHandoff: {
+      enabled: credentialSafeHandoff,
+      operatorUrl: credentialSafeOperatorUrl
     },
     mcpApps: {
       googleMapsEmbedApiKey: process.env.GOOGLE_MAPS_EMBED_API_KEY?.trim() || undefined

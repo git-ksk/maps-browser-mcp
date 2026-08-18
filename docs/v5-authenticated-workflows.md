@@ -86,6 +86,13 @@ The MCP response should not expose email addresses, account names, profile photo
 
 If implementation needs an account-continuity check, prefer a local opaque/HMAC binding or a coarse `signed_in | signed_out | unknown` semantic state. Any stronger account identity mechanism requires a separate privacy/security design review and live evidence that it can be implemented without returning raw identity data to the model.
 
+
+### Credential-safe Human sign-in ceremony
+
+When `MAPS_CREDENTIAL_SAFE_HANDOFF=true` is enabled, `maps_request_human_sign_in` provides an explicit Human-only entry path from `signed_out`. The tool never clicks Sign in, selects a Google Account, enters credentials/MFA, reads account identity, or exports cookies/tokens. Instead it enters the existing Execution Handoff boundary, fully stops the server-owned CDP Chrome, opens the same dedicated non-default profile in normal Chrome without remote-debugging/automation attachment, and optionally points the operator at an externally configured OS-level remote-access surface.
+
+Human completion is not proof that a particular Google Account is active. The normal browser is closed before automation resumes, the dedicated profile must be released, the CDP runtime is relaunched fresh, and the client must call `maps_read_authenticated_readiness` again. Pre-auth semantic state is never replayed. Remote desktop itself is intentionally outside this repository and should be supplied by an existing product/provider.
+
 Multi-account/account-switching UI is Human-only in the initial V5 design. The agent does not select Google Accounts.
 
 ## Proposed V5 slices

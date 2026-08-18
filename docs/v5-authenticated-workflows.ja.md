@@ -86,6 +86,13 @@ Sign-in成功確認のためだけに、email、account name、profile photo、a
 
 Implementationにaccount-continuity checkが必要なら、local opaque/HMAC bindingまたはcoarseな `signed_in | signed_out | unknown` semantic stateを優先します。より強いaccount identity mechanismは、raw identity dataをmodelへ返さず実現できるfresh live evidenceと別privacy/security reviewが必要です。
 
+
+### Credential-safe Human sign-in ceremony
+
+`MAPS_CREDENTIAL_SAFE_HANDOFF=true` の場合、`maps_request_human_sign_in` が `signed_out` から明示的なHuman-only entry pathを提供します。Sign in click、Google Account選択、credential/MFA入力、account identity読取、cookie/token exportは一切行いません。既存Execution Handoff boundaryへ入り、server-owned CDP Chromeを完全停止し、同じdedicated non-default profileをremote-debugging/automation attachmentなしのnormal Chromeで開きます。必要なら既存OS-level remote-access製品へのoperator locatorだけを提示します。
+
+Human completionは特定Google Accountのactive証明ではありません。automation再開前にnormal browserを終了しdedicated profile解放を確認、CDP runtimeをfreshに再起動し、clientは `maps_read_authenticated_readiness` を再実行します。pre-auth semantic stateはreplayしません。Remote desktop自体はこのrepositoryの責務にせず既存providerを利用します。
+
 Multi-account / account-switching UIはinitial V5ではHuman-onlyです。AgentはGoogle Accountを選択しません。
 
 ## Proposed V5 Slices
