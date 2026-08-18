@@ -23,7 +23,7 @@ Reference imageではgatewayとcurrent checkoutのcoreを別processとして1つ
 
 対象は意図的に狭くしています。
 
-- Firebase allowed UID 1つ / logical user 1人
+- Firebase identityはimmutable UIDまたはverified emailのどちらかexact 1つ / logical user 1人
 - gateway instance 1つ / browser runtime 1つ
 - Authorization Code + PKCE `S256`
 - `${MCP_PUBLIC_BASE_URL}/mcp` へのexact RFC 8707 resource binding
@@ -64,7 +64,8 @@ MCP_OAUTH_TRANSACTION_SECRET=<32+ byte secret>
 MCP_OAUTH_MAX_REQUESTS_PER_MINUTE=60
 
 MCP_FIREBASE_PROJECT_ID=<project id>
-MCP_FIREBASE_ALLOWED_UID=<exact single allowed uid>
+MCP_FIREBASE_ALLOWED_EMAIL=<exact single allowed email>
+# または MCP_FIREBASE_ALLOWED_UID=<exact immutable uid>。両方同時には設定しない。
 MCP_FIREBASE_WEB_API_KEY=<Firebase web API key>
 MCP_FIREBASE_AUTH_DOMAIN=<Firebase auth domain>
 MCP_FIREBASE_WEB_APP_ID=<Firebase web app id>
@@ -90,7 +91,7 @@ MAPS_V5_AUTHENTICATED_WORKFLOWS=true
 
 Firebase Authenticationはsingle human sign-in、FirestoreはOAuth control-plane stateだけに使います。Maps result datasetは保存しません。
 
-1. Firebase AuthenticationでGoogle providerを有効化
+1. Firebase AuthenticationでGoogle providerを有効化。`MCP_FIREBASE_ALLOWED_EMAIL` または `MCP_FIREBASE_ALLOWED_UID` をexact 1つだけ設定する。Email modeではFirebaseのverified-email claimを必須にし、OAuth stateへはderived bindingだけを保存する
 2. 上記Firebase web app値を設定
 3. 必要ならnew gateway hostnameをFirebase Authentication authorized domainへ追加
 4. Firestoreを用意
