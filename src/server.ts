@@ -27,14 +27,17 @@ import {
   MCP_APP_MIME_TYPE
 } from "./mcp-apps-map-embed.js";
 import {
+  CredentialSafeHumanSurfaceRuntime,
   ExecutionHandoffError,
   ExecutionHandoffRuntime,
+  ExternalHumanSurfaceError,
   HandoffCheckpointError,
   SignedFileHandoffCheckpointStore,
   claimHandoffOwner,
   createHandoffOwner,
   digestToolInvocation,
   handoffOwnerMatches,
+  selectHumanSurface,
   type HandoffOwner,
   type HandoffResumeStrategy
 } from "mcp-execution-handoff/core";
@@ -51,6 +54,8 @@ import { MapsUrlCompiler } from "./maps/url-compiler.js";
 import { PolicyEngine, PolicyError } from "./policy/policy-engine.js";
 import { currentRequestPrincipal, principalBinding } from "./request-principal.js";
 import { ChromeProcess } from "./browser/chrome-process.js";
+import { SystemBrowserCredentialSession } from "./browser/system-browser-credential-session.js";
+import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provider.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
@@ -73,6 +78,19 @@ const policy = new PolicyEngine({
 const chrome = new ChromeProcess(config.browser);
 const runtime = new MapsBrowserRuntime(chrome, policy);
 const takeoverBroker = new TakeoverBroker(runtime, config.takeover);
+const credentialSafeBrowser = config.credentialSafeHandoff.enabled
+  ? new SystemBrowserCredentialSession({
+      executable: config.browser.executable,
+      profileDir: config.browser.profileDir,
+      startUrl: "https://www.google.com/maps"
+    })
+  : undefined;
+const credentialSafeSurface = credentialSafeBrowser
+  ? new CredentialSafeHumanSurfaceRuntime(new SystemBrowserHumanProvider(
+      credentialSafeBrowser,
+      config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
+    ))
+  : undefined;
 const controller = new SemanticController(runtime, compiler);
 const reader = new VisibleStateReader(runtime, {
   maxNodes: config.policy.maxAxNodes,
@@ -110,6 +128,7 @@ const expectedListLabelText = z.string().trim().min(1).max(160);
 const expectedDeviceLabelText = z.string().trim().min(1).max(160);
 const handoffDecisionSchema = z.object({ decision: z.enum(["continue", "cancel"]) });
 const actionApprovalDecisionSchema = z.object({ decision: z.enum(["approve", "cancel"]) });
+const CREDENTIAL_SAFE_REASONS = new Set<MapsIntervention["reason"]>(["sign_in", "consent"]);
 
 function jsonResult(value: unknown): CallToolResult {
   return {
@@ -123,6 +142,7 @@ function errorResult(error: unknown): CallToolResult {
     error instanceof BrowserRuntimeError ||
     error instanceof OperationQueueError ||
     error instanceof ExecutionHandoffError ||
+    error instanceof ExternalHumanSurfaceError ||
     error instanceof ActionApprovalError;
   if (!known) console.error("[maps-browser-mcp] unexpected tool error", error);
   const code = known ? error.code : "INTERNAL_ERROR";
@@ -163,6 +183,13 @@ function consumeMatchingRecovery(toolName: string, args: unknown): void {
 }
 
 function staleAfterInterventionResult(toolName: string): CallToolResult {
+  if (toolName === "maps_request_human_sign_in") {
+    return jsonResult({
+      humanStepCompleted: true,
+      authenticatedReadiness: "must_recheck",
+      nextTool: "maps_read_authenticated_readiness"
+    });
+  }
   const next = toolName === "maps_select_route" ||
     toolName === "maps_read_route_summary" ||
     toolName === "maps_set_travel_mode" ||
@@ -210,6 +237,43 @@ function handoffPrompt(intervention: MapsIntervention, owner: HandoffOwner): str
   return `${base}\n\nRemote human takeover is available through the configured authenticated HTTPS gateway:\n${takeoverUrl}\n\nOpen that URL on your phone, complete the manual browser interaction, close remote control with Done, then return here and choose Continue. The capability is short-lived, bound to this intervention and resource epoch, and must not be forwarded.`;
 }
 
+function credentialSafePrompt(intervention: MapsIntervention, locator: string): string {
+  const base = mapsInterventionPrompt(intervention.reason);
+  const remote = /^https?:\/\//i.test(locator)
+    ? `Open the configured external Human access surface:\n${locator}`
+    : "Use the local or separately configured OS-level remote-access surface to control the dedicated browser.";
+  return [
+    base,
+    "Automation control has been fully detached and the same dedicated profile is now open in normal Chrome without CDP/remote-debugging attachment.",
+    remote,
+    "Complete only the authentication/consent step as a Human. Do not send credentials, MFA values, cookies, tokens, or account identifiers through MCP.",
+    "Choose Continue after the browser-side step is complete. The normal browser will be closed before fresh automation state is re-established; stale pre-auth actions are not replayed."
+  ].join("\n\n");
+}
+
+async function prepareHandoffPrompt(intervention: MapsIntervention, owner: HandoffOwner): Promise<string> {
+  if (
+    credentialSafeSurface &&
+    selectHumanSurface(intervention.reason, CREDENTIAL_SAFE_REASONS) === "credential_safe_external"
+  ) {
+    takeoverBroker.revokeForIntervention(intervention.id);
+    await runtime.suspendAutomationForCredentialSafeHumanControl(intervention.id, intervention.epoch);
+    const surface = await credentialSafeSurface.begin(intervention, owner.principalBinding);
+    return credentialSafePrompt(intervention, surface.locator);
+  }
+  return handoffPrompt(intervention, owner);
+}
+
+async function revokeCredentialSafeSurface(interventionId: string, owner: HandoffOwner): Promise<void> {
+  const external = credentialSafeSurface?.getActive();
+  if (!external || external.interventionId !== interventionId) return;
+  await credentialSafeSurface!.revoke(
+    external.interventionId,
+    external.epoch,
+    owner.principalBinding
+  );
+}
+
 async function humanInputRequired(
   intervention: MapsIntervention,
   candidateOwner: HandoffOwner,
@@ -244,6 +308,7 @@ async function humanInputRequired(
   }
 
   checkpointHumanHandoff(owner);
+  const prompt = await prepareHandoffPrompt(active, owner);
   const requestState = await handoffStateCodec.mint(createHandoffRequestState({
     toolName: owner.toolName,
     args,
@@ -257,15 +322,16 @@ async function humanInputRequired(
     requestState,
     inputRequests: {
       [HANDOFF_INPUT_KEY]: inputRequired.elicit({
-        message: handoffPrompt(active, owner),
+        message: prompt,
         requestedSchema: HUMAN_INTERVENTION_SCHEMA
       })
     }
   });
 }
 
-function cancelIntervention(interventionId: string, owner: HandoffOwner): CallToolResult {
+async function cancelIntervention(interventionId: string, owner: HandoffOwner): Promise<CallToolResult> {
   takeoverBroker.revokeForIntervention(interventionId);
+  await revokeCredentialSafeSurface(interventionId, owner);
   const active = runtime.getActiveIntervention();
   if (active?.id === interventionId) runtime.cancelHumanIntervention(interventionId);
   handoffOwners.delete(interventionId);
@@ -387,9 +453,13 @@ async function runToolWithHandoff<T>(input: {
   }
 
   takeoverBroker.revokeForIntervention(state.interventionId);
+  const usedCredentialSafeSurface = credentialSafeSurface?.getActive()?.interventionId === state.interventionId;
   try {
+    await revokeCredentialSafeSurface(state.interventionId, owner);
     runtime.markHumanControlComplete(state.interventionId);
-    await operationQueue.run(() => runtime.verifyHumanIntervention(state.interventionId));
+    await operationQueue.run(() => usedCredentialSafeSurface
+      ? runtime.verifyCredentialSafeHumanIntervention(state.interventionId)
+      : runtime.verifyHumanIntervention(state.interventionId));
   } catch (error) {
     const stillActive = runtime.getActiveIntervention();
     if (
@@ -593,6 +663,28 @@ export function buildServer(): McpServer {
       inputRequired: { maxRounds: 4, roundTimeoutMs: HANDOFF_STATE_TTL_SECONDS * 1_000 }
     }
   );
+
+  if (config.v5.authenticatedWorkflows && config.credentialSafeHandoff.enabled) {
+    server.registerTool(
+      "maps_request_human_sign_in",
+      {
+        description: "Request a Human-only Google Maps sign-in ceremony when the dedicated session is signed out. This tool never clicks Sign in, selects an account, enters credentials/MFA, reads account identity, or exports session material. With credential-safe handoff enabled it stops the managed CDP browser, opens the same dedicated profile in normal Chrome without remote-debugging, and requires a fresh readiness read after Human completion.",
+        inputSchema: z.object({}),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
+      },
+      async (_args, ctx) => runToolWithHandoff({
+        toolName: "maps_request_human_sign_in",
+        args: {},
+        resumeStrategy: "require_fresh_semantic_action",
+        ctx,
+        task: async () => {
+          policy.assertInteractiveAssistEnabled();
+          policy.consumeVisibleRead();
+          return controller.requestHumanSignIn();
+        }
+      })
+    );
+  }
 
   if (config.v5.authenticatedWorkflows) {
     server.registerTool(
@@ -1321,6 +1413,7 @@ export async function shutdownRuntime(): Promise<void> {
   const active = runtime.getActiveIntervention();
   if (active) takeoverBroker.revokeForIntervention(active.id);
   await operationQueue.drain();
+  await credentialSafeBrowser?.close().catch(() => undefined);
   await runtime.close();
 }
 

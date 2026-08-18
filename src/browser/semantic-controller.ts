@@ -40,6 +40,10 @@ export class SemanticController {
     return { state: await this.runtime.readAuthenticatedReadiness() };
   }
 
+  async requestHumanSignIn(): Promise<{ state: "signed_in" }> {
+    return this.runtime.requestHumanSignIn();
+  }
+
   async readPlaceSaveState(expectedLabel: string): Promise<PlaceSaveStateResult> {
     return readVerifiedPlaceSaveState(this.runtime, expectedLabel);
   }

@@ -138,6 +138,75 @@ test("active intervention blocks agent CDP access before touching the browser", 
   );
 });
 
+
+
+test("explicit Human sign-in request never automates credentials and begins a never-replay sign-in intervention", async () => {
+  const runtime = makeRuntime();
+  runtime.readAuthenticatedReadiness = async () => "signed_out";
+
+  await assert.rejects(
+    runtime.requestHumanSignIn(),
+    (error: unknown) => {
+      if (!(error instanceof BrowserRuntimeError)) return false;
+      assert.equal(error.code, "HUMAN_INTERVENTION_REQUIRED");
+      assert.equal(error.intervention?.reason, "sign_in");
+      assert.equal(error.intervention?.resumePolicy, "never_replay");
+      assert.equal(error.intervention?.action, undefined);
+      return true;
+    }
+  );
+});
+
+test("explicit Human sign-in request is a no-op when already signed in and fails closed on unknown readiness", async () => {
+  const signedIn = makeRuntime();
+  signedIn.readAuthenticatedReadiness = async () => "signed_in";
+  assert.deepEqual(await signedIn.requestHumanSignIn(), { state: "signed_in" });
+
+  const unknown = makeRuntime();
+  unknown.readAuthenticatedReadiness = async () => "unknown";
+  await assert.rejects(
+    unknown.requestHumanSignIn(),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "UI_STATE_CHANGED"
+  );
+});
+
+test("credential-safe browser suspension keeps Human authority active while stopping managed Chrome", async () => {
+  let closed = 0;
+  const chrome = { async close() { closed += 1; } } as ChromeProcess;
+  const policy = {
+    isAllowedMapsUrl(value: string) {
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname === "www.google.com" &&
+          (url.pathname === "/maps" || url.pathname.startsWith("/maps/"));
+      } catch {
+        return false;
+      }
+    }
+  } as PolicyEngine;
+  const runtime = new MapsBrowserRuntime(chrome, policy);
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/signin/v2/identifier"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+  const epochBefore = runtime.getResourceEpoch();
+
+  await runtime.suspendAutomationForCredentialSafeHumanControl(human.id, human.epoch);
+
+  assert.equal(closed, 1);
+  assert.equal(runtime.getActiveIntervention()?.status, "human_active");
+  assert.equal(runtime.getActiveIntervention()?.authority, "human");
+  assert.equal(runtime.getResourceEpoch(), epochBefore);
+  await assert.rejects(
+    runtime.getClient(),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+});
+
 test("selected route identity is bounded semantic state and is cleared by later semantic mutation", () => {
   const runtime = makeRuntime();
   const mutable = runtime as unknown as {

@@ -254,6 +254,42 @@ export class MapsBrowserRuntime {
     return this.handoff.markVerified(interventionId);
   }
 
+  async verifyCredentialSafeHumanIntervention(interventionId: string): Promise<MapsIntervention> {
+    const active = this.handoff.getActive();
+    if (!active || active.id !== interventionId) {
+      throw new ExecutionHandoffError("INTERVENTION_NOT_FOUND", "The intervention is no longer active");
+    }
+    if (active.status !== "verifying") {
+      throw new ExecutionHandoffError(
+        "INTERVENTION_STATE_CHANGED",
+        `Intervention ${active.id} is ${active.status}; expected verifying`
+      );
+    }
+
+    const client = await this.getClientUnchecked();
+    const loaded = client.Page.loadEventFired();
+    await client.Page.navigate({ url: "https://www.google.com/maps" });
+    await Promise.race([loaded, sleep(8_000)]);
+    const url = await this.currentUrlUnchecked(client);
+    this.assertAllowedCurrentUrl(url);
+    await this.assertNoInlineChallenge(undefined, client);
+    const readiness = await this.readAuthenticatedReadinessUnchecked(client);
+    if (readiness === "signed_out") {
+      throw new BrowserRuntimeError(
+        "HUMAN_INTERVENTION_REQUIRED",
+        "Google Maps is still signed out after the Human authentication step. Return to Human control without replaying the interrupted action.",
+        active
+      );
+    }
+    if (readiness !== "signed_in") {
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Google Maps authentication readiness could not be verified after the Human authentication step. Restart from a fresh Maps readiness check."
+      );
+    }
+    return this.handoff.markVerified(interventionId);
+  }
+
   resumeAfterHumanIntervention(interventionId: string): ResumeDecision<MapsAction> {
     return this.handoff.resumeAgent(interventionId);
   }
@@ -336,6 +372,26 @@ export class MapsBrowserRuntime {
     await client.Input.dispatchKeyEvent({ type: "keyUp", key });
   }
 
+  async suspendAutomationForCredentialSafeHumanControl(interventionId: string, epoch: number): Promise<void> {
+    const active = this.handoff.getActive();
+    if (
+      !active ||
+      active.id !== interventionId ||
+      active.epoch !== epoch ||
+      active.status !== "human_active" ||
+      active.authority !== "human"
+    ) {
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Credential-safe Human control no longer matches the active intervention and resource epoch"
+      );
+    }
+    await this.resetClient();
+    this.port = undefined;
+    this.invalidateSemanticState(false);
+    await this.chrome.close();
+  }
+
   async getClient(): Promise<CdpClient> {
     this.assertAgentAuthority();
     return this.getClientUnchecked();
@@ -366,17 +422,22 @@ export class MapsBrowserRuntime {
   async readAuthenticatedReadiness(): Promise<AuthenticatedMapsReadiness> {
     await this.assertMapsSurface();
     const client = await this.getClient();
-    const deadline = Date.now() + 1_500;
-    for (;;) {
-      const result = await client.Runtime.evaluate({
-        expression: AUTHENTICATED_READINESS_EXPRESSION,
-        returnByValue: true,
-        awaitPromise: true
-      });
-      const readiness = parseAuthenticatedReadiness(result.result.value);
-      if (readiness !== "unknown" || Date.now() >= deadline) return readiness;
-      await sleep(100);
+    return this.readAuthenticatedReadinessUnchecked(client);
+  }
+
+  async requestHumanSignIn(): Promise<{ state: "signed_in" }> {
+    const readiness = await this.readAuthenticatedReadiness();
+    if (readiness === "signed_in") return { state: "signed_in" };
+    if (readiness === "unknown") {
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Google Maps authentication readiness is unknown. Re-open a fresh Maps surface and read readiness again before requesting Human sign-in."
+      );
     }
+    this.requireHumanIntervention(
+      "sign_in",
+      "Google Maps is signed out. Authentication must be completed by a Human; the agent will not select an account, enter credentials, or handle MFA."
+    );
   }
 
   async assertMapsSurface(): Promise<string> {
@@ -560,6 +621,20 @@ export class MapsBrowserRuntime {
         "Google Maps displayed an access challenge inside the page. Automatic bypass is intentionally unsupported.",
         intendedAction
       );
+    }
+  }
+
+  private async readAuthenticatedReadinessUnchecked(client: CdpClient): Promise<AuthenticatedMapsReadiness> {
+    const deadline = Date.now() + 1_500;
+    for (;;) {
+      const result = await client.Runtime.evaluate({
+        expression: AUTHENTICATED_READINESS_EXPRESSION,
+        returnByValue: true,
+        awaitPromise: true
+      });
+      const readiness = parseAuthenticatedReadiness(result.result.value);
+      if (readiness !== "unknown" || Date.now() >= deadline) return readiness;
+      await sleep(100);
     }
   }
 

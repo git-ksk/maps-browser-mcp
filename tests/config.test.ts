@@ -20,6 +20,8 @@ const KEYS = [
   "MAPS_REMOTE_TAKEOVER",
   "MAPS_TAKEOVER_PUBLIC_BASE_URL",
   "MAPS_TAKEOVER_TTL_SECONDS",
+  "MAPS_CREDENTIAL_SAFE_HANDOFF",
+  "MAPS_CREDENTIAL_SAFE_OPERATOR_URL",
   "MAPS_HANDOFF_CHECKPOINT_FILE",
   "MAPS_HANDOFF_CHECKPOINT_KEY",
   "MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS",
@@ -320,6 +322,70 @@ test("remote takeover accepts authenticated principal provider and bounded TTL o
 test("takeover public origin cannot be configured accidentally while feature is off", async () => {
   await withEnv({ MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example" }, () => {
     assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
+  });
+});
+
+test("credential-safe Human handoff is opt-in and keeps external remote access optional", async () => {
+  await withEnv({}, () => {
+    const config = loadConfig();
+    assert.equal(config.credentialSafeHandoff.enabled, false);
+    assert.equal(config.credentialSafeHandoff.operatorUrl, undefined);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.credentialSafeHandoff.enabled, true);
+    assert.equal(config.credentialSafeHandoff.operatorUrl, undefined);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_CREDENTIAL_SAFE_OPERATOR_URL: "https://remote.example.test/access/path"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.credentialSafeHandoff.operatorUrl, "https://remote.example.test/access/path");
+  });
+});
+
+test("credential-safe Human handoff fails closed for unsafe browser ownership or URL configuration", async () => {
+  await withEnv({ MAPS_CREDENTIAL_SAFE_OPERATOR_URL: "https://remote.example.test/access" }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_CREDENTIAL_SAFE_HANDOFF=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_ALLOW_EXTERNAL_CDP: "true",
+    MAPS_CDP_PORT: "9222"
+  }, () => {
+    assert.throws(() => loadConfig(), /cannot be combined with MAPS_ALLOW_EXTERNAL_CDP=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CHROME_PROFILE_DIR: "relative-profile"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_CREDENTIAL_SAFE_OPERATOR_URL: "https://user:pass@remote.example.test/access"
+  }, () => {
+    assert.throws(() => loadConfig(), /must not contain URL credentials/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_CREDENTIAL_SAFE_OPERATOR_URL: "https://remote.example.test/access?session=secret-like"
+  }, () => {
+    assert.throws(() => loadConfig(), /must not contain URL credentials, query, or fragment/);
   });
 });
 
