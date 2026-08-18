@@ -4,6 +4,7 @@ import {
   accountMatchesDecodedToken,
   bearerFromRequest,
   buildMetadata,
+  buildRefreshTokenRecord,
   parseAllowedAccountConfig,
   pkceChallenge,
   readBoundedText
@@ -119,4 +120,28 @@ test("single-user identity config accepts exactly one UID or verified email", ()
 
   assert.throws(() => parseAllowedAccountConfig(undefined, undefined), /exactly one/);
   assert.throws(() => parseAllowedAccountConfig("uid", "user@example.com"), /exactly one/);
+});
+
+
+test("initial and rotated refresh records require the account binding", () => {
+  const common = {
+    uid: "firebase-uid-1",
+    accountBinding: "a".repeat(64),
+    clientId: "https://chatgpt.com/oauth/client.json",
+    resource: "https://maps.example.com/mcp",
+    scopes: ["maps:use", "offline_access"],
+    familyId: "family-1",
+    expiresAt: { seconds: 1 },
+    usedAt: null
+  };
+  const initial = buildRefreshTokenRecord({ ...common, generation: 0 });
+  const rotated = buildRefreshTokenRecord({ ...common, generation: 1 });
+  assert.equal(initial.accountBinding, common.accountBinding);
+  assert.equal(rotated.accountBinding, common.accountBinding);
+  assert.equal(initial.generation, 0);
+  assert.equal(rotated.generation, 1);
+  assert.throws(
+    () => buildRefreshTokenRecord({ ...common, accountBinding: "", generation: 0 }),
+    /invalid_refresh_record_identity/
+  );
 });

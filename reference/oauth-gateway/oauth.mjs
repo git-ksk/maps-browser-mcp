@@ -138,6 +138,24 @@ export function accountMatchesDecodedToken(decoded, allowedAccount) {
     decoded.email.trim().toLowerCase() === allowedAccount.value;
 }
 
+export function buildRefreshTokenRecord(input) {
+  if (typeof input?.uid !== "string" || !input.uid ||
+      typeof input?.accountBinding !== "string" || !input.accountBinding) {
+    throw new Error("invalid_refresh_record_identity");
+  }
+  return {
+    uid: input.uid,
+    accountBinding: input.accountBinding,
+    clientId: input.clientId,
+    resource: input.resource,
+    scopes: input.scopes,
+    familyId: input.familyId,
+    generation: input.generation,
+    expiresAt: input.expiresAt,
+    usedAt: input.usedAt ?? null
+  };
+}
+
 function envInt(name, fallback, min, max) {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -395,8 +413,9 @@ export async function createOAuthBoundary() {
         expiresAt: timestamp(now() + ACCESS_TTL_MS)
       });
       if (data.scopes.includes(OPTIONAL_SCOPE)) {
-        transaction.create(collections.refresh.doc(sha256(refreshToken)), {
+        transaction.create(collections.refresh.doc(sha256(refreshToken)), buildRefreshTokenRecord({
           uid: data.uid,
+          accountBinding: data.accountBinding,
           clientId: client.clientId,
           resource: config.resource,
           scopes: data.scopes,
@@ -404,7 +423,7 @@ export async function createOAuthBoundary() {
           generation: 0,
           expiresAt: timestamp(now() + REFRESH_TTL_MS),
           usedAt: null
-        });
+        }));
       }
       return data;
     });
@@ -450,7 +469,7 @@ export async function createOAuthBoundary() {
         familyId: data.familyId,
         expiresAt: timestamp(now() + ACCESS_TTL_MS)
       });
-      transaction.create(collections.refresh.doc(sha256(nextRefresh)), {
+      transaction.create(collections.refresh.doc(sha256(nextRefresh)), buildRefreshTokenRecord({
         uid: data.uid,
         accountBinding: data.accountBinding,
         clientId: client.clientId,
@@ -460,7 +479,7 @@ export async function createOAuthBoundary() {
         generation: (data.generation || 0) + 1,
         expiresAt: timestamp(refreshExpiresAt),
         usedAt: null
-      });
+      }));
       return { status: "ok", scopes };
     });
     if (result.status === "scope") return oauthError("invalid_scope", "refresh request cannot expand scope");

@@ -16,6 +16,8 @@
 
 ### 変更
 
+- Reference OAuth gatewayのrefresh lifecycleを修正し、authorization-code直後の初回refresh-token recordにもrotation後と同じsingle-user account bindingを必須保存する。Identity binding欠落は共通record builderでfail closeする。
+
 - Reference OAuth gatewayのprivate-hop header allowlistを修正し、caller credential / cookie / forwarding headerを除去したままMCP 2026-07-28のbounded `Mcp-Method` / `Mcp-Name` control headerを保持する。
 
 - Issue #74向けにisolatedな `reference/oauth-gateway` dogfood実装を追加。MCP 2026-07-28 shapeのOAuth/CIMD + PKCE、`maps:use` resource scope、`offline_access` refresh、reference専用OAuth state、UIDまたはverified emailのexact single-user identity gate + allowlist変更時に旧tokenを無効化するderived binding、public OAuth credentialを除去してcurrent-main coreへ送るloopback `static-bearer` private hopを実装。Remote `/takeover/*` はbrowser-session auth boundaryを別途設計するまで意図的に無効のまま。
