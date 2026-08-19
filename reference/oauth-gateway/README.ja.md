@@ -2,22 +2,26 @@
 
 このdirectoryは maps-browser-mcp Issue #74 のための、分離されたsingle-user OAuth reference gatewayです。Remote dogfood / reference deployment用であり、root npm packageには含めず、local / stdio利用にも必須ではありません。
 
+OAuth protocol/token stateとHuman Takeover operator boundaryをMaps browser runtimeの外へ分離します。
+
 ```text
-Remote MCP client
-    |
-    | HTTPS + OAuth access token
-    v
-reference/oauth-gateway  :8080
-    |  public tokenを検証
-    |  別のprivate bearerへ置換
-    v
+Remote MCP client                         Human operator / mobile browser
+    |                                                  |
+    | HTTPS + OAuth access token                       | HTTPS + operator session
+    v                                                  v
+reference/oauth-gateway  :8080  <---------------- /takeover/*
+    | public MCP tokenを検証                           |
+    | allowed Human operatorを検証                     |
+    | public側credentialを捨てて                       |
+    | independent private core bearerへ置換            |
+    v                                                  v
 maps-browser-mcp core    127.0.0.1:8081
     |
     v
 Dedicated Chromium profile
 ```
 
-Reference imageではgatewayとcurrent checkoutのcoreを別processとして1つのsingle-user container内で動かします。Coreはloopbackだけでlistenし、public OAuth access tokenをcore/browser runtimeへ転送しません。
+Reference imageではgatewayとcurrent checkoutのcoreを別processとして1つのsingle-user container内で動かします。Coreはloopbackだけでlistenします。Public OAuth token、operator cookie、Firebase credential、takeover locatorをcore/browser credentialとして転送せず、gatewayが独立したprivate core bearerだけを注入します。
 
 ## Status / Boundary
 
@@ -28,30 +32,32 @@ Reference imageではgatewayとcurrent checkoutのcoreを別processとして1つ
 - Authorization Code + PKCE `S256`
 - `${MCP_PUBLIC_BASE_URL}/mcp` へのexact RFC 8707 resource binding
 - Protected Resource Metadata + Authorization Server Metadata
-- Client ID Metadata Documents (CIMD)。client host exact allowlist + SSRF-resistant metadata/JWKS fetch
+- Client ID Metadata Documents (CIMD)、client host exact allowlist、SSRF-resistant metadata/JWKS fetch
 - `private_key_jwt` client authentication
 - Maps resource scopeは `maps:use` のみ
-- `offline_access` はrefresh token用Authorization Server scopeだけ。resource-required scopeにはしない
+- `offline_access` はrefresh token用Authorization Server scopeだけ
 - rotating refresh token + reuse時token-family revoke
 - authorization responseの `iss`
 - OAuth responseは `no-store`
-- Firestore control-plane stateは `_mapsBrowserMcpRefOAuth...` prefixで旧PoCと分離
+- Firestore control-plane stateは `_mapsBrowserMcpRefOAuth...` prefix
+- `thin_takeover` 用のoptional remote/mobile `/takeover/*` proxy
+- `/takeover` は別のshort-lived Human operator sessionで保護
+- operator cookieはHttpOnly / Secure / SameSite=Strict / Path=`/takeover` / account-bound / signed / short-lived
+- public/operator Authorization/Cookie headerはloopback coreへ渡さない
+- Handoff brokerに必要なbounded takeover headerだけallowlistでforward
+- frame streamはgatewayで意図的にbuffer/persistせずstreamingのまま通す
 
-DCR、multi-user profile共有、generic browser automation、raw Google credential、public OAuth token passthroughは実装しません。
+DCR、multi-user profile共有、generic browser automation、raw Google credential、locator URLへのtakeover capability埋め込み、public OAuth token passthrough、CAPTCHA bypass、passkey/WebAuthn proxyは実装しません。
 
-Initial reference gatewayでは `/takeover/*` もproxyしません。Remote/mobile Human Takeoverをpublic gatewayへ載せるには、別途authenticated browser-session boundaryが必要です。このdeploymentでは `MAPS_REMOTE_TAKEOVER=false` を維持します。Human Interventionとaction approvalの分離はcore側でそのまま維持されます。
+## Remote / Mobile Thin Takeover
 
-## MCP Authorization整合
+`MAPS_REMOTE_TAKEOVER=true` の場合、loopback brokerを直接public exposeせず、同じpublic gateway origin上でThin Takeover operator surfaceを提供できます。
 
-このreferenceはprojectが採用するMCP 2026-07-28 authorization shapeに合わせます。
+有効な `/takeover/<opaque-id>` を開いただけではbrowser controlは付与されません。Operator sessionが無ければsingle-user Firebase authorization pageを表示します。Email/passwordはbrowserからFirebase Identity Toolkitへ直接送り、password fieldをclearします。Gatewayはshort-lived Firebase ID Tokenだけを受け取り、configured allowed accountを検証した後、短命な `/takeover` operator cookieを発行します。
 
-- public Protected Resource MetadataからAuthorization Serverをadvertise
-- 401 challengeに `resource_metadata` と `scope="maps:use"`
-- authorization/token requestの両方でexact `resource` 必須
-- PKCE `S256` 必須
-- CIMD優先、DCR endpointなし
-- `offline_access` はAuthorization Server側だけにadvertise
-- access tokenはresource-boundで、private coreへtransitしない
+Operator認証後に同じlocatorをreloadし、gatewayがprivate bearerへ置換してbounded broker page/APIをloopback coreへproxyします。Core側のHandoff session capability、client binding、principal/intervention/epoch fencing、one-live-client、same-origin input、Done/revoke、active stream abortはそのまま有効です。
+
+このoperator loginはgateway access用です。Dedicated Chromium内で行う **target Google account** のsign-inとは別物です。Target Google password/MFA/passkey materialをgateway、MCP request、model context、log、argv、repository artifactへ入れません。
 
 ## Required Environment
 
@@ -76,28 +82,41 @@ MCP_CORE_URL=http://127.0.0.1:8081/mcp
 MCP_CORE_BEARER_TOKEN=<24+ character independent random secret>
 ```
 
-Core child processにはこのprivate secretを `MCP_BEARER_TOKEN` として渡します。OAuth access token / Firebase token / その他public credentialを再利用しないでください。
+Remote/mobile Thin Takeover:
 
-V5を使う場合もroot packageの既存gateをそのまま使います。
+```text
+MAPS_REMOTE_TAKEOVER=true
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://your-new-gateway.example.com
+MCP_TAKEOVER_OPERATOR_SECRET=<independent 32+ byte secret>
+MCP_TAKEOVER_OPERATOR_SESSION_SECONDS=900
+MAPS_CREDENTIAL_SAFE_HANDOFF=true
+MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover
+```
+
+`MCP_TAKEOVER_OPERATOR_SECRET` と `MCP_OAUTH_TRANSACTION_SECRET` は別secretにしてください。Core child processへHTTP authとして渡すのは `MCP_CORE_BEARER_TOKEN` だけです。
+
+Controlled V5 signed-out acceptanceでは:
 
 ```text
 INTERACTIVE_ASSIST_MODE=true
 MAPS_V5_AUTHENTICATED_WORKFLOWS=true
 ```
 
+通常利用のChrome profileではなく、V5用disposable/dedicated profileだけで使います。
+
 ## Firebase Setup
 
-Firebase Authenticationはsingle human sign-in、FirestoreはOAuth control-plane stateだけに使います。Maps result datasetは保存しません。
+Firebase Authenticationはpublic OAuth authorizationと、remote takeover有効時のsingle Human operator authorizationに使います。FirestoreはOAuth control-plane stateだけです。Maps result、target Google credential、takeover frameは保存しません。
 
-1. 共通MCP Runtime identity projectでFirebase Email/Password Authenticationを有効化する。全MCPを同じimmutable human identityへbindする場合は `MCP_FIREBASE_ALLOWED_UID` を推奨し、email modeはisolated single-user deployment向けに残す
-2. Firebase Web API keyを設定する。email/passwordはbrowserからFirebase Identity Toolkitへ直接送信し、password fieldは直後にclearする。Gatewayが受け取るのはshort-lived Firebase ID Tokenだけ
-3. このMCP専用namespaceのOAuth control-plane state用にFirestoreを用意する
-4. Firebase Auth verificationとこのMCPに必要なFirestore stateだけへアクセスできるper-MCP専用service accountで実行する
-5. 必要なら `expiresAt` にFirestore TTLを設定する
+1. Firebase Email/Password Authenticationを有効化。全MCPを同じimmutable human identityへbindする場合は `MCP_FIREBASE_ALLOWED_UID` 推奨
+2. Firebase Web API keyを設定。Email/passwordはbrowserからIdentity Toolkitへ直接送信し、gatewayが受け取るのはshort-lived ID Tokenだけ
+3. このMCP専用namespaceのOAuth control-plane state用にFirestoreを用意
+4. Firebase Auth verificationと必要なFirestore stateだけへアクセスできるper-MCP service accountで実行
+5. 必要なら `expiresAt` にFirestore TTLを設定
 
-共通MCP Runtime projectでは **human identityだけを一元化** する。OAuth code/token、private-hop bearer secret、service account、Firestore namespaceはMCPごとに分離し、別MCPのresource tokenを共有しない
+共通MCP Runtime projectでは **human identityだけを一元化** し、OAuth code/token、private bearer、operator signing secret、service account、Firestore namespaceはMCPごとに分離します。
 
-Firebase credential、transaction secret、private core bearer、OAuth access/refresh token、browser profileをrepository/container imageへ入れないでください。
+Firebase credential、transaction/operator secret、private core bearer、OAuth access/refresh token、target Google credential、browser profileをrepository/container imageへ入れないでください。
 
 ## Local Tests
 
@@ -109,7 +128,7 @@ npm ci --ignore-scripts
 npm test
 ```
 
-PKCE、CIMD host/SSRF boundary、OAuth transaction integrity、scope metadata separation、private core URL、header allowlist、public-token stripping、private bearer replacement、private-core auth failure isolationを確認します。
+PKCE、CIMD host/SSRF boundary、OAuth transaction integrity、private-core URL、public-token stripping、private bearer replacementに加え、operator-session tamper/expiry、takeover header allowlist、Cookie/Auth stripping、stream passthroughも確認します。
 
 ## Container Build
 
@@ -131,13 +150,14 @@ Historical `map-browser-mcp-test` は更新せず、**別serviceとして並行d
 
 - dedicated service account
 - secretはSecret Manager
-- Chromium + Interactive Assistを同一Cloud Run instanceで動かす場合は `1` vCPU / **最低 `2Gi` memory**
+- Chromium + Interactive Assistを同一Cloud Run instanceで動かす場合は `1` vCPU / 最低 `2Gi` memory
 - max instances `1`
-- single-browser runtimeに合わせて concurrency `1`
+- concurrency `1`
 - HTTPS only
-- `MAPS_REMOTE_TAKEOVER` はbrowser-session auth boundaryが完成するまで無効
-
-Reference deploymentではCloud Run default任せにせず、capacity boundaryを明示します:
+- core `8081` は外部公開しない
+- `MAPS_TAKEOVER_PUBLIC_BASE_URL` はpublic gatewayと同一origin
+- remote takeoverはsingle-user controlled deploymentだけで有効化し、`MCP_TAKEOVER_OPERATOR_SECRET` を設定
+- maintainerの通常Chrome profileやsigned-in profile/cookieをimageへ焼き込まない
 
 ```bash
 gcloud run services update maps-browser-mcp \
@@ -147,23 +167,24 @@ gcloud run services update maps-browser-mcp \
   --max-instances=1
 ```
 
-`1Gi` instanceではheadlessの `maps_search` + `maps_read_place_summary` を繰り返した際にmemory limitを超え、Cloud Runがcontainerを終了してHTTP `503` を返す事象を実観測しました。Remote MCP clientではこのtransport failureが `UNKNOWN` / TaskGroup系exceptionとして見えます。これはMCP process内でcatchすべきbounded-reader exceptionではなく、deployment capacity failureです。
+`1Gi` instanceではheadless `maps_search` + `maps_read_place_summary` の繰り返しでmemory limitを超えHTTP `503` になった実測があります。これはdeployment capacity failureです。
 
-Default container Chrome profileはephemeralです。OAuth/protocol dogfoodには使えますが、durableなsigned-in Maps stateではありません。Signed-in profile/cookie/account credentialをimageへ焼き込まないでください。Persistent authenticated Maps workflowが必要なら、V5 isolation ruleを維持できるcontrolled single-user runtimeでpersistent profile strategyを別途用意します。
+Default container Chrome profileはephemeralです。Protocol/transport dogfoodやdisposable signed-out Google acceptanceには使えますが、durable signed-in Maps stateではありません。
 
-## Migration / Validation Checklist
+## Googleログイン直前のAcceptance Checklist
 
-旧service retirement前に:
+Target Google credentialを入力する前に:
 
-1. recorded maps-browser-mcp commitからbuild
-2. distinct service name / URLへdeploy
-3. Protected Resource Metadata / Authorization Server Metadata確認
-4. unauthenticated `/mcp` のMaps-specific `WWW-Authenticate` 確認
-5. authorization-code + PKCE + exact `resource` 確認
-6. refresh rotation / `offline_access` 確認
-7. public OAuth tokenがloopback coreへforwardされないことを確認
-8. MCP interoperability / Inspector check
-9. target ChatGPT app/clientでnew URLへ接続しreconnect/refresh確認
-10. local/stdioが無影響であることを確認
-11. historical serviceのlegitimate MCP/refresh traffic停止を確認
-12. その後だけhistorical serviceをretire
+1. PR #107のrecorded commitからdistinct single-user gatewayへbuild/deploy
+2. remote takeover設定とindependent secretをSecret Managerで構成
+3. `/mcp` OAuthが継続動作し、public OAuth tokenがcoreへ届かないことを確認
+4. benign Human interventionを作り、予定しているmobile browserから `/takeover/<id>` を開く
+5. broker page表示前にoperator loginが必須であることを確認
+6. operator cookie/Firebase ID Tokenがcoreへforwardされないことを確認
+7. benign allowed surfaceでpush frame、tap/scroll/text/keyを確認
+8. slow/recreated clientがfail closed、またはHandoff reconnect ruleでのみrecoverすることを確認
+9. Done/revokeでactive frame streamが閉じ、stale capability/client generationが使えないことを確認
+10. fresh Agent-owned CDP reattachとfresh readiness必須を確認
+11. ここまで通ってから maps-browser-mcp #104 をdisposable dedicated `signed_out` profileで実行
+
+実際のtarget Google sign-inはHuman acceptanceであり、このgatewayでは自動化しません。
