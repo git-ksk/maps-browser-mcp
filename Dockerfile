@@ -6,6 +6,7 @@ COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci --ignore-scripts
 
 COPY src ./src
+COPY scripts/clean-dist.mjs ./scripts/clean-dist.mjs
 RUN npm run build
 
 FROM node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS runtime
