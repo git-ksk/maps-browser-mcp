@@ -101,6 +101,12 @@ const server = http.createServer(async (req, res) => {
       if (!takeoverOperator.isAuthorized(request)) {
         const page = /^\/takeover\/[A-Za-z0-9-]{8,100}$/.test(path);
         if (page && (request.method === "GET" || request.method === "HEAD")) {
+          const probe = await proxyTakeoverRequest(new Request(request.url, {
+            method: "HEAD",
+            headers: request.headers,
+            signal: request.signal
+          }), { coreUrl, privateBearer });
+          if (probe.status !== 200) return await writeNodeResponse(res, probe);
           const response = takeoverOperator.loginPage();
           return await writeNodeResponse(res, request.method === "HEAD"
             ? new Response(null, { status: response.status, headers: response.headers })
