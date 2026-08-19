@@ -2,24 +2,26 @@
 
 This directory contains the isolated, single-user OAuth reference gateway tracked by maps-browser-mcp issue #74. It is a dogfood/reference deployment path, not part of the published root npm package and not a requirement for local or stdio use.
 
-The reference keeps OAuth protocol and token state outside the Maps browser runtime:
+The reference keeps OAuth protocol/token state and the Human Takeover operator boundary outside the Maps browser runtime:
 
 ```text
-Remote MCP client
-    |
-    | HTTPS + OAuth access token
-    v
-reference/oauth-gateway  :8080
-    |  validates public token
-    |  replaces it with a separate private bearer
-    v
+Remote MCP client                         Human operator / mobile browser
+    |                                                  |
+    | HTTPS + OAuth access token                       | HTTPS + operator session
+    v                                                  v
+reference/oauth-gateway  :8080  <---------------- /takeover/*
+    | validates public MCP token                       |
+    | validates one allowed Human operator             |
+    | replaces either public boundary with             |
+    | one separate private core bearer                 |
+    v                                                  v
 maps-browser-mcp core    127.0.0.1:8081
     |
     v
 Dedicated Chromium profile
 ```
 
-The combined reference image runs the gateway and current checkout of the core as separate processes in one single-user container. The private core listens only on loopback. A public OAuth access token is never forwarded to the core or browser runtime.
+The combined reference image runs the gateway and current checkout of the core as separate processes in one single-user container. The private core listens only on loopback. Public OAuth access tokens, the operator cookie, Firebase credentials, and takeover locators are never forwarded as core/browser credentials; the gateway injects only its independent private core bearer.
 
 ## Status and boundary
 
@@ -37,11 +39,24 @@ This is intentionally narrow:
 - rotating refresh tokens with family revocation on reuse;
 - `iss` in authorization responses;
 - `no-store` OAuth responses;
-- separate Firestore control-plane collections prefixed `_mapsBrowserMcpRefOAuth...`.
+- separate Firestore control-plane collections prefixed `_mapsBrowserMcpRefOAuth...`;
+- optional remote/mobile `/takeover/*` proxy for `thin_takeover`, gated by a separate short-lived Human operator session;
+- operator session cookie is HttpOnly, Secure, SameSite=Strict, scoped to `/takeover`, account-bound, signed, and short-lived;
+- public/operator Authorization or Cookie headers are stripped before the loopback hop;
+- only the bounded takeover request/response headers required by the Handoff broker are forwarded;
+- frame streams remain streaming responses through the gateway and are not intentionally buffered or persisted.
 
-It deliberately does **not** expose Dynamic Client Registration, multi-user browser/profile sharing, generic browser automation, raw Google credentials, or public OAuth token passthrough.
+It deliberately does **not** expose Dynamic Client Registration, multi-user browser/profile sharing, generic browser automation, raw Google credentials, takeover capabilities in the locator URL, public OAuth token passthrough, CAPTCHA bypass, or passkey/WebAuthn proxying.
 
-`/takeover/*` is also not proxied by this initial reference gateway. Remote/mobile Human Takeover needs its own authenticated browser-session boundary before it can safely share the public gateway. Keep `MAPS_REMOTE_TAKEOVER=false` for this deployment. Human Intervention still remains available at the controlled browser host and remains separate from action approval.
+## Remote/mobile Thin Takeover
+
+When `MAPS_REMOTE_TAKEOVER=true`, the public gateway can now host the Thin Takeover operator surface safely instead of exposing the loopback broker directly.
+
+The initial visit to a valid `/takeover/<opaque-id>` locator does **not** grant browser control by itself. If the browser has no valid operator session, the gateway presents a single-user Firebase authorization page. Email/password is sent directly to Firebase Identity Toolkit; the password field is cleared; the gateway receives only the resulting Firebase ID token, verifies the configured allowed account, then issues the short-lived `/takeover` operator cookie.
+
+After operator authorization, the same locator reloads and the gateway proxies the bounded broker page/API to the private core using `MCP_CORE_BEARER_TOKEN`. The core still enforces the Handoff session capability, client binding, principal/intervention/epoch fencing, one-live-client rules, same-origin input, revoke/Done, and active stream abort.
+
+This operator login is only the gateway access boundary. It is separate from the **target Google account** sign-in performed inside the dedicated Chromium surface. Target Google password/MFA/passkey material must remain Human-controlled and must never be copied into the gateway, MCP request, model context, logs, argv, or repository artifacts.
 
 ## Current MCP authorization alignment
 
@@ -78,28 +93,41 @@ MCP_CORE_URL=http://127.0.0.1:8081/mcp
 MCP_CORE_BEARER_TOKEN=<24+ character independent random secret>
 ```
 
-The core child process receives the private secret as its `MCP_BEARER_TOKEN`. Do not reuse an OAuth access token, Firebase token, or another public credential for this value.
+Remote/mobile Thin Takeover:
 
-Maps runtime settings are the normal root-package settings. In particular, enable V5 only when its existing single-user/dedicated-profile gate is satisfied:
+```text
+MAPS_REMOTE_TAKEOVER=true
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://your-new-gateway.example.com
+MCP_TAKEOVER_OPERATOR_SECRET=<independent 32+ byte secret>
+MCP_TAKEOVER_OPERATOR_SESSION_SECONDS=900
+MAPS_CREDENTIAL_SAFE_HANDOFF=true
+MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover
+```
+
+Use a different secret for `MCP_TAKEOVER_OPERATOR_SECRET` and `MCP_OAUTH_TRANSACTION_SECRET`. The core child process receives only `MCP_CORE_BEARER_TOKEN` as its private HTTP auth token.
+
+For the controlled V5 signed-out acceptance environment:
 
 ```text
 INTERACTIVE_ASSIST_MODE=true
 MAPS_V5_AUTHENTICATED_WORKFLOWS=true
 ```
 
+Do not enable this acceptance shape against a normal browser profile. Use the disposable/dedicated profile required by V5.
+
 ## Firebase setup
 
-The reference uses Firebase Authentication only for the single human sign-in and Firestore only for OAuth control-plane state. It does not store Maps result datasets.
+The reference uses Firebase Authentication for both public OAuth authorization and, when enabled, the single Human operator authorization. Firestore is used only for OAuth control-plane state. It does not store Maps result datasets, target Google credentials, or takeover frame content.
 
 1. Enable Firebase Email/Password Authentication in the shared MCP Runtime identity project. Prefer `MCP_FIREBASE_ALLOWED_UID` so every MCP can bind to the same immutable human identity; email mode remains available for isolated single-user deployments.
-2. Configure the Firebase Web API key. The browser sends email/password directly to Firebase Identity Toolkit and clears the password field immediately; the gateway receives only the resulting short-lived Firebase ID Token.
+2. Configure the Firebase Web API key. Browser email/password is sent directly to Firebase Identity Toolkit and cleared immediately; the gateway receives only the short-lived Firebase ID token.
 3. Ensure Firestore exists for this MCP's namespaced OAuth control-plane state.
 4. Run with a dedicated per-MCP service account that can perform Firebase Auth verification and access only this MCP's required Firestore state.
 5. Configure Firestore TTL for `expiresAt` fields if desired so expired control-plane state is reclaimed.
 
-For a shared MCP Runtime project, centralize **human identity only**. Keep OAuth codes/tokens, private-hop bearer secrets, service accounts, and Firestore namespaces separate per MCP. Do not share one MCP's resource tokens with another MCP.
+For a shared MCP Runtime project, centralize **human identity only**. Keep OAuth codes/tokens, private-hop bearer secrets, operator signing secrets, service accounts, and Firestore namespaces separate per MCP.
 
-Never place Firebase credentials, transaction secrets, private core bearer values, OAuth access/refresh tokens, or browser profiles in the repository or container image.
+Never place Firebase credentials, transaction/operator secrets, private core bearer values, OAuth access/refresh tokens, target Google credentials, or browser profiles in the repository or container image.
 
 ## Local tests
 
@@ -111,7 +139,7 @@ npm ci --ignore-scripts
 npm test
 ```
 
-The tests cover PKCE, CIMD host/SSRF boundaries, OAuth transaction integrity, scope metadata separation, exact private-core URL validation, header allowlisting, public-token stripping, private-bearer replacement, and private-core auth failure isolation.
+Tests cover PKCE, CIMD host/SSRF boundaries, OAuth transaction integrity, scope separation, exact private-core URL validation, public-token stripping, private-bearer replacement, operator-session tamper/expiry fencing, takeover request/response header allowlists, cookie/auth stripping, streaming body passthrough, and private-core auth failure isolation.
 
 ## Container build
 
@@ -129,7 +157,7 @@ The image exposes only gateway port `8080`. The core is forced to loopback port 
 
 Deploy this image as a **new service alongside** the historical `map-browser-mcp-test`. Do not update that service in place while clients may still hold refresh tokens for it.
 
-Recommended constraints for the new service:
+Recommended constraints:
 
 - dedicated service account;
 - secrets supplied from Secret Manager;
@@ -137,8 +165,10 @@ Recommended constraints for the new service:
 - max instances `1`;
 - concurrency `1`, matching the single-browser runtime;
 - HTTPS only;
-- no public access except through the OAuth-protected `/mcp` workflow and required public metadata/authorization endpoints;
-- no `MAPS_REMOTE_TAKEOVER` until a browser-session auth boundary is designed and tested.
+- expose the gateway only; never expose core port `8081`;
+- `MAPS_TAKEOVER_PUBLIC_BASE_URL` must equal the same public gateway origin;
+- enable remote takeover only for a controlled single-user deployment with `MCP_TAKEOVER_OPERATOR_SECRET` configured;
+- do not use the maintainer's normal Chrome profile or bake a signed-in profile/cookies into the image.
 
 For the reference deployment, keep the capacity boundary explicit rather than relying on Cloud Run defaults:
 
@@ -150,23 +180,24 @@ gcloud run services update maps-browser-mcp \
   --max-instances=1
 ```
 
-A `1Gi` instance was observed to cross its memory limit during repeated headless `maps_search` + `maps_read_place_summary` calls, causing Cloud Run to terminate the container and return HTTP `503`. The remote MCP client surfaced that transport failure as an `UNKNOWN`/TaskGroup-style exception. This is a deployment-capacity failure, not a bounded-reader exception to catch inside the MCP process.
+A `1Gi` instance was observed to cross its memory limit during repeated headless `maps_search` + `maps_read_place_summary` calls, causing Cloud Run to terminate the container and return HTTP `503`. This is a deployment-capacity failure, not a bounded-reader exception to catch inside the MCP process.
 
-The default container Chrome profile is ephemeral. That is acceptable for OAuth/protocol dogfood, but it is **not durable signed-in Maps state**. Do not bake a signed-in Chrome profile, cookies, or account credentials into an image. If persistent authenticated Maps workflows are required, use a controlled single-user runtime with an appropriate persistent profile strategy and the same V5 isolation rules.
+The default container Chrome profile is ephemeral. That is acceptable for protocol/transport dogfood and a disposable signed-out Google acceptance run, but it is **not durable signed-in Maps state**. If persistent authenticated Maps workflows are required later, use a controlled single-user runtime with an appropriate persistent profile strategy and the same V5 isolation rules.
 
-## Migration / validation checklist
+## Thin Takeover pre-Google acceptance checklist
 
-Before retiring the historical service:
+Before entering any real target Google credential:
 
-1. build from a recorded maps-browser-mcp commit;
-2. deploy the new service under a distinct name/URL;
-3. verify Protected Resource Metadata and Authorization Server Metadata;
-4. verify unauthenticated `/mcp` returns a Maps-specific `WWW-Authenticate` challenge;
-5. verify authorization-code + PKCE + exact `resource`;
-6. verify refresh-token rotation and `offline_access` behavior;
-7. verify the public OAuth token is not forwarded to the loopback core;
-8. run MCP interoperability/Inspector checks against the new URL;
-9. connect the target ChatGPT app/client to the new URL and verify reconnect/refresh behavior;
-10. confirm current local/stdio use is unchanged;
-11. observe that the historical service no longer receives legitimate MCP or refresh-token traffic;
-12. only then retire the historical service.
+1. build/deploy a recorded PR #107 commit under a distinct single-user gateway URL;
+2. configure the remote takeover variables above and independent secrets in Secret Manager;
+3. confirm `/mcp` OAuth still works and public OAuth tokens do not reach the core;
+4. create a benign Human intervention and open its `/takeover/<id>` locator from the intended mobile browser;
+5. confirm the operator login is required before the broker page appears;
+6. confirm no operator cookie/Firebase ID token is forwarded to the core;
+7. confirm push-frame streaming renders and tap/scroll/text/key input works on a benign allowed surface;
+8. confirm slow/recreated clients fail closed or recover only through the Handoff reconnect rules;
+9. confirm Done/revoke closes the active frame stream and stale capability/client generation no longer works;
+10. confirm fresh Agent-owned CDP reattach succeeds and fresh readiness is required;
+11. only then run maps-browser-mcp #104 with a disposable dedicated profile starting `signed_out`.
+
+The actual target Google sign-in remains a Human acceptance step and is intentionally not automated by this gateway.
