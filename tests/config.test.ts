@@ -10,6 +10,10 @@ const KEYS = [
   "MCP_BEARER_TOKEN",
   "MCP_AUTH_PROVIDER",
   "MCP_AUTH_PROVIDER_MODULE",
+  "MCP_USAGE_REQUIRED",
+  "MCP_USAGE_FIRESTORE_PROJECT_ID",
+  "MCP_USAGE_DAILY_LIMIT",
+  "MCP_USAGE_LEASE_TTL_MS",
   "MCP_ALLOWED_HOSTS",
   "MCP_ALLOWED_ORIGINS",
   "MAPS_CDP_PORT",
@@ -100,6 +104,43 @@ test("validates module auth configuration", async () => {
     MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
   }, () => {
     assert.throws(() => loadConfig(), /cannot be combined/);
+  });
+});
+
+test("Firestore MCP usage control is opt-in, authenticated, and bounded", async () => {
+  await withEnv({ MCP_USAGE_REQUIRED: "true" }, () => {
+    assert.throws(() => loadConfig(), /MCP_USAGE_FIRESTORE_PROJECT_ID is required/);
+  });
+
+  await withEnv({ MCP_USAGE_FIRESTORE_PROJECT_ID: "shared-cinema-maps-project" }, () => {
+    assert.throws(() => loadConfig(), /requires an authenticated HTTP principal provider/);
+  });
+
+  await withEnv({
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MCP_USAGE_REQUIRED: "true",
+    MCP_USAGE_FIRESTORE_PROJECT_ID: "shared-cinema-maps-project",
+    MCP_USAGE_DAILY_LIMIT: "250",
+    MCP_USAGE_LEASE_TTL_MS: "420000"
+  }, () => {
+    assert.deepEqual(loadConfig().usage, {
+      projectId: "shared-cinema-maps-project",
+      dailyLimit: 250,
+      leaseTtlMs: 420_000
+    });
+  });
+});
+
+test("Firestore MCP usage control rejects malformed limits", async () => {
+  const authenticated = {
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MCP_USAGE_FIRESTORE_PROJECT_ID: "shared-cinema-maps-project"
+  } as const;
+  await withEnv({ ...authenticated, MCP_USAGE_DAILY_LIMIT: "0" }, () => {
+    assert.throws(() => loadConfig(), /MCP_USAGE_DAILY_LIMIT must be an integer between 1 and 10000/);
+  });
+  await withEnv({ ...authenticated, MCP_USAGE_LEASE_TTL_MS: "9999" }, () => {
+    assert.throws(() => loadConfig(), /MCP_USAGE_LEASE_TTL_MS must be an integer between 10000 and 600000/);
   });
 });
 
