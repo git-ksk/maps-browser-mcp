@@ -2,13 +2,17 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import type { AuthPrincipal } from "./auth-provider.js";
 
-const principalContext = new AsyncLocalStorage<AuthPrincipal>();
+export interface RequestPrincipal extends AuthPrincipal {
+  operationScope?: string;
+}
 
-export function runWithRequestPrincipal<T>(principal: AuthPrincipal, callback: () => T): T {
+const principalContext = new AsyncLocalStorage<RequestPrincipal>();
+
+export function runWithRequestPrincipal<T>(principal: RequestPrincipal, callback: () => T): T {
   return principalContext.run(principal, callback);
 }
 
-export function currentRequestPrincipal(): AuthPrincipal | undefined {
+export function currentRequestPrincipal(): RequestPrincipal | undefined {
   return principalContext.getStore();
 }
 

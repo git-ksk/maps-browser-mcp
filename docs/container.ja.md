@@ -78,6 +78,14 @@ HTTP port は次の順番で決まります。
 
 `PORT` は一般的な runtime 向け fallback にすぎません。`MCP_HTTP_PORT` が指定されている場合は、必ずそちらが優先されます。
 
+## MCPUsage / Firestore accounting（任意）
+
+authenticated HTTP deploymentでは `MCP_USAGE_FIRESTORE_PROJECT_ID` を指定するとtransactionalなMCPUsage accountingを有効化できます。accounting設定なしで起動させたくないdeploymentでは `MCP_USAGE_REQUIRED=true` を併用します。`MCP_USAGE_DAILY_LIMIT` のデフォルトは `100`、`MCP_USAGE_LEASE_TTL_MS` のデフォルトは `300000` です。
+
+Firestore project自体は他のMCP serviceと共有できますが、serviceごとにcollection prefixを分離します。Maps Browser MCPは `maps_muc` に固定し、`maps_muc_budgets` と `maps_muc_reservations` を使用します。Cinema dogfoodは `cinema_muc` を使うため、同一Firestore projectでもquota / reservation documentは混在しません。
+
+MCPUsageにはauthenticated principal providerが必要です。`MCP_AUTH_PROVIDER=none` のまま有効化しないでください。single-user OAuth gatewayの場合は、private loopbackの `static-bearer` hopで保護された外部sessionを1つのinternal Maps principalへbindできます。
+
 ## Browser profile
 
 イメージでは、次の一時専用 profile をデフォルトで使用します。

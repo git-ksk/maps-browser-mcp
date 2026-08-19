@@ -78,6 +78,14 @@ HTTP port precedence is:
 
 `PORT` exists only as a generic runtime fallback. `MCP_HTTP_PORT` remains the project-specific configuration and takes precedence whenever both are present.
 
+## Optional MCPUsage / Firestore accounting
+
+Authenticated HTTP deployments can enable transactional MCPUsage accounting with `MCP_USAGE_FIRESTORE_PROJECT_ID`. Set `MCP_USAGE_REQUIRED=true` when the deployment must fail closed unless accounting is configured. `MCP_USAGE_DAILY_LIMIT` defaults to `100`; `MCP_USAGE_LEASE_TTL_MS` defaults to `300000`.
+
+The Firestore project may be shared with another MCP service as long as each service owns a distinct collection prefix. Maps Browser MCP fixes its prefix to `maps_muc`, creating `maps_muc_budgets` and `maps_muc_reservations`. The Cinema dogfood uses `cinema_muc`, so both can safely share one Firestore project without sharing quota or reservation documents.
+
+MCPUsage requires an authenticated principal provider. Do not enable it with `MCP_AUTH_PROVIDER=none`. A single-user OAuth gateway may use a private loopback `static-bearer` hop to bind the protected external session to one internal Maps principal.
+
 ## Browser profile
 
 The image defaults to an ephemeral dedicated profile:
