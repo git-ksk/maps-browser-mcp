@@ -167,7 +167,7 @@ gcloud run services update maps-browser-mcp \
   --max-instances=1
 ```
 
-`1Gi` instanceではheadless `maps_search` + `maps_read_place_summary` の繰り返しでmemory limitを超えHTTP `503` になった実測があります。これはdeployment capacity failureです。
+`1Gi` instanceではheadless `maps_search` + `maps_read_place_summary` の繰り返しでmemory limitを超えHTTP `503` になった実測があります。Remote MCP clientではこのtransport failureが `UNKNOWN` / TaskGroup系exceptionとして見えます。これはdeployment capacity failureです。
 
 Default container Chrome profileはephemeralです。Protocol/transport dogfoodやdisposable signed-out Google acceptanceには使えますが、durable signed-in Maps stateではありません。
 
