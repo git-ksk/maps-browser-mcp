@@ -51,7 +51,7 @@ When connecting to the dedicated browser, the runtime accepts zero or one Google
 
 If the CDP target becomes stale, reconnects, or is reset by the watchdog, semantic state is invalidated rather than assuming that the newly attached page still represents the previous search/directions operation.
 
-For the Steel owner, automation and Human Live View intentionally reference the exact same hosted browser session. The CDP WebSocket and provider API key remain server-side. An optional Steel profile id may persist normal browser state between provider sessions, but the Maps runtime remains single-user/single-session and does not share one hosted session across principals.
+For the Steel owner, automation and the broker-owned Thin Takeover stream intentionally reference the exact same hosted browser session. Steel contributes session ownership plus the server-side CDP endpoint; its viewer UI is not part of the Human surface. The CDP WebSocket and provider API key remain server-side. An optional Steel profile id may persist normal browser state between provider sessions, but the Maps runtime remains single-user/single-session and does not share one hosted session across principals.
 
 No stealth plugins, fingerprint spoofing, proxy rotation, or CAPTCHA solvers are used. The Steel integration explicitly creates sessions with provider CAPTCHA solving disabled.
 
@@ -152,13 +152,13 @@ hosted/Cloud Run shared-session
   stateful hosted browser + automation CDP attachment
     -> Human authority
     -> close only the automation CDP attachment
-    -> provider Live View on the exact same browser session
+    -> Handoff Thin Takeover stream attaches to the exact same browser session
     -> revoke Human surface
     -> fresh automation CDP attachment to that same session
     -> fresh validation
 ```
 
-The hosted implementation rejects a Live View locator containing URL credentials, query parameters, or fragments before it can be surfaced through MCP. This preserves the generic handoff rule that an operator locator must not double as secret bearer/session material.
+The hosted implementation does not surface the Steel provider viewer URL. The Human locator comes from the Handoff broker and contains no takeover capability; the capability stays in authenticated request headers. This preserves the generic rule that an operator locator must not double as secret bearer/session material.
 
 ## MCP Apps render boundary
 

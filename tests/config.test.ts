@@ -406,7 +406,7 @@ test("credential-safe Cua takeover is explicit and reuses the authenticated take
 });
 
 
-test("Steel Live View handoff requires the hosted browser owner and never falls back to local profile switching", async () => {
+test("Steel Thin Takeover handoff requires the hosted browser owner and never falls back to local profile switching", async () => {
   await withEnv({
     MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
     MAPS_CREDENTIAL_SAFE_TRANSPORT: "steel_live_view",
@@ -419,7 +419,19 @@ test("Steel Live View handoff requires the hosted browser owner and never falls 
     MAPS_BROWSER_BACKEND: "steel",
     STEEL_API_KEY: "steel-test-api-key",
     MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "steel_live_view"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
+  });
+
+  await withEnv({
+    MAPS_BROWSER_BACKEND: "steel",
+    STEEL_API_KEY: "steel-test-api-key",
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
     MAPS_CREDENTIAL_SAFE_TRANSPORT: "steel_live_view",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
     MAPS_STEEL_PROFILE_ID: "maps-profile",
     MAPS_STEEL_SESSION_TIMEOUT_SECONDS: "1800"
   }, () => {

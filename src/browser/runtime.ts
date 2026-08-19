@@ -30,7 +30,18 @@ function bindFlattenedCdpSession(raw: CdpClient, sessionId: string): CdpClient {
       get(target, property, receiver) {
         const value = Reflect.get(target, property, receiver);
         if (typeof value !== "function") return value;
-        return (...args: unknown[]) => Reflect.apply(value, target, [...args, sessionId]);
+        const category = (value as { category?: unknown }).category;
+        if (category === "event") {
+          return (...args: unknown[]) => {
+            if (typeof args[0] === "function") return Reflect.apply(value, target, [sessionId, args[0]]);
+            if (args.length === 0) return Reflect.apply(value, target, [sessionId]);
+            return Reflect.apply(value, target, args);
+          };
+        }
+        if (category === "command") {
+          return (...args: unknown[]) => Reflect.apply(value, target, [args[0] ?? {}, sessionId, ...args.slice(1)]);
+        }
+        return Reflect.get(target, property, receiver);
       }
     });
   }
@@ -340,6 +351,80 @@ export class MapsBrowserRuntime {
       height: viewport.height,
       hostname: new URL(url).hostname
     };
+  }
+
+  async *streamHumanTakeoverFrames(
+    interventionId: string,
+    epoch: number,
+    signal: AbortSignal
+  ): AsyncIterable<{ data: string; width: number; height: number; hostname: string; mimeType: "image/jpeg" }> {
+    const { client, url } = await this.getHumanTakeoverClient(interventionId, epoch);
+    const viewport = await this.viewportSize(client);
+    let hostname = new URL(url).hostname;
+    let latest: { data: string } | undefined;
+    let surfaceError: unknown;
+    let wake: (() => void) | undefined;
+
+    const notify = () => {
+      const resolve = wake;
+      wake = undefined;
+      resolve?.();
+    };
+    const onAbort = () => notify();
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    const removeFrameListener = client.Page.screencastFrame((frame) => {
+      void client.Page.screencastFrameAck({ sessionId: frame.sessionId }).catch(() => undefined);
+      latest = { data: frame.data };
+      notify();
+    });
+    const removeNavigationListener = client.Page.frameNavigated((event) => {
+      if (event.frame.parentId) return;
+      try {
+        this.assertHumanTakeoverSurface(event.frame.url);
+        hostname = new URL(event.frame.url).hostname;
+      } catch (error) {
+        surfaceError = error;
+      }
+      notify();
+    });
+
+    let screencastStarted = false;
+    try {
+      if (signal.aborted) return;
+      await client.Page.startScreencast({
+        format: "jpeg",
+        quality: 75,
+        maxWidth: Math.min(viewport.width, 1_600),
+        maxHeight: Math.min(viewport.height, 1_200),
+        everyNthFrame: 1
+      });
+      screencastStarted = true;
+      while (!signal.aborted) {
+        if (surfaceError) throw surfaceError;
+        if (!latest) {
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+            if (signal.aborted || surfaceError || latest) notify();
+          });
+          continue;
+        }
+        const frame = latest;
+        latest = undefined;
+        yield {
+          data: frame.data,
+          width: viewport.width,
+          height: viewport.height,
+          hostname,
+          mimeType: "image/jpeg"
+        };
+      }
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      removeFrameListener();
+      removeNavigationListener();
+      if (screencastStarted) await client.Page.stopScreencast().catch(() => undefined);
+    }
   }
 
   async tapHumanTakeover(interventionId: string, epoch: number, x: number, y: number): Promise<void> {

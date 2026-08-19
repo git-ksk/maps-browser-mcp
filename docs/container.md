@@ -80,7 +80,7 @@ HTTP port precedence is:
 
 ## Hosted browser backend for Cloud Run
 
-Cloud/container deployments do not have to make the container-owned Chromium process the Human handoff surface. Set `MAPS_BROWSER_BACKEND=steel` to use the current hosted reference backend: one stateful Steel browser session is owned by the Maps process, normal automation attaches over its server-side CDP WebSocket, and credential-safe Human handoff uses Live View for that exact session.
+Cloud/container deployments do not have to make the container-owned Chromium process the Human handoff surface. Set `MAPS_BROWSER_BACKEND=steel` to use the current hosted reference backend: one stateful Steel browser session is owned by the Maps process, normal automation attaches over its server-side CDP WebSocket, and credential-safe Human handoff reconnects to that exact session through the broker-owned Thin Takeover stream.
 
 A credential-safe hosted configuration is shaped like:
 
@@ -89,14 +89,17 @@ MAPS_BROWSER_BACKEND=steel
 STEEL_API_KEY=<load from Secret Manager>
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
 MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view
+MAPS_REMOTE_TAKEOVER=true
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://<authenticated-takeover-origin>
+# configure the existing authenticated HTTP principal boundary as documented above
 # optional
 MAPS_STEEL_PROFILE_ID=<dedicated single-user profile id>
 MAPS_STEEL_SESSION_TIMEOUT_SECONDS=1800
 ```
 
-`STEEL_API_KEY` and the generated CDP WebSocket are server-side secrets. Do not place them in MCP results, logs, client configuration, source control, or a Human operator URL. The integration refuses secret-shaped Live View locators with URL credentials/query/fragment and explicitly disables Steel CAPTCHA solving. Passkey, MFA, consent, and challenge completion remain Human actions.
+`STEEL_API_KEY` and the generated CDP WebSocket are server-side secrets. Do not place them in MCP results, logs, client configuration, source control, or a Human operator URL. Steel's provider viewer URL is not used; the public Human locator comes from the Handoff broker and contains no takeover capability. The capability stays in authenticated request headers. Steel CAPTCHA solving is explicitly disabled. Passkey, MFA, consent, and challenge completion remain Human actions.
 
-`STEEL_BASE_URL` may point the SDK at an API-compatible self-hosted Steel origin. That configuration path is not a compatibility claim for every Steel deployment/version; validate its session and Live View behavior before production use. The current hosted implementation is a single-user reference path, not multi-tenant browser isolation.
+`STEEL_BASE_URL` may point the minimal session REST client at an API-compatible self-hosted Steel origin. That configuration path is not a compatibility claim for every Steel deployment/version; validate its session and Live View behavior before production use. The current hosted implementation is a single-user reference path, not multi-tenant browser isolation.
 
 This path is designed for Cloud Run-style compute because the stateful browser lives in the browser backend rather than depending on a local interactive desktop. It does not change the pending live Google sign-in acceptance status; that test remains separate and manual.
 

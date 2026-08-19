@@ -358,7 +358,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなbounded V5 authenticated toolを有効化。Interactive Assistと専用single-user profile gateも必須 |
 | `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Google sign-in / consent / challenge向けHuman-only handoff。localはCDP Chrome停止、hostedはsame browser session維持のままautomation detach |
-| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` はlocal OS-level surface、`cua_takeover` はlocal Cua、`steel_live_view` はexact hosted Steel sessionのLive View |
+| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` はlocal OS-level surface、`cua_takeover` はlocal Cua、`steel_live_view` はexact hosted Steel session上のThin Takeover streamを選ぶ互換config名 |
 | `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | local `external` transport専用fixed HTTPS locator。credential/query/fragment付きURLは拒否 |
 | `MAPS_CUA_DRIVER_COMMAND` | `cua-driver` | `cua_takeover` 専用Cua Driver executable。Human transport用の固定7 tool allowlist以外は呼ばない |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | MCP Apps directions view用のoptional restricted Maps Embed API key。未設定でもtext/structured render toolは利用可能 |
@@ -377,7 +377,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 
 既定の `MAPS_BROWSER_BACKEND=local` では `external` / `cua_takeover` が既存profile-switch lifecycleを使います。managed CDP Chromeを停止し、same dedicated profileをremote-debugging/automation attachmentなしのnormal Chromeで開き、Human surface revoke後にfresh readinessを確認してautomationを再起動します。CuaはMac/local providerの1候補でありMaps runtime固定依存ではありません。`cua_takeover` はauthenticated Remote Takeover必須で、Human inputをnorthbound MCPへ返しません。
 
-`MAPS_BROWSER_BACKEND=steel` ではcredential-safe handoffに `steel_live_view` を必須とします。automationとHumanは1つのstateful Steel browser sessionを共有し、Human authority中はautomation CDP attachmentだけを閉じ、exact same sessionをprovider Live Viewで操作し、Human surface revoke後にsame sessionへfresh CDP attachします。SteelのCAPTCHA solvingは明示的に無効です。Steel API key/CDP WebSocketはserver-side限定で、URL credential/query/fragmentを含むLive View locatorはnorthboundへ返す前に拒否します。このhosted pathはCloud Run向けreference shapeであり、per-principal browser isolationまではsingle-userのままです。未実施のGoogle sign-in live acceptanceがpass済みという意味ではありません。
+`MAPS_BROWSER_BACKEND=steel` ではcredential-safe handoffに `steel_live_view`（互換config名）とauthenticated Remote Takeoverを必須とします。Steelから使うのはstateful browser-session ownershipとserver-side CDP endpointだけです。Human surfaceはHandoff brokerのThin Takeover Runtimeで、CDP `Page.startScreencast` のbounded JPEG frameを認証済みHTTP streaming response 1本でpushし、click / scroll / keyboard inputは既存broker pathを使います。Steel providerのviewer UIは公開も依存もしません。automationとHumanはexact same stateful browser sessionを共有し、Steel API key/CDP WebSocketはserver-side限定です。SteelのCAPTCHA solvingは明示的に無効です。このhosted pathはCloud Run向けreference shapeであり、per-principal browser isolationまではsingle-userのままです。未実施のGoogle sign-in live acceptanceがpass済みという意味ではありません。
 
 両ownership modeともHuman handoff後のstale automatic replayは禁止です。credential-safe local ownershipとexisting-CDP attachの併用は拒否し、V5の `MCP_AUTH_PROVIDER=module` はper-principal isolationまで引き続き拒否します。Send mutationにはmodern MCP 2026-07-28 clientのform elicitation supportも必要です。
 

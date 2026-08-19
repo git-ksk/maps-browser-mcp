@@ -1,12 +1,17 @@
-import Steel from "steel-sdk";
-import type { ExternalHumanSurfaceProvider, ExternalHumanSurfaceRequest } from "mcp-execution-handoff/core";
 import type { BrowserAutomationEndpoint, BrowserSessionOwner } from "./browser-session-owner.js";
 
 interface ActiveSteelSession {
   id: string;
   websocketUrl: string;
-  operatorLocator: string;
   expiresAt: number;
+}
+
+interface SteelSessionResponse {
+  id: string;
+  createdAt: string;
+  timeout: number;
+  status: "live" | "released" | "failed";
+  websocketUrl: string;
 }
 
 export interface SteelHostedBrowserOptions {
@@ -16,17 +21,7 @@ export interface SteelHostedBrowserOptions {
   timeoutMs: number;
 }
 
-function safeOperatorLocator(value: string): string {
-  const url = new URL(value);
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname))) {
-    throw new Error("Steel Human Live View must use HTTPS except for loopback development");
-  }
-  if (url.username || url.password || url.search || url.hash) {
-    throw new Error("Steel Human Live View locator must not contain credentials, query, or fragment");
-  }
-  return url.toString();
-}
-
+type FetchLike = typeof fetch;
 
 function sessionExpiry(createdAt: string, timeoutMs: number): number {
   const created = Date.parse(createdAt);
@@ -42,40 +37,119 @@ function authenticatedWebsocketUrl(value: string, apiKey?: string): string {
   return url.toString();
 }
 
+function steelApiBaseUrl(value?: string): URL {
+  const url = new URL(value ?? "https://api.steel.dev");
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname))) {
+    throw new Error("Steel API must use HTTPS except for loopback development");
+  }
+  url.pathname = url.pathname.replace(/\/+$/, "");
+  url.search = "";
+  url.hash = "";
+  return url;
+}
+
+function requiredString(value: unknown, name: string): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error(`Steel session response is missing ${name}`);
+  return value;
+}
+
+function parseSteelSession(value: unknown): SteelSessionResponse {
+  if (!value || typeof value !== "object") throw new Error("Steel session response is invalid");
+  const session = value as Record<string, unknown>;
+  const timeout = session.timeout;
+  const status = session.status;
+  if (!Number.isSafeInteger(timeout) || (timeout as number) <= 0) {
+    throw new Error("Steel session response has an invalid timeout");
+  }
+  if (status !== "live" && status !== "released" && status !== "failed") {
+    throw new Error("Steel session response has an invalid status");
+  }
+  return {
+    id: requiredString(session.id, "id"),
+    createdAt: requiredString(session.createdAt, "createdAt"),
+    timeout: timeout as number,
+    status,
+    websocketUrl: requiredString(session.websocketUrl, "websocketUrl"),
+  };
+}
+
+class SteelSessionClient {
+  private readonly baseUrl: URL;
+
+  constructor(
+    private readonly apiKey: string | undefined,
+    baseUrl: string | undefined,
+    private readonly fetchImpl: FetchLike
+  ) {
+    this.baseUrl = steelApiBaseUrl(baseUrl);
+  }
+
+  async create(input: {
+    timeout: number;
+    solveCaptcha: false;
+    profileId?: string;
+    persistProfile?: true;
+  }): Promise<SteelSessionResponse> {
+    const response = await this.request("/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input)
+    });
+    return parseSteelSession(await response.json());
+  }
+
+  async release(id: string): Promise<void> {
+    await this.request(`/v1/sessions/${encodeURIComponent(id)}/release`, { method: "POST" });
+  }
+
+  private async request(pathname: string, init: RequestInit): Promise<Response> {
+    const url = new URL(this.baseUrl);
+    url.pathname = `${url.pathname.replace(/\/+$/, "")}${pathname}`;
+    const headers = new Headers(init.headers);
+    if (this.apiKey) headers.set("steel-api-key", this.apiKey);
+    const response = await this.fetchImpl(url, {
+      ...init,
+      headers,
+      signal: AbortSignal.timeout(30_000)
+    });
+    if (!response.ok) {
+      throw new Error(`Steel API request failed with HTTP ${response.status}`);
+    }
+    return response;
+  }
+}
+
 export class SteelHostedBrowserSession implements BrowserSessionOwner {
   readonly kind = "steel-hosted-session";
-  private readonly client: Steel;
+  private readonly client: SteelSessionClient;
   private active?: ActiveSteelSession;
 
-  constructor(private readonly options: SteelHostedBrowserOptions) {
-    this.client = new Steel({
-      ...(options.apiKey ? { steelAPIKey: options.apiKey } : {}),
-      ...(options.baseUrl ? { baseURL: options.baseUrl } : {}),
-      timeout: 30_000,
-      maxRetries: 1
-    });
+  constructor(
+    private readonly options: SteelHostedBrowserOptions,
+    fetchImpl: FetchLike = fetch
+  ) {
+    this.client = new SteelSessionClient(options.apiKey, options.baseUrl, fetchImpl);
   }
 
   async start(): Promise<BrowserAutomationEndpoint> {
     if (!this.active) {
-      const session = await this.client.sessions.create({
+      const session = await this.client.create({
         timeout: this.options.timeoutMs,
         solveCaptcha: false,
-        ...(this.options.profileId ? { profileId: this.options.profileId, persistProfile: true } : {})
+        ...(this.options.profileId ? { profileId: this.options.profileId, persistProfile: true as const } : {})
       });
       if (session.status !== "live") {
-        await this.client.sessions.release(session.id).catch(() => undefined);
+        await this.client.release(session.id).catch(() => undefined);
         throw new Error("Steel browser session did not enter the live state");
       }
       try {
         this.active = {
           id: session.id,
           websocketUrl: authenticatedWebsocketUrl(session.websocketUrl, this.options.apiKey),
-          operatorLocator: safeOperatorLocator(session.sessionViewerUrl),
           expiresAt: sessionExpiry(session.createdAt, session.timeout)
         };
       } catch (error) {
-        await this.client.sessions.release(session.id).catch(() => undefined);
+        await this.client.release(session.id).catch(() => undefined);
         throw error;
       }
     }
@@ -88,41 +162,15 @@ export class SteelHostedBrowserSession implements BrowserSessionOwner {
     // Human authority prevents a new automation attachment until the handoff is completed.
   }
 
-  humanSurface(): { sessionId: string; locator: string; expiresAt: number } {
+  sessionInfo(): { sessionId: string; expiresAt: number } {
     const active = this.active;
     if (!active) throw new Error("Steel browser session is not active for Human handoff");
-    return { sessionId: active.id, locator: active.operatorLocator, expiresAt: active.expiresAt };
+    return { sessionId: active.id, expiresAt: active.expiresAt };
   }
 
   async close(): Promise<void> {
     const active = this.active;
     this.active = undefined;
-    if (active) await this.client.sessions.release(active.id);
-  }
-}
-
-export class SteelLiveViewHumanProvider implements ExternalHumanSurfaceProvider {
-  readonly kind = "steel-live-view";
-  private active?: { providerSessionId: string; interventionId: string; epoch: number };
-
-  constructor(private readonly browser: SteelHostedBrowserSession) {}
-
-  async begin(request: ExternalHumanSurfaceRequest): Promise<{ sessionId: string; locator: string; expiresAt?: number }> {
-    if (this.active) throw new Error("Steel Human Live View provider is already active");
-    await this.browser.start();
-    const surface = this.browser.humanSurface();
-    const providerSessionId = `steel:${surface.sessionId}`;
-    this.active = { providerSessionId, interventionId: request.interventionId, epoch: request.epoch };
-    return { sessionId: providerSessionId, locator: surface.locator, expiresAt: surface.expiresAt };
-  }
-
-  async revoke(sessionId: string): Promise<void> {
-    const active = this.active;
-    if (!active || active.providerSessionId !== sessionId) {
-      throw new Error("Steel Human Live View provider session no longer matches");
-    }
-    // Revoke only Human authority. The shared browser session remains alive so automation can
-    // reconnect fresh to the exact state the Human just changed.
-    this.active = undefined;
+    if (active) await this.client.release(active.id);
   }
 }

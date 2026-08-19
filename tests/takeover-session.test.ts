@@ -42,7 +42,8 @@ test("one remote client owns the capability for an intervention epoch", () => {
     epoch: 4,
     principalBinding: PRINCIPAL_A,
     expiresAt: first.expiresAt,
-    clientBinding: CLIENT_A
+    clientBinding: CLIENT_A,
+    clientGeneration: 1
   });
 
   assert.throws(

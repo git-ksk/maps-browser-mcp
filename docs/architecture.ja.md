@@ -61,7 +61,7 @@ Unix系OSでは専用profile directoryを現在userだけがアクセスでき�
 
 CDP targetがstale、再接続、watchdog resetされた場合、以前のsearch / directions状態を新しいpageへ引き継がずsemantic stateを無効化します。
 
-Steel ownerではautomationとHuman Live Viewがexact same hosted browser sessionを参照します。CDP WebSocketとprovider API keyはserver-side限定です。optionalなSteel profile idでprovider session間の通常browser stateをpersistできますが、Maps runtime自体はsingle-user/single-sessionのままで、複数principal間で1 hosted sessionを共有しません。
+Steel ownerではautomationとbroker-owned Thin Takeover streamがexact same hosted browser sessionを参照します。Steelから使うのはsession ownershipとserver-side CDP endpointで、provider viewer UIはHuman surfaceに含めません。CDP WebSocketとprovider API keyはserver-side限定です。optionalなSteel profile idでprovider session間の通常browser stateをpersistできますが、Maps runtime自体はsingle-user/single-sessionのままで、複数principal間で1 hosted sessionを共有しません。
 
 Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solverは使いません。Steel integrationでもprovider側CAPTCHA solvingを明示的に無効化してsessionを作ります。
 
@@ -160,13 +160,13 @@ hosted/Cloud Run shared-session
   stateful hosted browser + automation CDP attachment
     -> Human authority
     -> automation CDP attachmentだけ閉じる
-    -> exact same browser sessionのprovider Live View
+    -> exact same browser sessionへHandoff Thin Takeover streamがattach
     -> Human surface revoke
     -> same sessionへfresh automation CDP attachment
     -> fresh validation
 ```
 
-hosted実装はURL credential/query/fragmentを含むLive View locatorをMCPへ出す前に拒否します。operator locator自体をsecret bearer/session materialにしないgeneric handoff ruleを維持します。
+hosted実装はSteel provider viewer URLを公開しません。Human locatorはHandoff broker由来でtakeover capabilityを含まず、capabilityは認証済みrequest header内に維持します。operator locator自体をsecret bearer/session materialにしないgeneric handoff ruleを維持します。
 
 ## MCP Apps Render Boundary
 

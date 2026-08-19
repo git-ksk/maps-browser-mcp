@@ -304,8 +304,11 @@ export function loadConfig(): AppConfig {
     if (selectedBrowserBackend !== "steel") {
       throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view requires MAPS_BROWSER_BACKEND=steel so Human and automation share the same hosted browser session");
     }
+    if (!remoteTakeover) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view requires MAPS_REMOTE_TAKEOVER=true because the Handoff broker owns the Thin Takeover operator surface");
+    }
     if (credentialSafeOperatorUrl) {
-      throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view because Steel issues the Live View locator");
+      throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view because the Handoff broker issues the operator locator");
     }
   }
   if (credentialSafeHandoff) {

@@ -256,3 +256,84 @@ test("selected route identity is bounded semantic state and is cleared by later 
   runtime.markSemanticMutationWithoutReplayAction();
   assert.equal(runtime.getSelectedRoute(), undefined);
 });
+
+test("Human takeover frame stream uses CDP screencast push with bounded latest-frame delivery", async () => {
+  const runtime = makeRuntime();
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+
+  let frameHandler: ((frame: { data: string; sessionId: number }) => void) | undefined;
+  let navigationHandler: ((event: { frame: { url: string; parentId?: string } }) => void) | undefined;
+  let acked = 0;
+  let stopped = 0;
+  let startOptions: Record<string, unknown> | undefined;
+  const fakeClient = {
+    Runtime: {
+      async evaluate(input: { expression: string }) {
+        if (input.expression === "location.href") {
+          return { result: { value: "https://accounts.google.com/ServiceLogin" } };
+        }
+        if (input.expression.includes("innerWidth")) {
+          return { result: { value: { width: 900, height: 700 } } };
+        }
+        return { result: { value: 1 } };
+      }
+    },
+    Page: {
+      screencastFrame(handler: typeof frameHandler) {
+        frameHandler = handler;
+        return () => { frameHandler = undefined; };
+      },
+      frameNavigated(handler: typeof navigationHandler) {
+        navigationHandler = handler;
+        return () => { navigationHandler = undefined; };
+      },
+      async startScreencast(options: Record<string, unknown>) {
+        startOptions = options;
+        queueMicrotask(() => frameHandler?.({
+          data: Buffer.from("jpeg-frame").toString("base64"),
+          sessionId: 11
+        }));
+      },
+      async screencastFrameAck(input: { sessionId: number }) {
+        assert.equal(input.sessionId, 11);
+        acked += 1;
+      },
+      async stopScreencast() { stopped += 1; }
+    }
+  };
+  (runtime as unknown as { client: unknown }).client = fakeClient;
+
+  const controller = new AbortController();
+  const stream = runtime.streamHumanTakeoverFrames(human.id, human.epoch, controller.signal);
+  const iterator = stream[Symbol.asyncIterator]();
+  const first = await iterator.next();
+  assert.equal(first.done, false);
+  assert.deepEqual(first.value, {
+    data: Buffer.from("jpeg-frame").toString("base64"),
+    width: 900,
+    height: 700,
+    hostname: "accounts.google.com",
+    mimeType: "image/jpeg"
+  });
+  assert.deepEqual(startOptions, {
+    format: "jpeg",
+    quality: 75,
+    maxWidth: 900,
+    maxHeight: 700,
+    everyNthFrame: 1
+  });
+  assert.equal(acked, 1);
+
+  controller.abort();
+  await iterator.return?.();
+  assert.equal(stopped, 1);
+  assert.equal(frameHandler, undefined);
+  assert.equal(navigationHandler, undefined);
+});

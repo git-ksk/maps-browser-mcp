@@ -60,7 +60,8 @@ import { CredentialAwareTakeoverAdapter } from "./browser/credential-aware-takeo
 import { CuaTakeoverHumanProvider } from "./browser/cua-takeover-human-provider.js";
 import { SystemBrowserCredentialSession } from "./browser/system-browser-credential-session.js";
 import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provider.js";
-import { SteelHostedBrowserSession, SteelLiveViewHumanProvider } from "./browser/steel-hosted-browser.js";
+import { SteelHostedBrowserSession } from "./browser/steel-hosted-browser.js";
+import { SteelTakeoverHumanProvider } from "./browser/steel-takeover-human-provider.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
@@ -106,7 +107,7 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.bro
 const credentialSafeProvider = !config.credentialSafeHandoff.enabled
   ? undefined
   : config.credentialSafeHandoff.transport === "steel_live_view" && steelBrowser
-    ? new SteelLiveViewHumanProvider(steelBrowser)
+    ? new SteelTakeoverHumanProvider(steelBrowser, takeoverBroker)
     : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover"
       ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
       : credentialSafeBrowser
@@ -272,10 +273,10 @@ function credentialSafePrompt(
   const remote = /^https?:\/\//i.test(surface.locator)
     ? `Open the configured Human access surface:\n${surface.locator}`
     : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
-  const ownership = surface.providerKind === "steel-live-view"
-    ? "Automation CDP control is detached while the same stateful hosted browser session remains alive for Human Live View control."
+  const ownership = surface.providerKind === "steel-takeover"
+    ? "Automation CDP control is detached while the same stateful hosted browser session remains alive for Human Thin Takeover control."
     : "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without CDP/remote-debugging attachment.";
-  const recovery = surface.providerKind === "steel-live-view"
+  const recovery = surface.providerKind === "steel-takeover"
     ? "Choose Continue after the browser-side step is complete. Human authority is revoked before automation reconnects fresh to the same hosted browser session; stale pre-auth actions are not replayed."
     : "Choose Continue after the browser-side step is complete. The normal browser is closed before fresh automation state is re-established; stale pre-auth actions are not replayed.";
   return [
