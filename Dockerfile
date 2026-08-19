@@ -3,7 +3,6 @@ FROM node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca440
 WORKDIR /app
 
 COPY package.json package-lock.json tsconfig.json ./
-COPY vendor ./vendor
 RUN npm ci --ignore-scripts
 
 COPY src ./src
@@ -33,7 +32,6 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-COPY vendor ./vendor
 RUN npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force
 

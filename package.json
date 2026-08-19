@@ -18,8 +18,7 @@
     "SECURITY.ja.md",
     "CONTRIBUTING.md",
     "CONTRIBUTING.ja.md",
-    "LICENSE",
-    "vendor"
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
@@ -43,10 +42,7 @@
     "@modelcontextprotocol/server": "2.0.0",
     "chrome-remote-interface": "0.34.0",
     "mcp-execution-handoff": "https://github.com/git-ksk/mcp-execution-handoff/archive/0fdb22e632384b0f02c9bb141c3aab9ddea98042.tar.gz",
-    "zod": "4.4.3",
-    "@google-cloud/firestore": "^8.7.0",
-    "mcp-usage-control": "file:vendor/mcp-usage-control-0.7.0.tgz",
-    "mcp-usage-control-firestore": "file:vendor/mcp-usage-control-firestore-0.7.0.tgz"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/chrome-remote-interface": "0.34.0",

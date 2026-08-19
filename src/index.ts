@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { once } from "node:events";
-import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
@@ -288,10 +287,7 @@ async function startHttp(): Promise<void> {
       const abortController = makeAbortController(req, res);
       try {
         const request = await toWebRequest(req, abortController.signal);
-        const response = await runWithRequestPrincipal(
-          { ...principal, operationScope: randomUUID() },
-          () => mcpHandler.fetch(request)
-        );
+        const response = await runWithRequestPrincipal(principal, () => mcpHandler.fetch(request));
         await writeWebResponse(response, res);
       } catch (error) {
         if (error instanceof HttpRequestError) {
@@ -320,7 +316,6 @@ async function startHttp(): Promise<void> {
     `[maps-browser-mcp] Streamable HTTP listening on http://${config.http.host}:${config.http.port}/mcp`
   );
   console.error(`[maps-browser-mcp] HTTP auth provider: ${authProvider.kind}`);
-  console.error(`[maps-browser-mcp] MCP usage control: ${config.usage ? "firestore" : "disabled"}`);
   console.error(
     `[maps-browser-mcp] Remote human takeover: ${config.takeover.enabled ? "enabled with principal binding" : "disabled"}`
   );
