@@ -34,6 +34,8 @@ const TAKEOVER_RESPONSE_HEADERS = new Set([
   "x-takeover-width"
 ]);
 
+const TAKEOVER_PATH_PATTERN = /^\/takeover\/[A-Za-z0-9._~-]{1,512}$/;
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -136,7 +138,7 @@ function toolJson(response, name) {
   return JSON.parse(text);
 }
 
-function takeoverUrlFromInputRequired(response, expectedOrigin) {
+function takeoverLocatorFromInputRequired(response, expectedOrigin) {
   assert(response?.result?.resultType === "input_required", "Expected input_required from maps_request_human_sign_in");
   const request = response.result.inputRequests?.human_intervention;
   assert(request?.method === "elicitation/create", "Expected human_intervention elicitation request");
@@ -146,8 +148,12 @@ function takeoverUrlFromInputRequired(response, expectedOrigin) {
   assert(match, "Handoff message did not contain a local Thin Takeover URL");
   const url = new URL(match[0]);
   assert(url.origin === expectedOrigin, "Thin Takeover URL escaped the local acceptance gateway");
-  assert(url.pathname.startsWith("/takeover/"), "Thin Takeover URL used an unexpected path");
-  return url.toString();
+  assert(!url.search && !url.hash, "Thin Takeover URL unexpectedly included query or fragment data");
+  assert(TAKEOVER_PATH_PATTERN.test(url.pathname), "Thin Takeover URL used an unexpected path");
+  return {
+    openUrl: url.toString(),
+    pathname: url.pathname
+  };
 }
 
 function startLoopbackTakeoverGateway(port, coreBaseUrl, bearer) {
@@ -161,7 +167,7 @@ function startLoopbackTakeoverGateway(port, coreBaseUrl, bearer) {
       return;
     }
     if (
-      !requestUrl.pathname.startsWith("/takeover/") ||
+      !TAKEOVER_PATH_PATTERN.test(requestUrl.pathname) ||
       requestUrl.search ||
       requestUrl.hash ||
       !["GET", "HEAD", "POST"].includes(req.method || "")
@@ -218,9 +224,24 @@ function openMacUrlWithoutArgv(url) {
   child.unref();
 }
 
-async function assertTakeoverRevoked(takeoverUrl) {
-  const response = await fetch(takeoverUrl, { method: "HEAD", headers: { accept: "text/html" } });
-  assert(!response.ok, `Revoked Thin Takeover locator remained usable: HTTP ${response.status}`);
+async function assertTakeoverRevoked(gatewayPort, pathname) {
+  assert(TAKEOVER_PATH_PATTERN.test(pathname), "Refusing to probe an invalid Thin Takeover path");
+  const status = await new Promise((resolve, reject) => {
+    const request = httpRequest({
+      host: "127.0.0.1",
+      port: gatewayPort,
+      path: pathname,
+      method: "HEAD",
+      headers: { accept: "text/html" }
+    }, (response) => {
+      const responseStatus = response.statusCode || 0;
+      response.resume();
+      resolve(responseStatus);
+    });
+    request.once("error", reject);
+    request.end();
+  });
+  assert(status < 200 || status >= 300, `Revoked Thin Takeover locator remained usable: HTTP ${status}`);
 }
 
 if (process.platform !== "darwin") {
@@ -280,11 +301,11 @@ try {
   console.log("Precondition passed: disposable dedicated profile is signed_out.");
 
   const handoff = await postMcp(coreBaseUrl, bearer, "sign-in-1", "maps_request_human_sign_in", {});
-  const takeoverUrl = takeoverUrlFromInputRequired(handoff, gatewayBaseUrl);
+  const takeover = takeoverLocatorFromInputRequired(handoff, gatewayBaseUrl);
   const requestState = handoff.result.requestState;
   assert(typeof requestState === "string" && requestState.length > 0, "Handoff did not return requestState");
 
-  openMacUrlWithoutArgv(takeoverUrl);
+  openMacUrlWithoutArgv(takeover.openUrl);
   console.log("Local Thin Takeover opened. Complete Google sign-in there. No credential values are read or logged by this harness.");
   await rl.question("After sign-in is visibly complete and you have pressed Done in Takeover, press Enter here to continue: ");
 
@@ -302,7 +323,7 @@ try {
     resumedJson?.humanStepCompleted === true && resumedJson?.authenticatedReadiness === "must_recheck",
     "Handoff did not require a fresh post-Human readiness check"
   );
-  await assertTakeoverRevoked(takeoverUrl);
+  await assertTakeoverRevoked(gatewayPort, takeover.pathname);
   console.log("Revocation passed: the completed Thin Takeover locator is no longer usable.");
 
   const after = toolJson(
