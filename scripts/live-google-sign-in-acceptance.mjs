@@ -218,6 +218,11 @@ function openMacUrlWithoutArgv(url) {
   child.unref();
 }
 
+async function assertTakeoverRevoked(takeoverUrl) {
+  const response = await fetch(takeoverUrl, { method: "HEAD", headers: { accept: "text/html" } });
+  assert(!response.ok, `Revoked Thin Takeover locator remained usable: HTTP ${response.status}`);
+}
+
 if (process.platform !== "darwin") {
   throw new Error("This local acceptance harness currently supports macOS only");
 }
@@ -297,6 +302,8 @@ try {
     resumedJson?.humanStepCompleted === true && resumedJson?.authenticatedReadiness === "must_recheck",
     "Handoff did not require a fresh post-Human readiness check"
   );
+  await assertTakeoverRevoked(takeoverUrl);
+  console.log("Revocation passed: the completed Thin Takeover locator is no longer usable.");
 
   const after = toolJson(
     await postMcp(coreBaseUrl, bearer, "readiness-after", "maps_read_authenticated_readiness", {}),
