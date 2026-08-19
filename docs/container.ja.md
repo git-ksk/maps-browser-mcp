@@ -78,30 +78,26 @@ HTTP port は次の順番で決まります。
 
 `PORT` は一般的な runtime 向け fallback にすぎません。`MCP_HTTP_PORT` が指定されている場合は、必ずそちらが優先されます。
 
-## Cloud Run向けHosted Browser Backend
+## Cloud Run向けKeyless Thin Takeover
 
-Cloud/container deploymentでcontainer-owned ChromiumをHuman handoff surfaceに固定する必要はありません。`MAPS_BROWSER_BACKEND=steel` を指定するとcurrent hosted reference backendを使います。Maps processが1つのstateful Steel browser sessionを所有し、通常automationはserver-side CDP WebSocketでattachし、credential-safe Human handoffはbroker-owned Thin Takeover streamからexact same sessionへ再接続します。
-
-Credential-safe hosted構成例:
+Cloud/containerでもMacと同じprocess-owned Chromium + Thin Takeover lifecycleを使います。hosted-browser providerやvendor API keyは不要です。credential-safeなreference構成は次です。
 
 ```bash
-MAPS_BROWSER_BACKEND=steel
-STEEL_API_KEY=<Secret Managerから注入>
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view
+MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover
 MAPS_REMOTE_TAKEOVER=true
 MAPS_TAKEOVER_PUBLIC_BASE_URL=https://<authenticated-takeover-origin>
+MAPS_HEADLESS=true
 # 上記で説明したauthenticated HTTP principal boundaryも設定
-# optional
-MAPS_STEEL_PROFILE_ID=<dedicated single-user profile id>
-MAPS_STEEL_SESSION_TIMEOUT_SECONDS=1800
 ```
 
-`STEEL_API_KEY` と生成CDP WebSocketはserver-side secretです。MCP result、log、client config、source control、Human operator URLへ出してはいけません。Steel provider viewer URLは使わず、public Human locatorはtakeover capabilityを含まないHandoff broker由来です。capabilityは認証済みrequest header内だけに維持します。SteelのCAPTCHA solvingも明示的に無効化します。Passkey、MFA、consent、challenge completionはHuman actionのままです。
+Human authority中もsame service instance内のChromium process/sessionは維持します。Agent-owned automation CDP/input authorityをdetach + fenceし、Thin Takeover Runtimeがintervention/epoch-boundなHuman CDP attachmentをPhase 1 JPEG screencast captureとbounded Human input専用で開きます。revoke時はactive frame streamをabortし、Human attachmentを閉じた後でfresh automation CDP attachmentとMaps readiness revalidationへ戻します。
 
-`STEEL_BASE_URL` でminimal session REST clientをAPI-compatible self-hosted Steel originへ向けられますが、全Steel deployment/versionへの互換保証ではありません。production利用前にsession/Live View behaviorを検証してください。現在のhosted実装はsingle-user reference pathであり、multi-tenant browser isolationではありません。
+Phase 1はCPU/simple transportをbaselineにし、`Page.startScreencast` JPEGをdecode/re-encodeせず `FramePipeline` でpassthroughしてauthenticated broker streamへpushします。Phase 2ではHandoff authority contractを変えず、raw compositor/native frame、optional hardware encode、WebRTC video、DataChannel inputへ差し替え可能です。
 
-この経路はstateful browserをbrowser backend側へ置けるためCloud Run型computeを想定した設計です。Pending中のGoogle sign-in live acceptance statusを変更するものではなく、live testは別途manualで行います。
+browser sessionはprocess/instance-localなので、instance終了・replacement時にはin-memory browser/Handoff sessionを失い、別instanceでresumeしたふりをせずfail closedします。現行single-browser deployment boundary（`concurrency=1`、`max-instances=1`）を維持し、Human control中のrestartはfresh workflowとして扱います。durable browser/profile strategyが必要でもtakeover authorityとは分離し、raw credentialをMCP/Handoff stateへ永続化しません。
+
+未実施のGoogle sign-in live acceptanceは別manual testのままで、このruntime実装だけでpass扱いにはしません。
 
 ## Browser profile
 

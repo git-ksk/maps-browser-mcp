@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+- experimentalなSteel-backed hosted pathを廃止し、vendor key不要の `thin_takeover` を本命経路に変更。same process-owned Chromeを維持しつつAgent-owned CDP/input authorityをdetach + fenceし、Phase 1はCDP JPEGを `CaptureAdapter -> FramePipeline` でencodedのままpassthroughする。revoke時はactive streamをabortし、Human-owned CDP attachmentを閉じてからfresh automation reattachし、bounded latency metricsも記録する。raw-frame hardware encode / WebRTCは差し替え可能なPhase 2 adapterとした。Benign local 30-sample E2Eではbounded input dispatchから次push frameまでp50 40.8 ms / p95 77.4 ms、Maps trafficなし・vendor API keyなしを確認。
 ## [v0.3.2] - 2026-08-19
 
 - credential-safe transportにopt-inの `cua_takeover` を追加。normal ChromeはCDP / remote-debuggingなしのまま、既存authenticated short-lived Takeover UIを再利用し、local Cua Driver MCP bridgeをexact dedicated Chrome PID + visible window 1件へbindする。Native capture/inputは固定7 tool allowlistだけ許可し、Human入力textをnorthbound Maps MCP / model context / process argv / repository logへ返さない。Benign local pageでframe、tap、scroll、text、Enter、outer Bearer coexistence、Done capability revoke、normal-Chrome teardownまでend-to-end live validation済み。

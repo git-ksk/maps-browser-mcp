@@ -78,30 +78,26 @@ HTTP port precedence is:
 
 `PORT` exists only as a generic runtime fallback. `MCP_HTTP_PORT` remains the project-specific configuration and takes precedence whenever both are present.
 
-## Hosted browser backend for Cloud Run
+## Keyless Thin Takeover for Cloud Run
 
-Cloud/container deployments do not have to make the container-owned Chromium process the Human handoff surface. Set `MAPS_BROWSER_BACKEND=steel` to use the current hosted reference backend: one stateful Steel browser session is owned by the Maps process, normal automation attaches over its server-side CDP WebSocket, and credential-safe Human handoff reconnects to that exact session through the broker-owned Thin Takeover stream.
-
-A credential-safe hosted configuration is shaped like:
+Cloud/container deployments use the same process-owned Chromium + Thin Takeover lifecycle as Mac. No hosted-browser provider or vendor API key is required. A reference credential-safe configuration is:
 
 ```bash
-MAPS_BROWSER_BACKEND=steel
-STEEL_API_KEY=<load from Secret Manager>
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view
+MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover
 MAPS_REMOTE_TAKEOVER=true
 MAPS_TAKEOVER_PUBLIC_BASE_URL=https://<authenticated-takeover-origin>
+MAPS_HEADLESS=true
 # configure the existing authenticated HTTP principal boundary as documented above
-# optional
-MAPS_STEEL_PROFILE_ID=<dedicated single-user profile id>
-MAPS_STEEL_SESSION_TIMEOUT_SECONDS=1800
 ```
 
-`STEEL_API_KEY` and the generated CDP WebSocket are server-side secrets. Do not place them in MCP results, logs, client configuration, source control, or a Human operator URL. Steel's provider viewer URL is not used; the public Human locator comes from the Handoff broker and contains no takeover capability. The capability stays in authenticated request headers. Steel CAPTCHA solving is explicitly disabled. Passkey, MFA, consent, and challenge completion remain Human actions.
+During Human authority the Chromium process/session remains alive inside the same service instance. Agent-owned automation CDP/input authority is detached and fenced; the Thin Takeover Runtime opens an intervention/epoch-bound Human CDP attachment for Phase 1 JPEG screencast capture and bounded Human input. Revocation aborts active frame streams and closes that Human attachment before automation creates a fresh CDP attachment and revalidates Maps readiness.
 
-`STEEL_BASE_URL` may point the minimal session REST client at an API-compatible self-hosted Steel origin. That configuration path is not a compatibility claim for every Steel deployment/version; validate its session and Live View behavior before production use. The current hosted implementation is a single-user reference path, not multi-tenant browser isolation.
+Phase 1 is intentionally CPU/simple-transport friendly: `Page.startScreencast` JPEG is passed through `FramePipeline` without decode/re-encode and pushed over the authenticated broker stream. A later Phase 2 may replace capture/transport with raw compositor/native frames, optional hardware encoding, WebRTC video, and DataChannel input without changing the Handoff authority contract.
 
-This path is designed for Cloud Run-style compute because the stateful browser lives in the browser backend rather than depending on a local interactive desktop. It does not change the pending live Google sign-in acceptance status; that test remains separate and manual.
+Because the browser session is process/instance-local, instance termination or replacement loses the in-memory browser/Handoff session and must fail closed rather than pretending a takeover can resume elsewhere. Keep the current single-browser deployment boundary (`concurrency=1`, `max-instances=1`) and treat a restart during Human control as a fresh workflow. Durable browser/profile strategy, if needed, is separate from takeover authority and must not persist raw credentials through MCP/Handoff state.
+
+The pending live Google sign-in acceptance test remains separate and manual; this runtime path does not by itself mark that acceptance as passed.
 
 ## Browser profile
 

@@ -104,16 +104,10 @@ function externalHumanOperatorUrl(name: string): string | undefined {
   return url.toString();
 }
 
-function credentialSafeTransport(name: string): "external" | "cua_takeover" | "steel_live_view" {
+function credentialSafeTransport(name: string): "external" | "cua_takeover" | "thin_takeover" {
   const raw = process.env[name]?.trim().toLowerCase() || "external";
-  if (raw === "external" || raw === "cua_takeover" || raw === "steel_live_view") return raw;
-  throw new Error(`${name} must be one of: external, cua_takeover, steel_live_view`);
-}
-
-function browserBackend(name: string): "local" | "steel" {
-  const raw = process.env[name]?.trim().toLowerCase() || "local";
-  if (raw === "local" || raw === "steel") return raw;
-  throw new Error(`${name} must be one of: local, steel`);
+  if (raw === "external" || raw === "cua_takeover" || raw === "thin_takeover") return raw;
+  throw new Error(`${name} must be one of: external, cua_takeover, thin_takeover`);
 }
 
 export interface AppConfig {
@@ -130,19 +124,12 @@ export interface AppConfig {
     maxBodyBytes: number;
   };
   browser: {
-    backend: "local" | "steel";
     executable?: string;
     profileDir: string;
     externalCdpPort?: number;
     allowExternalCdp: boolean;
     headless: boolean;
     allowUnsandboxedChromium: boolean;
-    steel: {
-      apiKey?: string;
-      baseUrl?: string;
-      profileId?: string;
-      timeoutMs: number;
-    };
   };
   takeover: {
     enabled: boolean;
@@ -151,7 +138,7 @@ export interface AppConfig {
   };
   credentialSafeHandoff: {
     enabled: boolean;
-    transport: "external" | "cua_takeover" | "steel_live_view";
+    transport: "external" | "cua_takeover" | "thin_takeover";
     operatorUrl?: string;
     cuaCommand: string;
   };
@@ -179,7 +166,15 @@ export interface AppConfig {
 }
 
 export function loadConfig(): AppConfig {
-  const selectedBrowserBackend = browserBackend("MAPS_BROWSER_BACKEND");
+  const legacyBrowserBackend = process.env.MAPS_BROWSER_BACKEND?.trim().toLowerCase();
+  if (legacyBrowserBackend && legacyBrowserBackend !== "local") {
+    throw new Error("MAPS_BROWSER_BACKEND=steel was removed from the primary path; use the keyless local Chrome owner with MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover");
+  }
+  for (const name of ["STEEL_API_KEY", "STEEL_BASE_URL", "MAPS_STEEL_PROFILE_ID", "MAPS_STEEL_SESSION_TIMEOUT_SECONDS"] as const) {
+    if (process.env[name]?.trim()) {
+      throw new Error(`${name} is no longer used; Thin Takeover is vendor-key-free`);
+    }
+  }
   const allowExternalCdp = envBool("MAPS_ALLOW_EXTERNAL_CDP", false);
   const externalPortRaw = process.env.MAPS_CDP_PORT;
   const externalCdpPort = externalPortRaw
@@ -264,18 +259,6 @@ export function loadConfig(): AppConfig {
 
   const profileDir = process.env.MAPS_CHROME_PROFILE_DIR ??
     path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile");
-  const steelApiKey = process.env.STEEL_API_KEY?.trim() || undefined;
-  const steelBaseUrl = takeoverBaseUrl("STEEL_BASE_URL");
-  const steelProfileId = process.env.MAPS_STEEL_PROFILE_ID?.trim() || undefined;
-  const steelTimeoutMs = envInt("MAPS_STEEL_SESSION_TIMEOUT_SECONDS", 1800, 300, 86_400) * 1_000;
-  if (selectedBrowserBackend === "steel") {
-    if (allowExternalCdp || externalCdpPort !== undefined) {
-      throw new Error("MAPS_BROWSER_BACKEND=steel cannot be combined with MAPS_ALLOW_EXTERNAL_CDP or MAPS_CDP_PORT");
-    }
-    if (!steelApiKey && !steelBaseUrl) {
-      throw new Error("MAPS_BROWSER_BACKEND=steel requires STEEL_API_KEY for Steel Cloud or STEEL_BASE_URL for an explicitly configured self-hosted Steel endpoint");
-    }
-  }
   const credentialSafeHandoff = envBool("MAPS_CREDENTIAL_SAFE_HANDOFF", false);
   const credentialSafeTransportMode = credentialSafeTransport("MAPS_CREDENTIAL_SAFE_TRANSPORT");
   const credentialSafeOperatorUrl = externalHumanOperatorUrl("MAPS_CREDENTIAL_SAFE_OPERATOR_URL");
@@ -284,12 +267,9 @@ export function loadConfig(): AppConfig {
     throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
   }
   if (credentialSafeTransportMode !== "external" && !credentialSafeHandoff) {
-    throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when using cua_takeover or steel_live_view");
+    throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when using cua_takeover or thin_takeover");
   }
   if (credentialSafeTransportMode === "cua_takeover") {
-    if (selectedBrowserBackend !== "local") {
-      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=cua_takeover requires MAPS_BROWSER_BACKEND=local");
-    }
     if (!remoteTakeover) {
       throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=cua_takeover requires MAPS_REMOTE_TAKEOVER=true");
     }
@@ -300,26 +280,20 @@ export function loadConfig(): AppConfig {
       throw new Error("MAPS_CUA_DRIVER_COMMAND must name one executable without NUL characters");
     }
   }
-  if (credentialSafeTransportMode === "steel_live_view") {
-    if (selectedBrowserBackend !== "steel") {
-      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view requires MAPS_BROWSER_BACKEND=steel so Human and automation share the same hosted browser session");
-    }
+  if (credentialSafeTransportMode === "thin_takeover") {
     if (!remoteTakeover) {
-      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view requires MAPS_REMOTE_TAKEOVER=true because the Handoff broker owns the Thin Takeover operator surface");
+      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover requires MAPS_REMOTE_TAKEOVER=true because the Handoff broker owns the Thin Takeover operator surface");
     }
     if (credentialSafeOperatorUrl) {
-      throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view because the Handoff broker issues the operator locator");
+      throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover because the Handoff broker issues the operator locator");
     }
   }
   if (credentialSafeHandoff) {
-    if (selectedBrowserBackend === "local" && allowExternalCdp) {
-      throw new Error("MAPS_CREDENTIAL_SAFE_HANDOFF=true cannot be combined with MAPS_ALLOW_EXTERNAL_CDP=true for the local browser backend because the server must release its dedicated browser profile");
+    if (allowExternalCdp) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_HANDOFF=true cannot be combined with MAPS_ALLOW_EXTERNAL_CDP=true because credential-safe handoff requires a server-owned dedicated browser session");
     }
-    if (selectedBrowserBackend === "local" && !path.isAbsolute(profileDir)) {
-      throw new Error("MAPS_CREDENTIAL_SAFE_HANDOFF=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path for the local browser backend");
-    }
-    if (selectedBrowserBackend === "steel" && credentialSafeTransportMode !== "steel_live_view") {
-      throw new Error("MAPS_BROWSER_BACKEND=steel with credential-safe Human handoff requires MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view");
+    if (!path.isAbsolute(profileDir)) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_HANDOFF=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path");
     }
   }
   const interactiveAssist = envBool("INTERACTIVE_ASSIST_MODE", false);
@@ -340,9 +314,9 @@ export function loadConfig(): AppConfig {
         "MAPS_V5_AUTHENTICATED_WORKFLOWS=true does not yet allow MCP_AUTH_PROVIDER=module because per-principal browser/profile isolation is not implemented; use local single-user mode or a single-user gateway with the private static-bearer hop"
       );
     }
-    if (selectedBrowserBackend === "local" && !path.isAbsolute(profileDir)) {
+    if (!path.isAbsolute(profileDir)) {
       throw new Error(
-        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true with the local browser backend requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path"
+        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path"
       );
     }
   }
@@ -361,19 +335,12 @@ export function loadConfig(): AppConfig {
       maxBodyBytes: envInt("MCP_MAX_BODY_BYTES", 262_144, 1_024, 4_194_304)
     },
     browser: {
-      backend: selectedBrowserBackend,
       executable: process.env.MAPS_CHROME_EXECUTABLE || undefined,
       profileDir,
       externalCdpPort,
       allowExternalCdp,
       headless: envBool("MAPS_HEADLESS", false),
-      allowUnsandboxedChromium: envBool("MAPS_ALLOW_UNSANDBOXED_CHROMIUM", false),
-      steel: {
-        apiKey: steelApiKey,
-        baseUrl: steelBaseUrl,
-        profileId: steelProfileId,
-        timeoutMs: steelTimeoutMs
-      }
+      allowUnsandboxedChromium: envBool("MAPS_ALLOW_UNSANDBOXED_CHROMIUM", false)
     },
     takeover: {
       enabled: remoteTakeover,

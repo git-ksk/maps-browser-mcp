@@ -60,8 +60,7 @@ import { CredentialAwareTakeoverAdapter } from "./browser/credential-aware-takeo
 import { CuaTakeoverHumanProvider } from "./browser/cua-takeover-human-provider.js";
 import { SystemBrowserCredentialSession } from "./browser/system-browser-credential-session.js";
 import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provider.js";
-import { SteelHostedBrowserSession } from "./browser/steel-hosted-browser.js";
-import { SteelTakeoverHumanProvider } from "./browser/steel-takeover-human-provider.js";
+import { ThinTakeoverHumanProvider } from "./browser/thin-takeover-human-provider.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
@@ -82,22 +81,13 @@ const policy = new PolicyEngine({
   maxVisibleReadsPerHour: config.policy.maxVisibleReadsPerHour
 });
 const localChrome = new ChromeProcess(config.browser);
-const steelBrowser = config.browser.backend === "steel"
-  ? new SteelHostedBrowserSession({
-      apiKey: config.browser.steel.apiKey,
-      baseUrl: config.browser.steel.baseUrl,
-      profileId: config.browser.steel.profileId,
-      timeoutMs: config.browser.steel.timeoutMs
-    })
-  : undefined;
-const browserOwner = steelBrowser ?? localChrome;
-const runtime = new MapsBrowserRuntime(browserOwner, policy);
+const runtime = new MapsBrowserRuntime(localChrome, policy);
 const credentialSafeCuaAdapter = new CuaHumanTakeoverAdapter(
   () => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand)
 );
 const takeoverAdapter = new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter);
 const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover);
-const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.browser.backend === "local"
+const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport !== "thin_takeover"
   ? new SystemBrowserCredentialSession({
       executable: config.browser.executable,
       profileDir: config.browser.profileDir,
@@ -106,8 +96,8 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.bro
   : undefined;
 const credentialSafeProvider = !config.credentialSafeHandoff.enabled
   ? undefined
-  : config.credentialSafeHandoff.transport === "steel_live_view" && steelBrowser
-    ? new SteelTakeoverHumanProvider(steelBrowser, takeoverBroker)
+  : config.credentialSafeHandoff.transport === "thin_takeover"
+    ? new ThinTakeoverHumanProvider(takeoverBroker)
     : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover"
       ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
       : credentialSafeBrowser
@@ -273,11 +263,11 @@ function credentialSafePrompt(
   const remote = /^https?:\/\//i.test(surface.locator)
     ? `Open the configured Human access surface:\n${surface.locator}`
     : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
-  const ownership = surface.providerKind === "steel-takeover"
-    ? "Automation CDP control is detached while the same stateful hosted browser session remains alive for Human Thin Takeover control."
-    : "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without CDP/remote-debugging attachment.";
-  const recovery = surface.providerKind === "steel-takeover"
-    ? "Choose Continue after the browser-side step is complete. Human authority is revoked before automation reconnects fresh to the same hosted browser session; stale pre-auth actions are not replayed."
+  const ownership = surface.providerKind === "thin-takeover"
+    ? "Agent-owned automation CDP/input authority is detached and fenced while the same stateful Chrome session remains alive. The Thin Takeover Runtime may hold its own intervention/epoch-bound CDP connection only for encoded-frame capture and bounded Human input."
+    : "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without agent-owned CDP/remote-debugging authority.";
+  const recovery = surface.providerKind === "thin-takeover"
+    ? "Choose Continue after the browser-side step is complete. Human authority and the Human-owned CDP connection are revoked before automation establishes a fresh CDP attachment and readiness check; stale pre-auth actions are not replayed."
     : "Choose Continue after the browser-side step is complete. The normal browser is closed before fresh automation state is re-established; stale pre-auth actions are not replayed.";
   return [
     base,
@@ -295,21 +285,24 @@ async function prepareHandoffPrompt(intervention: MapsIntervention, owner: Hando
     selectHumanSurface(intervention.reason, CREDENTIAL_SAFE_REASONS) === "credential_safe_external"
   ) {
     takeoverBroker.revokeForIntervention(intervention.id);
-    await runtime.suspendAutomationForCredentialSafeHumanControl(intervention.id, intervention.epoch);
+    await runtime.suspendAutomationForCredentialSafeHumanControl(intervention.id, intervention.epoch, {
+      preserveBrowserSession: config.credentialSafeHandoff.transport === "thin_takeover"
+    });
     const surface = await credentialSafeSurface.begin(intervention, owner.principalBinding);
     return credentialSafePrompt(intervention, surface);
   }
   return handoffPrompt(intervention, owner);
 }
 
-async function revokeCredentialSafeSurface(interventionId: string, owner: HandoffOwner): Promise<void> {
+async function revokeCredentialSafeSurface(interventionId: string, owner: HandoffOwner): Promise<string | undefined> {
   const external = credentialSafeSurface?.getActive();
-  if (!external || external.interventionId !== interventionId) return;
+  if (!external || external.interventionId !== interventionId) return undefined;
   await credentialSafeSurface!.revoke(
     external.interventionId,
     external.epoch,
     owner.principalBinding
   );
+  return external.providerKind;
 }
 
 async function humanInputRequired(
@@ -369,8 +362,11 @@ async function humanInputRequired(
 
 async function cancelIntervention(interventionId: string, owner: HandoffOwner): Promise<CallToolResult> {
   takeoverBroker.revokeForIntervention(interventionId);
-  await revokeCredentialSafeSurface(interventionId, owner);
+  const providerKind = await revokeCredentialSafeSurface(interventionId, owner);
   const active = runtime.getActiveIntervention();
+  if (providerKind === "thin-takeover" && active?.id === interventionId && active.status === "human_active") {
+    await runtime.releaseHumanTakeoverConnection(active.id, active.epoch);
+  }
   if (active?.id === interventionId) runtime.cancelHumanIntervention(interventionId);
   handoffOwners.delete(interventionId);
   clearHandoffCheckpoint(owner);
@@ -491,9 +487,13 @@ async function runToolWithHandoff<T>(input: {
   }
 
   takeoverBroker.revokeForIntervention(state.interventionId);
-  const usedCredentialSafeSurface = credentialSafeSurface?.getActive()?.interventionId === state.interventionId;
+  const activeCredentialSafeSurface = credentialSafeSurface?.getActive();
+  const usedCredentialSafeSurface = activeCredentialSafeSurface?.interventionId === state.interventionId;
   try {
-    await revokeCredentialSafeSurface(state.interventionId, owner);
+    const providerKind = await revokeCredentialSafeSurface(state.interventionId, owner);
+    if (providerKind === "thin-takeover") {
+      await runtime.releaseHumanTakeoverConnection(state.interventionId, state.epoch);
+    }
     runtime.markHumanControlComplete(state.interventionId);
     await operationQueue.run(() => usedCredentialSafeSurface
       ? runtime.verifyCredentialSafeHumanIntervention(state.interventionId)

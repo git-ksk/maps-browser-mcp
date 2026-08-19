@@ -208,7 +208,7 @@ test("credential-safe browser suspension keeps Human authority active while stop
 });
 
 
-test("credential-safe browser suspension detaches automation without closing a hosted browser owner", async () => {
+test("Thin Takeover suspension detaches automation while preserving the same browser session", async () => {
   let suspended = 0;
   let closed = 0;
   const hosted = {
@@ -235,11 +235,62 @@ test("credential-safe browser suspension detaches automation without closing a h
   assert.ok(awaiting);
   const human = runtime.claimHumanControl(awaiting.id);
 
-  await runtime.suspendAutomationForCredentialSafeHumanControl(human.id, human.epoch);
+  await runtime.suspendAutomationForCredentialSafeHumanControl(human.id, human.epoch, { preserveBrowserSession: true });
 
-  assert.equal(suspended, 1);
+  assert.equal(suspended, 0);
   assert.equal(closed, 0);
   assert.equal(runtime.getActiveIntervention()?.authority, "human");
+});
+
+
+
+test("Thin Takeover revoke closes Human-owned CDP before automation can reconnect", async () => {
+  const runtime = makeRuntime();
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+
+  let closed = 0;
+  const mutable = runtime as unknown as {
+    client?: { close(): Promise<void> };
+    clientOwner?: "automation" | "human";
+    endpoint?: unknown;
+  };
+  mutable.client = { async close() { closed += 1; } };
+  mutable.clientOwner = "human";
+  mutable.endpoint = { kind: "local_port", port: 9222 };
+
+  await runtime.releaseHumanTakeoverConnection(human.id, human.epoch);
+
+  assert.equal(closed, 1);
+  assert.equal(mutable.client, undefined);
+  assert.equal(mutable.clientOwner, undefined);
+  assert.equal(mutable.endpoint, undefined);
+});
+
+test("Thin Takeover release fails closed if Agent-owned CDP authority appears during Human control", async () => {
+  const runtime = makeRuntime();
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+  const mutable = runtime as unknown as { client?: { close(): Promise<void> }; clientOwner?: "automation" | "human" };
+  mutable.client = { async close() {} };
+  mutable.clientOwner = "automation";
+
+  await assert.rejects(
+    runtime.releaseHumanTakeoverConnection(human.id, human.epoch),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "UI_STATE_CHANGED"
+  );
 });
 
 test("selected route identity is bounded semantic state and is cleared by later semantic mutation", () => {
@@ -308,7 +359,9 @@ test("Human takeover frame stream uses CDP screencast push with bounded latest-f
       async stopScreencast() { stopped += 1; }
     }
   };
-  (runtime as unknown as { client: unknown }).client = fakeClient;
+  const mutableRuntime = runtime as unknown as { client: unknown; clientOwner?: "automation" | "human" };
+  mutableRuntime.client = fakeClient;
+  mutableRuntime.clientOwner = "human";
 
   const controller = new AbortController();
   const stream = runtime.streamHumanTakeoverFrames(human.id, human.epoch, controller.signal);

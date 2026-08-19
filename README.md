@@ -342,21 +342,16 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MCP_ALLOW_NONLOOPBACK` | `false` | Explicit opt-in before non-loopback bind |
 | `MCP_BEARER_TOKEN` | empty | Optional guard; mandatory for non-loopback bind; minimum 24 chars |
 | `MCP_MAX_BODY_BYTES` | `262144` | Maximum MCP request body size |
-| `MAPS_BROWSER_BACKEND` | `local` | Browser owner: `local` managed Chrome/Chromium or `steel` stateful hosted browser session |
-| `MAPS_CHROME_EXECUTABLE` | auto-detect | Local backend Chrome/Chromium executable |
-| `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | Local backend dedicated profile directory |
-| `STEEL_API_KEY` | unset | Server-side Steel Cloud API key for `MAPS_BROWSER_BACKEND=steel`; never returned through MCP |
-| `STEEL_BASE_URL` | unset | Optional API-compatible self-hosted Steel origin; HTTPS except loopback development |
-| `MAPS_STEEL_PROFILE_ID` | unset | Optional Steel profile id for persistent hosted browser state |
-| `MAPS_STEEL_SESSION_TIMEOUT_SECONDS` | `1800` | Hosted Steel session lifetime, 300-86400 seconds |
-| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Local backend explicit opt-in before existing-CDP attachment |
+| `MAPS_CHROME_EXECUTABLE` | auto-detect | Dedicated Chrome/Chromium executable used by the process-owned browser session |
+| `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | Dedicated process-owned Chrome profile directory |
+| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Explicit opt-in before existing local CDP attachment; incompatible with credential-safe handoff |
 | `MAPS_CDP_PORT` | unset | Advanced: existing local CDP endpoint |
 | `MAPS_HEADLESS` | `false` | Headless Chrome |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable bounded visible-state reading and V4 semantic UI operations that require it |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | Enable the fail-closed bounded V5 authenticated tools; also requires Interactive Assist and the dedicated single-user profile gate |
-| `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Enable Human-only handoff for Google sign-in/consent/challenge surfaces; local ownership stops CDP Chrome, hosted ownership detaches automation while keeping the same browser session alive |
-| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` uses an OS-level local surface; `cua_takeover` uses local Cua; `steel_live_view` is the compatibility config name for the Thin Takeover stream over the exact hosted Steel session |
+| `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Enable Human-only handoff for Google sign-in/consent/challenge surfaces |
+| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` uses an OS-level local surface; `cua_takeover` uses local Cua; `thin_takeover` keeps the same managed Chrome alive and exposes the keyless Thin Takeover surface |
 | `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | Optional fixed HTTPS locator for local `external` transport only; credentials/query/fragment are rejected |
 | `MAPS_CUA_DRIVER_COMMAND` | `cua-driver` | Cua Driver executable used only by `cua_takeover`; the integration invokes only a fixed seven-tool Human transport allowlist |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | Optional restricted Maps Embed API key for the MCP Apps directions view; the text/structured render tool remains available without it |
@@ -373,11 +368,13 @@ Invalid boolean/integer configuration fails fast instead of being silently coerc
 
 `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. When `MAPS_CREDENTIAL_SAFE_HANDOFF=true` is also enabled, `maps_request_human_sign_in` adds a Human-only ceremony for Google sign-in; naturally detected consent and CAPTCHA/access-challenge surfaces use the same Human boundary. Credentials, MFA/OTP values, passkey material, cookies, browser-session bearer material, and provider API keys never become MCP/model/log content, and passkey/WebAuthn ceremonies are not bypassed.
 
-With the default `MAPS_BROWSER_BACKEND=local`, `external` and `cua_takeover` use the existing profile-switch lifecycle: managed CDP Chrome is stopped, the same dedicated profile is opened in normal Chrome without remote-debugging/automation attachment, and automation relaunches only after the Human surface is revoked and fresh readiness is re-read. Cua is one optional Mac/local provider, not a Maps runtime dependency; `cua_takeover` still requires authenticated Remote Takeover and keeps Human input out of the northbound MCP.
+`external` and `cua_takeover` keep the existing profile-switch lifecycle: managed CDP Chrome is stopped, the same dedicated profile is opened in normal Chrome without Agent-owned remote-debugging/automation authority, and automation relaunches only after the Human surface is revoked and fresh readiness is re-read. Cua is one optional Mac/local fallback, not a Maps runtime dependency.
 
-With `MAPS_BROWSER_BACKEND=steel`, credential-safe handoff must use `steel_live_view` (kept as the compatibility configuration name) and enable authenticated Remote Takeover. Steel is used only for stateful browser-session ownership and the server-side CDP endpoint. The Human surface is the Handoff broker's Thin Takeover Runtime: CDP `Page.startScreencast` pushes bounded JPEG frames over one authenticated streaming HTTP response while click/scroll/keyboard input uses the existing broker path. The Steel provider viewer UI is not exposed or required. Automation and Human control therefore share the exact same stateful browser session while keeping the Steel API key/CDP WebSocket server-side. Steel CAPTCHA solving remains explicitly disabled. The hosted path is intended as the Cloud Run reference shape and remains single-user until per-principal browser isolation is implemented. It is not a claim that the pending live Google sign-in acceptance test has passed.
+`thin_takeover` is the primary low-latency path. The same process-owned Chrome session stays alive while Agent-owned automation CDP/input authority is detached and fenced. A fresh intervention/epoch-bound Human CDP attachment is then owned by the Thin Takeover Runtime. Phase 1 uses `CdpScreencastCapture -> EncodedImageFrame -> FramePipeline passthrough -> authenticated broker stream`; JPEG is not decoded and re-encoded. Click, scroll, keyboard, and bounded text input use the Human-owned CDP attachment only. Revocation aborts active frame streams, closes the Human CDP attachment, and only then permits a fresh automation CDP attachment and readiness/semantic validation.
 
-Both ownership modes reject stale automatic replay after Human handoff. Existing-CDP attachment remains incompatible with credential-safe local ownership, `MCP_AUTH_PROVIDER=module` remains rejected for V5 until per-principal isolation exists, and the send mutation still requires a modern MCP 2026-07-28 client with form elicitation support.
+The capture/transport boundary is intentionally replaceable. A later raw-frame path can use compositor/native capture as `RawFrame -> EncoderAdapter -> WebRTC video`, while already encoded JPEG/PNG frames bypass `EncoderAdapter`. WebRTC/DataChannel transport is a Phase 2 target rather than a Phase 1 dependency. No vendor browser API key or hosted-browser backend is required. Steel may be used only as an external comparison/UX benchmark, not as a runtime dependency.
+
+Both lifecycle shapes reject stale automatic replay after Human handoff. Existing-CDP attachment remains incompatible with credential-safe ownership, `MCP_AUTH_PROVIDER=module` remains rejected for V5 until per-principal isolation exists, and the send mutation still requires a modern MCP 2026-07-28 client with form elicitation support.
 
 For the current remote single-user design, authenticate the public MCP client at an external gateway and use the private `static-bearer` hop to this core server. Do not forward a caller's public OAuth access token into the browser runtime. The versioned [reference OAuth gateway](reference/oauth-gateway/README.md) implements this shape as an isolated dogfood package; it is not included in the published root npm package. See [V5 authenticated workflows](docs/v5-authenticated-workflows.md) and [OAuth gateway pattern](docs/oauth-gateway.md).
 

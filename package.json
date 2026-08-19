@@ -26,7 +26,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "dev:http": "tsx src/index.ts --http",
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "start:http": "node dist/index.js --http",
     "test": "tsx --test tests/*.test.ts",
@@ -41,7 +41,7 @@
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
     "chrome-remote-interface": "0.34.0",
-    "mcp-execution-handoff": "https://github.com/git-ksk/mcp-execution-handoff/archive/8fb3c247accf9a84f71ff73106506970ec2193b8.tar.gz",
+    "mcp-execution-handoff": "https://github.com/git-ksk/mcp-execution-handoff/archive/86b2169e93ab7d661e45c7c1120c190251fd2189.tar.gz",
     "zod": "4.4.3"
   },
   "devDependencies": {

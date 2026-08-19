@@ -6,6 +6,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+- Replace the experimental Steel-backed hosted path with the vendor-key-free `thin_takeover` primary path. The same process-owned Chrome stays alive while Agent-owned CDP/input authority is detached and fenced; Phase 1 keeps CDP JPEG encoded through `CaptureAdapter -> FramePipeline` passthrough, aborts active streams on revoke, closes the Human-owned CDP attachment before fresh automation reattach, records bounded latency metrics, and leaves raw-frame hardware encoding/WebRTC as replaceable Phase 2 adapters. A benign local 30-sample end-to-end path measured p50 40.8 ms / p95 77.4 ms from bounded input dispatch through the next pushed frame, with no Maps traffic or vendor API key.
 ## [v0.3.2] - 2026-08-19
 
 - Add an opt-in `cua_takeover` credential-safe transport that reuses the existing authenticated short-lived Takeover UI while normal Chrome remains free of CDP/remote-debugging. A local Cua Driver MCP bridge is bound to the exact dedicated Chrome PID and single visible window, accepts only a fixed seven-tool native capture/input allowlist, keeps Human-entered text out of northbound Maps MCP/model context/process argv/repository logs, and was live-validated end to end on a benign local page for frame delivery, tap, scroll, text, Enter, outer Bearer coexistence, Done capability revocation, and normal-Chrome teardown.

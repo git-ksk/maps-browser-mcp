@@ -344,21 +344,16 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MCP_ALLOW_NONLOOPBACK` | `false` | 非loopback bindの明示Opt-in |
 | `MCP_BEARER_TOKEN` | empty | optional guard。非loopback時は必須、24文字以上 |
 | `MCP_MAX_BODY_BYTES` | `262144` | MCP request body最大サイズ |
-| `MAPS_BROWSER_BACKEND` | `local` | browser owner。`local` managed Chrome/Chromium または `steel` stateful hosted browser session |
-| `MAPS_CHROME_EXECUTABLE` | 自動検出 | local backend用Chrome / Chromium executable |
-| `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | local backend専用Chrome profile |
-| `STEEL_API_KEY` | unset | `MAPS_BROWSER_BACKEND=steel` 用server-side Steel Cloud API key。MCPへ返さない |
-| `STEEL_BASE_URL` | unset | API-compatible self-hosted Steel origin（任意）。loopback開発以外HTTPS必須 |
-| `MAPS_STEEL_PROFILE_ID` | unset | persistent hosted browser state用Steel profile id（任意） |
-| `MAPS_STEEL_SESSION_TIMEOUT_SECONDS` | `1800` | hosted Steel session lifetime。300-86400秒 |
-| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | local backendの既存CDP endpoint接続用明示Opt-in |
+| `MAPS_CHROME_EXECUTABLE` | 自動検出 | process-owned専用browser session用Chrome / Chromium executable |
+| `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | process-owned専用Chrome profile |
+| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | 既存local CDP endpoint接続用明示Opt-in。credential-safe handoffとは併用不可 |
 | `MAPS_CDP_PORT` | unset | 上級者向け既存ローカルCDP endpoint |
 | `MAPS_HEADLESS` | `false` | headless mode |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linuxの制約runtime向け最終手段。明示時のみ `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなbounded V5 authenticated toolを有効化。Interactive Assistと専用single-user profile gateも必須 |
-| `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Google sign-in / consent / challenge向けHuman-only handoff。localはCDP Chrome停止、hostedはsame browser session維持のままautomation detach |
-| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` はlocal OS-level surface、`cua_takeover` はlocal Cua、`steel_live_view` はexact hosted Steel session上のThin Takeover streamを選ぶ互換config名 |
+| `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Google sign-in / consent / challenge向けHuman-only handoff |
+| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` はlocal OS-level surface、`cua_takeover` はlocal Cua、`thin_takeover` はsame managed Chromeを維持するkeyless Thin Takeover |
 | `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | local `external` transport専用fixed HTTPS locator。credential/query/fragment付きURLは拒否 |
 | `MAPS_CUA_DRIVER_COMMAND` | `cua-driver` | `cua_takeover` 専用Cua Driver executable。Human transport用の固定7 tool allowlist以外は呼ばない |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | MCP Apps directions view用のoptional restricted Maps Embed API key。未設定でもtext/structured render toolは利用可能 |
@@ -375,11 +370,13 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 
 `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` はbounded authenticated V5 semantics用の追加fail-closed Opt-inです。`INTERACTIVE_ASSIST_MODE=true` と組み合わせると、V5 baselineのidentity-free readiness、bounded selected-place save-state read、exact existing-list Save、bounded selected-route Send-to-phone target read、approval-gated single-device sendだけを公開します。`MAPS_CREDENTIAL_SAFE_HANDOFF=true` も有効な場合、`maps_request_human_sign_in` がGoogle sign-in用Human-only ceremonyを追加し、自然発生したconsent / CAPTCHA / access-challengeも同じHuman boundaryへ送ります。credential、MFA/OTP、passkey material、cookie、browser-session bearer material、provider API keyはMCP/model/logへ出さず、Passkey/WebAuthn ceremonyをbypassしません。
 
-既定の `MAPS_BROWSER_BACKEND=local` では `external` / `cua_takeover` が既存profile-switch lifecycleを使います。managed CDP Chromeを停止し、same dedicated profileをremote-debugging/automation attachmentなしのnormal Chromeで開き、Human surface revoke後にfresh readinessを確認してautomationを再起動します。CuaはMac/local providerの1候補でありMaps runtime固定依存ではありません。`cua_takeover` はauthenticated Remote Takeover必須で、Human inputをnorthbound MCPへ返しません。
+`external` / `cua_takeover` は既存profile-switch lifecycleを使います。managed CDP Chromeを停止し、same dedicated profileをAgent-owned remote-debugging/automation authorityなしのnormal Chromeで開き、Human surface revoke後にfresh readinessを確認してautomationを再起動します。CuaはMac/local fallbackの1候補でありMaps runtime固定依存ではありません。
 
-`MAPS_BROWSER_BACKEND=steel` ではcredential-safe handoffに `steel_live_view`（互換config名）とauthenticated Remote Takeoverを必須とします。Steelから使うのはstateful browser-session ownershipとserver-side CDP endpointだけです。Human surfaceはHandoff brokerのThin Takeover Runtimeで、CDP `Page.startScreencast` のbounded JPEG frameを認証済みHTTP streaming response 1本でpushし、click / scroll / keyboard inputは既存broker pathを使います。Steel providerのviewer UIは公開も依存もしません。automationとHumanはexact same stateful browser sessionを共有し、Steel API key/CDP WebSocketはserver-side限定です。SteelのCAPTCHA solvingは明示的に無効です。このhosted pathはCloud Run向けreference shapeであり、per-principal browser isolationまではsingle-userのままです。未実施のGoogle sign-in live acceptanceがpass済みという意味ではありません。
+`thin_takeover` が低遅延の本命経路です。same process-owned Chrome sessionを生かしたままAgent-owned automation CDP/input authorityをdetach + fenceし、intervention/epochにboundしたfresh Human CDP attachmentをThin Takeover Runtimeが所有します。Phase 1は `CdpScreencastCapture -> EncodedImageFrame -> FramePipeline passthrough -> authenticated broker stream` で、JPEGをdecode/re-encodeしません。click / scroll / keyboard / bounded text inputもHuman-owned CDPからだけ注入します。revoke時はactive frame streamをabortし、Human CDP attachmentを閉じた後でのみfresh automation CDP attachmentとreadiness/semantic validationへ戻します。
 
-両ownership modeともHuman handoff後のstale automatic replayは禁止です。credential-safe local ownershipとexisting-CDP attachの併用は拒否し、V5の `MCP_AUTH_PROVIDER=module` はper-principal isolationまで引き続き拒否します。Send mutationにはmodern MCP 2026-07-28 clientのform elicitation supportも必要です。
+capture/transport boundaryは差し替え可能です。将来のraw-frame経路はcompositor/native captureから `RawFrame -> EncoderAdapter -> WebRTC video` とし、既にencodedなJPEG/PNGは `EncoderAdapter` を通しません。WebRTC/DataChannelはPhase 2 targetで、Phase 1 dependencyではありません。vendor browser API keyやhosted-browser backendは不要です。Steelは外部比較/UX benchmarkの参考に限定し、runtime dependencyにはしません。
+
+両lifecycleともHuman handoff後のstale automatic replayは禁止です。credential-safe ownershipとexisting-CDP attachの併用は拒否し、V5の `MCP_AUTH_PROVIDER=module` はper-principal isolationまで引き続き拒否します。Send mutationにはmodern MCP 2026-07-28 clientのform elicitation supportも必要です。
 
 現在のremote single-user設計では、public MCP clientの認証はexternal gatewayで行い、このcore serverへのprivate hopは `static-bearer` を使います。callerのpublic OAuth access tokenをbrowser runtimeへ転送しません。Versionedな [reference OAuth gateway](reference/oauth-gateway/README.ja.md) がこの構成をisolated dogfood packageとして実装しますが、published root npm packageには含めません。詳細は [V5 authenticated workflows](docs/v5-authenticated-workflows.ja.md) と [OAuth gateway pattern](docs/oauth-gateway.ja.md) を参照してください。
 

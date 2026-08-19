@@ -41,19 +41,17 @@ The design is for a single local user/browser session. Multi-user hosting would 
 
 ## Browser lifecycle
 
-Browser ownership is selected by `MAPS_BROWSER_BACKEND`. The default `local` owner starts or reuses a dedicated Chrome/Chromium process/profile outside the repository at `~/.maps-browser-mcp/chrome-profile`. The optional `steel` owner creates one stateful hosted Steel browser session and connects the automation runtime to that session over a server-side CDP WebSocket. Provider-specific ownership stays behind the consumer-side `BrowserSessionOwner` boundary; `mcp-execution-handoff` does not own browser lifecycle.
+One process owns one dedicated Chrome/Chromium process/profile outside the repository at `~/.maps-browser-mcp/chrome-profile`. Browser lifecycle remains consumer-owned; `mcp-execution-handoff` owns the generic Human-authority/session boundary but does not own Chrome.
 
 Chrome is launched with a separate `--user-data-dir`, `--remote-debugging-address=127.0.0.1`, and `--remote-debugging-port=0`. The project-managed endpoint is read from Chrome's `DevToolsActivePort` record and is reused only when **both** the numeric port and browser WebSocket identity match the live `/json/version` endpoint. This avoids trusting a stale profile file if an unrelated Chrome process later reuses the same numeric port. On Unix-like systems, the dedicated profile directory is restricted to the current user.
 
-A caller may instead set `MAPS_CDP_PORT` to attach to an existing **local** CDP endpoint, but only when `MAPS_ALLOW_EXTERNAL_CDP=true` is also set. This is an advanced escape hatch and weakens the dedicated-profile isolation guarantee. It should never point to a publicly reachable or everyday personal browser instance.
+A caller may instead set `MAPS_CDP_PORT` to attach to an existing **local** CDP endpoint, but only when `MAPS_ALLOW_EXTERNAL_CDP=true` is also set. This advanced escape hatch weakens dedicated-profile isolation and is deliberately incompatible with credential-safe Human handoff. It should never point to a publicly reachable or everyday personal browser instance.
 
-When connecting to the dedicated browser, the runtime accepts zero or one Google Maps page target. If more than one Maps tab is open, it refuses to guess which tab to control and returns an error. This preserves the one-process/one-semantic-session invariant.
+When connecting to the dedicated browser, the runtime accepts zero or one Google Maps page target. If more than one Maps tab is open, it refuses to guess which tab to control. If a CDP target becomes stale, reconnects, or is reset by the watchdog, semantic state is invalidated rather than inherited.
 
-If the CDP target becomes stale, reconnects, or is reset by the watchdog, semantic state is invalidated rather than assuming that the newly attached page still represents the previous search/directions operation.
+The primary `thin_takeover` path keeps this same Chrome process/session alive. Agent-owned automation CDP/input authority is explicitly detached and fenced before a separate intervention/epoch-bound Human CDP attachment is allowed. Human completion/revocation aborts active frame streams and closes that Human attachment before automation may establish a fresh CDP attachment. The invariant is therefore **exclusive input authority**, not the absence of every CDP connection while a Human is active.
 
-For the Steel owner, automation and the broker-owned Thin Takeover stream intentionally reference the exact same hosted browser session. Steel contributes session ownership plus the server-side CDP endpoint; its viewer UI is not part of the Human surface. The CDP WebSocket and provider API key remain server-side. An optional Steel profile id may persist normal browser state between provider sessions, but the Maps runtime remains single-user/single-session and does not share one hosted session across principals.
-
-No stealth plugins, fingerprint spoofing, proxy rotation, or CAPTCHA solvers are used. The Steel integration explicitly creates sessions with provider CAPTCHA solving disabled.
+No stealth plugins, fingerprint spoofing, proxy rotation, CAPTCHA solvers, hosted-browser provider API keys, or passkey bypasses are used. Steel is not a runtime dependency; it may be used externally only as a comparison/UX benchmark.
 
 ## Navigation fast path
 
@@ -136,29 +134,40 @@ The boundary is deliberately separate from semantic action approval:
 - reconnect/restart never automatically replays an older semantic operation,
 - V4 operation cleanup must test intervention state before sending any best-effort UI input.
 
-Credential-safe Human control has two consumer-owned lifecycle implementations behind the same `ExternalHumanSurfaceProvider` contract:
+Credential-safe Human control has two consumer-owned lifecycle shapes behind the same `ExternalHumanSurfaceProvider` contract:
 
 ```text
-local/Mac profile-switch
-  automation CDP Chrome
+external / optional Cua profile-switch
+  Agent-owned automation CDP Chrome
     -> Human authority
     -> close automation Chrome
-    -> open the same dedicated profile in normal Chrome without CDP
+    -> open the same dedicated profile in normal Chrome without Agent CDP authority
     -> external OS surface or optional Cua provider
     -> revoke Human surface + close normal Chrome
     -> fresh automation browser + fresh validation
 
-hosted/Cloud Run shared-session
-  stateful hosted browser + automation CDP attachment
+primary thin_takeover same-session path
+  process-owned Chrome + Agent-owned automation CDP
     -> Human authority
-    -> close only the automation CDP attachment
-    -> Handoff Thin Takeover stream attaches to the exact same browser session
-    -> revoke Human surface
-    -> fresh automation CDP attachment to that same session
-    -> fresh validation
+    -> detach + fence Agent-owned automation CDP/input authority
+    -> fresh intervention/epoch-bound Human CDP attachment
+       -> CdpScreencastCapture -> EncodedImageFrame
+       -> FramePipeline passthrough -> authenticated frame stream
+       -> bounded Human input
+    -> revoke Human surface + abort active stream
+    -> close Human-owned CDP attachment
+    -> fresh Agent-owned automation CDP attachment
+    -> fresh readiness / semantic validation
 ```
 
-The hosted implementation does not surface the Steel provider viewer URL. The Human locator comes from the Handoff broker and contains no takeover capability; the capability stays in authenticated request headers. This preserves the generic rule that an operator locator must not double as secret bearer/session material.
+Phase 1 deliberately treats CDP screencast JPEG as an already encoded image. It does **not** pass it through `EncoderAdapter`, avoiding a JPEG decode/raw-frame/video re-encode loop. The replaceable frame boundary is:
+
+```text
+EncodedImageFrame -> FramePipeline -> image/frame transport
+RawFrame          -> FramePipeline -> EncoderAdapter -> encoded video -> WebRTC (Phase 2)
+```
+
+The intended reusable Thin Takeover boundary is `TakeoverSessionController + CaptureAdapter + FramePipeline + EncoderAdapter + WebRtcTransport + ReconnectCoordinator + LatencyMetrics`. Phase 1 already exercises authority, reconnect/fencing, encoded-frame passthrough, bounded input, and metrics over the authenticated broker stream; WebRTC video/DataChannel and raw compositor/native capture remain Phase 2. The Human locator contains no takeover capability; the capability stays in authenticated request headers.
 
 ## MCP Apps render boundary
 

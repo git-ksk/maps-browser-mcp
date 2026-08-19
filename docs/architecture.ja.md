@@ -43,27 +43,17 @@ Google Maps Web
 
 ## Browser Lifecycle
 
-Browser ownershipは `MAPS_BROWSER_BACKEND` で選択します。既定の `local` ownerはrepository外の次の専用profileでChrome / Chromiumを起動または再利用します。optionalな `steel` ownerは1つのstateful hosted Steel browser sessionを作り、server-side CDP WebSocket経由でautomation runtimeを接続します。provider固有ownershipはconsumer側 `BrowserSessionOwner` boundaryの内側に置き、`mcp-execution-handoff` はbrowser lifecycleを所有しません。
+1 processがrepository外の `~/.maps-browser-mcp/chrome-profile` にある専用Chrome / Chromium process/profileを所有します。browser lifecycleはconsumer側が所有し、`mcp-execution-handoff` はgenericなHuman authority/session boundaryだけを担ってChrome自体は所有しません。
 
-```text
-~/.maps-browser-mcp/chrome-profile
-```
+Chromeは別 `--user-data-dir`、`--remote-debugging-address=127.0.0.1`、`--remote-debugging-port=0` で起動します。Project-managed endpointは `DevToolsActivePort` の数値portとbrowser WebSocket identityの両方がlive `/json/version` と一致する場合だけ再利用します。Unix系では専用profile directoryを現在userだけがアクセスできる権限へ制限します。
 
-Chromeは別 `--user-data-dir`、`--remote-debugging-address=127.0.0.1`、`--remote-debugging-port=0` で起動します。
+`MAPS_CDP_PORT` で既存**local** CDP endpointへattachする場合は `MAPS_ALLOW_EXTERNAL_CDP=true` が必要です。このadvanced escape hatchは専用profile isolationを弱め、credential-safe Human handoffとは意図的に併用不可です。Public reachable endpointや普段使いbrowserへ接続しないでください。
 
-Project-managed endpointはChromeの `DevToolsActivePort` から取得し、**数値portとbrowser WebSocket identityの両方**がlive `/json/version` endpointと一致する場合だけ再利用します。古いprofile fileのport番号が後から無関係なChromeに再利用されても誤接続しないためです。
+専用browserではGoogle Maps page targetを0または1枚だけ受け入れ、複数Maps tabがあれば推測せず拒否します。CDP targetがstale/reconnect/watchdog resetされた場合もsemantic stateを引き継ぎません。
 
-Unix系OSでは専用profile directoryを現在userだけがアクセスできる権限へ制限します。
+本命の `thin_takeover` はsame Chrome process/sessionを維持します。Human authorityへ移る前にAgent-owned automation CDP/input authorityを明示的にdetach + fenceし、その後だけintervention/epoch-boundな別Human CDP attachmentを許可します。Human完了/revoke時はactive frame streamをabortし、Human attachmentを閉じた後でfresh automation CDP attachmentを許可します。したがってinvariantは「Human中にCDPが一切ない」ではなく **input authorityがexclusiveであること** です。
 
-`MAPS_CDP_PORT` を指定して既存**local** CDP endpointへattachすることもできますが、`MAPS_ALLOW_EXTERNAL_CDP=true` が必要です。これはadvanced escape hatchであり、専用profile isolation保証を弱めます。Public reachable endpointや普段使いbrowserへ接続しないでください。
-
-専用browserへ接続するとき、Google Maps page targetは0または1枚だけ受け入れます。複数Maps tabがある場合はどれを操作するか推測せずerrorにします。これで1 process / 1 semantic session invariantを維持します。
-
-CDP targetがstale、再接続、watchdog resetされた場合、以前のsearch / directions状態を新しいpageへ引き継がずsemantic stateを無効化します。
-
-Steel ownerではautomationとbroker-owned Thin Takeover streamがexact same hosted browser sessionを参照します。Steelから使うのはsession ownershipとserver-side CDP endpointで、provider viewer UIはHuman surfaceに含めません。CDP WebSocketとprovider API keyはserver-side限定です。optionalなSteel profile idでprovider session間の通常browser stateをpersistできますが、Maps runtime自体はsingle-user/single-sessionのままで、複数principal間で1 hosted sessionを共有しません。
-
-Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solverは使いません。Steel integrationでもprovider側CAPTCHA solvingを明示的に無効化してsessionを作ります。
+Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solver、hosted-browser provider API key、passkey bypassは使いません。Steelはruntime dependencyではなく、必要なら外部比較/UX benchmarkの参考に限定します。
 
 ## Navigation Fast Path
 
@@ -147,26 +137,37 @@ Action / read counterはprocess-local safety guardであり、再起動でreset�
 Credential-safe Human controlは同じ `ExternalHumanSurfaceProvider` contractの背後でconsumer-ownedな2 lifecycleを使います。
 
 ```text
-local/Mac profile-switch
-  automation CDP Chrome
+external / optional Cua profile-switch
+  Agent-owned automation CDP Chrome
     -> Human authority
     -> automation Chrome終了
-    -> same dedicated profileをCDPなしnormal Chromeで開く
+    -> same dedicated profileをAgent CDP authorityなしnormal Chromeで開く
     -> external OS surface または optional Cua provider
     -> Human surface revoke + normal Chrome終了
     -> fresh automation browser + fresh validation
 
-hosted/Cloud Run shared-session
-  stateful hosted browser + automation CDP attachment
+本命 thin_takeover same-session path
+  process-owned Chrome + Agent-owned automation CDP
     -> Human authority
-    -> automation CDP attachmentだけ閉じる
-    -> exact same browser sessionへHandoff Thin Takeover streamがattach
-    -> Human surface revoke
-    -> same sessionへfresh automation CDP attachment
-    -> fresh validation
+    -> Agent-owned automation CDP/input authorityをdetach + fence
+    -> fresh intervention/epoch-bound Human CDP attachment
+       -> CdpScreencastCapture -> EncodedImageFrame
+       -> FramePipeline passthrough -> authenticated frame stream
+       -> bounded Human input
+    -> Human surface revoke + active stream abort
+    -> Human-owned CDP attachment終了
+    -> fresh Agent-owned automation CDP attachment
+    -> fresh readiness / semantic validation
 ```
 
-hosted実装はSteel provider viewer URLを公開しません。Human locatorはHandoff broker由来でtakeover capabilityを含まず、capabilityは認証済みrequest header内に維持します。operator locator自体をsecret bearer/session materialにしないgeneric handoff ruleを維持します。
+Phase 1ではCDP screencast JPEGを既にencodedなimageとして扱い、`EncoderAdapter` を通しません。JPEG decode -> raw frame -> video re-encodeの無駄を避けます。replaceable frame boundaryは次です。
+
+```text
+EncodedImageFrame -> FramePipeline -> image/frame transport
+RawFrame          -> FramePipeline -> EncoderAdapter -> encoded video -> WebRTC（Phase 2）
+```
+
+再利用可能なThin Takeover boundaryは `TakeoverSessionController + CaptureAdapter + FramePipeline + EncoderAdapter + WebRtcTransport + ReconnectCoordinator + LatencyMetrics` を想定します。Phase 1ではauthenticated broker stream上でauthority、reconnect/fencing、encoded-frame passthrough、bounded input、metricsまで実装し、WebRTC video/DataChannelとraw compositor/native captureはPhase 2です。Human locator自体にtakeover capabilityは含めず、capabilityは認証済みrequest header内に維持します。
 
 ## MCP Apps Render Boundary
 

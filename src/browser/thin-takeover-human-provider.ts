@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ExternalHumanSurfaceProvider, ExternalHumanSurfaceRequest } from "mcp-execution-handoff/core";
 import type { TakeoverBroker } from "mcp-execution-handoff/browser-takeover";
-import { SteelHostedBrowserSession } from "./steel-hosted-browser.js";
 
 interface ActiveProviderSession {
   sessionId: string;
@@ -9,28 +8,28 @@ interface ActiveProviderSession {
   epoch: number;
 }
 
-export class SteelTakeoverHumanProvider implements ExternalHumanSurfaceProvider {
-  readonly kind = "steel-takeover";
+/**
+ * Keyless Human surface for a browser session already owned by the consumer.
+ * Browser/session lifecycle stays in MapsBrowserRuntime; this provider owns only
+ * the authenticated Handoff broker locator and its revocation lifecycle.
+ */
+export class ThinTakeoverHumanProvider implements ExternalHumanSurfaceProvider {
+  readonly kind = "thin-takeover";
   private active?: ActiveProviderSession;
 
-  constructor(
-    private readonly browser: SteelHostedBrowserSession,
-    private readonly broker: TakeoverBroker
-  ) {}
+  constructor(private readonly broker: TakeoverBroker) {}
 
-  async begin(request: ExternalHumanSurfaceRequest): Promise<{ sessionId: string; locator: string; expiresAt?: number }> {
-    if (this.active) throw new Error("Steel takeover Human provider is already active");
-    await this.browser.start();
-    const browserSession = this.browser.sessionInfo();
+  async begin(request: ExternalHumanSurfaceRequest): Promise<{ sessionId: string; locator: string }> {
+    if (this.active) throw new Error("Thin Takeover Human provider is already active");
     try {
       const locator = this.broker.createLink(
         { id: request.interventionId, epoch: request.epoch },
         request.principalBinding
       );
-      if (!locator) throw new Error("Steel takeover Human surface is unavailable");
+      if (!locator) throw new Error("Thin Takeover Human surface is unavailable");
       const sessionId = randomUUID();
       this.active = { sessionId, interventionId: request.interventionId, epoch: request.epoch };
-      return { sessionId, locator, expiresAt: browserSession.expiresAt };
+      return { sessionId, locator };
     } catch (error) {
       this.broker.revokeForIntervention(request.interventionId);
       throw error;
@@ -40,10 +39,9 @@ export class SteelTakeoverHumanProvider implements ExternalHumanSurfaceProvider 
   async revoke(sessionId: string): Promise<void> {
     const active = this.active;
     if (!active || active.sessionId !== sessionId) {
-      throw new Error("Steel takeover Human provider session no longer matches");
+      throw new Error("Thin Takeover Human provider session no longer matches");
     }
     this.active = undefined;
     this.broker.revokeForIntervention(active.interventionId);
-    // Keep the exact hosted browser session alive. Automation reconnects fresh after Human authority is revoked.
   }
 }

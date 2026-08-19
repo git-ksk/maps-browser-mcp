@@ -401,54 +401,47 @@ test("credential-safe Cua takeover is explicit and reuses the authenticated take
   });
 
   await withEnv({ MAPS_CREDENTIAL_SAFE_TRANSPORT: "unknown" }, () => {
-    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover, steel_live_view/);
+    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover, thin_takeover/);
   });
 });
 
 
-test("Steel Thin Takeover handoff requires the hosted browser owner and never falls back to local profile switching", async () => {
+test("keyless Thin Takeover requires the authenticated broker and rejects Steel provider settings", async () => {
   await withEnv({
     MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
-    MAPS_CREDENTIAL_SAFE_TRANSPORT: "steel_live_view",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "thin_takeover",
     MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile"
-  }, () => {
-    assert.throws(() => loadConfig(), /requires MAPS_BROWSER_BACKEND=steel/);
-  });
-
-  await withEnv({
-    MAPS_BROWSER_BACKEND: "steel",
-    STEEL_API_KEY: "steel-test-api-key",
-    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
-    MAPS_CREDENTIAL_SAFE_TRANSPORT: "steel_live_view"
   }, () => {
     assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
   });
 
   await withEnv({
-    MAPS_BROWSER_BACKEND: "steel",
-    STEEL_API_KEY: "steel-test-api-key",
     MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
-    MAPS_CREDENTIAL_SAFE_TRANSPORT: "steel_live_view",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "thin_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
     MAPS_REMOTE_TAKEOVER: "true",
     MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
-    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
-    MAPS_STEEL_PROFILE_ID: "maps-profile",
-    MAPS_STEEL_SESSION_TIMEOUT_SECONDS: "1800"
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
   }, () => {
     const config = loadConfig();
-    assert.equal(config.browser.backend, "steel");
-    assert.equal(config.browser.steel.profileId, "maps-profile");
-    assert.equal(config.browser.steel.timeoutMs, 1_800_000);
-    assert.equal(config.credentialSafeHandoff.transport, "steel_live_view");
+    assert.equal(config.credentialSafeHandoff.transport, "thin_takeover");
+    assert.equal(config.takeover.enabled, true);
   });
 
   await withEnv({
     MAPS_BROWSER_BACKEND: "steel",
-    STEEL_API_KEY: "steel-test-api-key",
     MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
-    MAPS_CREDENTIAL_SAFE_TRANSPORT: "external"
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "thin_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
   }, () => {
-    assert.throws(() => loadConfig(), /requires MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view/);
+    assert.throws(() => loadConfig(), /MAPS_BROWSER_BACKEND=steel was removed/);
+  });
+
+  await withEnv({ STEEL_API_KEY: "unused-provider-key" }, () => {
+    assert.throws(() => loadConfig(), /STEEL_API_KEY is no longer used/);
   });
 });
 

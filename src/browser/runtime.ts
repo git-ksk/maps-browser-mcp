@@ -15,6 +15,7 @@ import {
 } from "./authenticated-readiness.js";
 import { classifyGoogleInterventionSurface } from "./intervention-surface.js";
 import { normalizeBrowserAutomationEndpoint, type BrowserAutomationEndpoint, type BrowserSessionOwner } from "./browser-session-owner.js";
+import { CdpScreencastCapture, FramePipeline, LatencyMetrics, type CdpScreencastPage } from "../takeover-runtime/index.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -201,12 +202,15 @@ export class BrowserRuntimeError extends Error {
 
 export class MapsBrowserRuntime {
   private client?: CdpClient;
+  private clientOwner?: "automation" | "human";
   private endpoint?: BrowserAutomationEndpoint;
   private targetId?: string;
   private lastAction?: MapsAction;
   private selectedRoute?: SelectedRouteIdentity;
   private viewState: MapsViewState = "blank";
   private readonly handoff = new ExecutionHandoffState<MapsAction, MapsInterventionReason>();
+  private readonly takeoverMetrics = new LatencyMetrics();
+  private readonly framePipeline = new FramePipeline(undefined, this.takeoverMetrics);
 
   constructor(
     private readonly chrome: BrowserSessionOwner,
@@ -360,70 +364,28 @@ export class MapsBrowserRuntime {
   ): AsyncIterable<{ data: string; width: number; height: number; hostname: string; mimeType: "image/jpeg" }> {
     const { client, url } = await this.getHumanTakeoverClient(interventionId, epoch);
     const viewport = await this.viewportSize(client);
-    let hostname = new URL(url).hostname;
-    let latest: { data: string } | undefined;
-    let surfaceError: unknown;
-    let wake: (() => void) | undefined;
-
-    const notify = () => {
-      const resolve = wake;
-      wake = undefined;
-      resolve?.();
-    };
-    const onAbort = () => notify();
-    signal.addEventListener("abort", onAbort, { once: true });
-
-    const removeFrameListener = client.Page.screencastFrame((frame) => {
-      void client.Page.screencastFrameAck({ sessionId: frame.sessionId }).catch(() => undefined);
-      latest = { data: frame.data };
-      notify();
+    const capture = new CdpScreencastCapture({
+      page: client.Page as unknown as CdpScreencastPage,
+      width: viewport.width,
+      height: viewport.height,
+      hostname: new URL(url).hostname,
+      assertSurface: (nextUrl) => this.assertHumanTakeoverSurface(nextUrl)
     });
-    const removeNavigationListener = client.Page.frameNavigated((event) => {
-      if (event.frame.parentId) return;
-      try {
-        this.assertHumanTakeoverSurface(event.frame.url);
-        hostname = new URL(event.frame.url).hostname;
-      } catch (error) {
-        surfaceError = error;
+    for await (const captured of capture.frames(signal)) {
+      const frame = await this.framePipeline.process(captured);
+      if (frame.kind !== "encoded_image") {
+        throw new BrowserRuntimeError("UI_STATE_CHANGED", "Phase 1 takeover transport accepts encoded image frames only");
       }
-      notify();
-    });
-
-    let screencastStarted = false;
-    try {
-      if (signal.aborted) return;
-      await client.Page.startScreencast({
-        format: "jpeg",
-        quality: 75,
-        maxWidth: Math.min(viewport.width, 1_600),
-        maxHeight: Math.min(viewport.height, 1_200),
-        everyNthFrame: 1
-      });
-      screencastStarted = true;
-      while (!signal.aborted) {
-        if (surfaceError) throw surfaceError;
-        if (!latest) {
-          await new Promise<void>((resolve) => {
-            wake = resolve;
-            if (signal.aborted || surfaceError || latest) notify();
-          });
-          continue;
-        }
-        const frame = latest;
-        latest = undefined;
-        yield {
-          data: frame.data,
-          width: viewport.width,
-          height: viewport.height,
-          hostname,
-          mimeType: "image/jpeg"
-        };
+      if (frame.mimeType !== "image/jpeg") {
+        throw new BrowserRuntimeError("UI_STATE_CHANGED", "CDP screencast Phase 1 must remain JPEG passthrough");
       }
-    } finally {
-      signal.removeEventListener("abort", onAbort);
-      removeFrameListener();
-      removeNavigationListener();
-      if (screencastStarted) await client.Page.stopScreencast().catch(() => undefined);
+      yield {
+        data: frame.data,
+        width: frame.width,
+        height: frame.height,
+        hostname: frame.hostname,
+        mimeType: frame.mimeType
+      };
     }
   }
 
@@ -432,6 +394,7 @@ export class MapsBrowserRuntime {
     const viewport = await this.viewportSize(client);
     const safeX = Math.max(0, Math.min(viewport.width, x));
     const safeY = Math.max(0, Math.min(viewport.height, y));
+    const startedAt = performance.now();
     await client.Input.dispatchMouseEvent({
       type: "mousePressed",
       x: safeX,
@@ -448,11 +411,13 @@ export class MapsBrowserRuntime {
       buttons: 0,
       clickCount: 1
     });
+    this.takeoverMetrics.record("input_dispatch_ms", performance.now() - startedAt);
   }
 
   async scrollHumanTakeover(interventionId: string, epoch: number, deltaY: number): Promise<void> {
     const { client } = await this.getHumanTakeoverClient(interventionId, epoch);
     const viewport = await this.viewportSize(client);
+    const startedAt = performance.now();
     await client.Input.dispatchMouseEvent({
       type: "mouseWheel",
       x: viewport.width / 2,
@@ -460,6 +425,7 @@ export class MapsBrowserRuntime {
       deltaX: 0,
       deltaY
     });
+    this.takeoverMetrics.record("input_dispatch_ms", performance.now() - startedAt);
   }
 
   async insertHumanTakeoverText(interventionId: string, epoch: number, text: string): Promise<void> {
@@ -467,7 +433,9 @@ export class MapsBrowserRuntime {
     if (!text || text.length > 2_048) {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "Remote takeover text input is outside the allowed bounds");
     }
+    const startedAt = performance.now();
     await client.Input.insertText({ text });
+    this.takeoverMetrics.record("input_dispatch_ms", performance.now() - startedAt);
   }
 
   async pressHumanTakeoverKey(interventionId: string, epoch: number, key: string): Promise<void> {
@@ -475,11 +443,17 @@ export class MapsBrowserRuntime {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "Remote takeover key is not allowed");
     }
     const { client } = await this.getHumanTakeoverClient(interventionId, epoch);
+    const startedAt = performance.now();
     await client.Input.dispatchKeyEvent({ type: "keyDown", key });
     await client.Input.dispatchKeyEvent({ type: "keyUp", key });
+    this.takeoverMetrics.record("input_dispatch_ms", performance.now() - startedAt);
   }
 
-  async suspendAutomationForCredentialSafeHumanControl(interventionId: string, epoch: number): Promise<void> {
+  async suspendAutomationForCredentialSafeHumanControl(
+    interventionId: string,
+    epoch: number,
+    options: { preserveBrowserSession?: boolean } = {}
+  ): Promise<void> {
     const active = this.handoff.getActive();
     if (
       !active ||
@@ -496,8 +470,32 @@ export class MapsBrowserRuntime {
     await this.resetClient();
     this.endpoint = undefined;
     this.invalidateSemanticState(false);
-    if (this.chrome.suspendForHuman) await this.chrome.suspendForHuman();
-    else await this.chrome.close();
+    if (!options.preserveBrowserSession) {
+      if (this.chrome.suspendForHuman) await this.chrome.suspendForHuman();
+      else await this.chrome.close();
+    }
+  }
+
+  async releaseHumanTakeoverConnection(interventionId: string, epoch: number): Promise<void> {
+    const active = this.handoff.getActive();
+    if (!active || active.id !== interventionId || active.epoch !== epoch || active.status !== "human_active") {
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "Human takeover connection no longer matches the active intervention");
+    }
+    if (this.client && this.clientOwner !== "human") {
+      throw new BrowserRuntimeError("UI_STATE_CHANGED", "Automation CDP authority unexpectedly exists during Human takeover");
+    }
+    await this.resetClient();
+    this.endpoint = undefined;
+  }
+
+  getTakeoverLatencyMetrics(): {
+    captureToPipeline: ReturnType<LatencyMetrics["snapshot"]>;
+    inputDispatch: ReturnType<LatencyMetrics["snapshot"]>;
+  } {
+    return {
+      captureToPipeline: this.takeoverMetrics.snapshot("capture_to_pipeline_ms"),
+      inputDispatch: this.takeoverMetrics.snapshot("input_dispatch_ms")
+    };
   }
 
   async getClient(): Promise<CdpClient> {
@@ -754,7 +752,7 @@ export class MapsBrowserRuntime {
     if (!active || active.id !== interventionId || active.epoch !== epoch || active.status !== "human_active") {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "Remote takeover no longer matches the active human intervention");
     }
-    const client = await this.getClientUnchecked();
+    const client = await this.getClientUnchecked("human");
     const url = await this.currentUrlUnchecked(client);
     this.assertHumanTakeoverSurface(url);
     return { client, url };
@@ -771,9 +769,11 @@ export class MapsBrowserRuntime {
     return { width, height };
   }
 
-  private async getClientUnchecked(): Promise<CdpClient> {
-    await this.ensureConnected();
-    if (!this.client) throw new BrowserRuntimeError("BROWSER_UNAVAILABLE", "CDP client is unavailable");
+  private async getClientUnchecked(owner: "automation" | "human" = "automation"): Promise<CdpClient> {
+    await this.ensureConnected(owner);
+    if (!this.client || this.clientOwner !== owner) {
+      throw new BrowserRuntimeError("BROWSER_UNAVAILABLE", "CDP client ownership does not match the active authority");
+    }
     return this.client;
   }
 
@@ -782,8 +782,14 @@ export class MapsBrowserRuntime {
     return String(result.result.value ?? "");
   }
 
-  private async ensureConnected(): Promise<void> {
+  private async ensureConnected(owner: "automation" | "human"): Promise<void> {
     if (this.client) {
+      if (this.clientOwner !== owner) {
+        throw new BrowserRuntimeError(
+          "UI_STATE_CHANGED",
+          `CDP authority is fenced to ${this.clientOwner ?? "unknown"}; ${owner} cannot reuse that connection`
+        );
+      }
       try {
         await this.client.Runtime.evaluate({ expression: "1", returnByValue: true });
         return;
@@ -821,7 +827,7 @@ export class MapsBrowserRuntime {
             this.invalidateSemanticState();
             throw new BrowserRuntimeError(
               "BROWSER_UNAVAILABLE",
-              "Multiple Google Maps tabs are open in the hosted browser session. Keep one Maps tab open, close the others, then retry."
+              "Multiple Google Maps tabs are open behind the browser-level CDP endpoint. Keep one Maps tab open, close the others, then retry."
             );
           }
           const targetId = mapsTargets[0]?.targetId ?? (await raw.Target.createTarget({ url: "about:blank" })).targetId;
@@ -838,14 +844,15 @@ export class MapsBrowserRuntime {
         this.client.Runtime.enable(),
         this.client.DOM.enable()
       ]);
+      this.clientOwner = owner;
       if (!this.lastAction) this.viewState = "blank";
     } catch (error) {
       if (error instanceof PolicyError || error instanceof BrowserRuntimeError) throw error;
-      // Do not log connection objects: hosted CDP WebSocket URLs may contain provider API keys.
+      // Do not log connection objects: CDP endpoints are browser-control authority.
       console.error("[maps-browser-mcp] Chrome/CDP connection failed");
       throw new BrowserRuntimeError(
         "BROWSER_UNAVAILABLE",
-        "Unable to connect to the dedicated browser session. Check the configured browser backend."
+        "Unable to connect to the dedicated process-owned browser session."
       );
     }
   }
@@ -853,6 +860,7 @@ export class MapsBrowserRuntime {
   private async resetClient(): Promise<void> {
     const client = this.client;
     this.client = undefined;
+    this.clientOwner = undefined;
     this.targetId = undefined;
     if (client) await client.close().catch(() => undefined);
   }
