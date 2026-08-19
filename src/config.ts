@@ -115,11 +115,6 @@ export interface AppConfig {
     provider: "none" | "static-bearer" | "module";
     module?: string;
   };
-  usage?: {
-    projectId: string;
-    dailyLimit: number;
-    leaseTtlMs: number;
-  };
   http: {
     host: string;
     port: number;
@@ -207,22 +202,6 @@ export function loadConfig(): AppConfig {
   if (authProvider === "none" && bearerToken) {
     throw new Error("MCP_BEARER_TOKEN requires MCP_AUTH_PROVIDER=static-bearer or an unset MCP_AUTH_PROVIDER");
   }
-
-  const usageRequired = envBool("MCP_USAGE_REQUIRED", false);
-  const usageProjectId = process.env.MCP_USAGE_FIRESTORE_PROJECT_ID?.trim() || undefined;
-  if (usageRequired && !usageProjectId) {
-    throw new Error("MCP_USAGE_FIRESTORE_PROJECT_ID is required when MCP_USAGE_REQUIRED=true");
-  }
-  if (usageProjectId && authProvider === "none") {
-    throw new Error("Firestore MCP usage control requires an authenticated HTTP principal provider");
-  }
-  const usage = usageProjectId
-    ? {
-        projectId: usageProjectId,
-        dailyLimit: envInt("MCP_USAGE_DAILY_LIMIT", 100, 1, 10_000),
-        leaseTtlMs: envInt("MCP_USAGE_LEASE_TTL_MS", 300_000, 10_000, 600_000)
-      }
-    : undefined;
 
   if (!isLoopbackBind(host)) {
     if (!allowNonLoopback) {
@@ -330,7 +309,6 @@ export function loadConfig(): AppConfig {
       provider: authProvider,
       module: authModule
     },
-    usage,
     http: {
       host,
       port: httpPort,

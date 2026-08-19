@@ -11,9 +11,7 @@ import {
   type ServerContext
 } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
-import { UsageDeniedError } from "mcp-usage-control";
 import { loadConfig } from "./config.js";
-import { MapsUsageRuntime, mapsUsageOperationId } from "./usage.js";
 import { ActionApprovalError, ActionApprovalManager } from "./action-approval.js";
 import {
   ACTION_APPROVAL_INPUT_KEY,
@@ -75,7 +73,6 @@ import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.3.2";
 const config = loadConfig();
-const usageRuntime = config.usage ? new MapsUsageRuntime(config.usage) : undefined;
 const compiler = new MapsUrlCompiler();
 const policy = new PolicyEngine({
   interactiveAssist: config.policy.interactiveAssist,
@@ -159,14 +156,9 @@ function errorResult(error: unknown): CallToolResult {
     error instanceof OperationQueueError ||
     error instanceof ExecutionHandoffError ||
     error instanceof ExternalHumanSurfaceError ||
-    error instanceof ActionApprovalError ||
-    error instanceof UsageDeniedError;
+    error instanceof ActionApprovalError;
   if (!known) console.error("[maps-browser-mcp] unexpected tool error", error);
-  const code = error instanceof UsageDeniedError
-    ? "USAGE_DENIED"
-    : known && typeof error === "object" && error !== null && "code" in error
-      ? String(error.code)
-      : "INTERNAL_ERROR";
+  const code = known ? error.code : "INTERNAL_ERROR";
   const message = known
     ? error.message
     : "The operation failed unexpectedly. Check the local server logs for details.";
@@ -406,7 +398,7 @@ async function executeToolTask<T>(
   }
 }
 
-async function runToolWithHandoffUnmetered<T>(input: {
+async function runToolWithHandoff<T>(input: {
   toolName: string;
   args: unknown;
   resumeStrategy: HandoffResumeStrategy;
@@ -512,45 +504,6 @@ async function runToolWithHandoffUnmetered<T>(input: {
 }
 
 
-async function runUsageMetered<T>(input: {
-  toolName: string;
-  args: unknown;
-  ctx: ServerContext;
-  task: () => Promise<T>;
-}): Promise<T | CallToolResult> {
-  if (!usageRuntime) return input.task();
-  const principal = currentRequestPrincipal();
-  if (!principal) {
-    return errorResult(new Error("MCP usage control requires an authenticated HTTP principal"));
-  }
-  try {
-    return await usageRuntime.execute({
-      operationId: mapsUsageOperationId(principal.operationScope, input.ctx.mcpReq.id),
-      principalId: principalBinding(principal),
-      tool: input.toolName,
-      args: input.args,
-      task: input.task
-    });
-  } catch (error) {
-    return errorResult(error);
-  }
-}
-
-async function runToolWithHandoff<T>(input: {
-  toolName: string;
-  args: unknown;
-  resumeStrategy: HandoffResumeStrategy;
-  ctx: ServerContext;
-  task: () => Promise<T>;
-}): Promise<CallToolResult | InputRequiredResult> {
-  return runUsageMetered({
-    toolName: input.toolName,
-    args: input.args,
-    ctx: input.ctx,
-    task: () => runToolWithHandoffUnmetered(input)
-  });
-}
-
 function routeSendApprovalPrompt(args: RouteSendActionInput): string {
   return [
     `Approve sending the selected route "${args.expectedRouteLabel}"`,
@@ -632,7 +585,7 @@ async function beginRouteSendApproval(
   }
 }
 
-async function runRouteSendWithApprovalUnmetered(
+async function runRouteSendWithApproval(
   args: RouteSendActionInput,
   ctx: ServerContext
 ): Promise<CallToolResult | InputRequiredResult> {
@@ -641,7 +594,7 @@ async function runRouteSendWithApprovalUnmetered(
   if (!state) return beginRouteSendApproval(toolName, args, ctx);
 
   if (state.phase === "awaiting_human") {
-    return runToolWithHandoffUnmetered({
+    return runToolWithHandoff({
       toolName,
       args,
       resumeStrategy: "require_fresh_semantic_action",
@@ -868,15 +821,11 @@ export function buildServer(): McpServer {
           idempotentHint: false
         }
       },
-      async ({ expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel, deviceIndex, expectedDeviceLabel }, ctx) => {
-        const args = { expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel, deviceIndex, expectedDeviceLabel };
-        return runUsageMetered({
-          toolName: "maps_send_route_to_device",
-          args,
-          ctx,
-          task: () => runRouteSendWithApprovalUnmetered(args, ctx)
-        });
-      }
+      async ({ expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel, deviceIndex, expectedDeviceLabel }, ctx) =>
+        runRouteSendWithApproval(
+          { expectedOrigin, expectedDestination, expectedRouteIndex, expectedRouteLabel, deviceIndex, expectedDeviceLabel },
+          ctx
+        )
     );
   }
 
@@ -1480,7 +1429,6 @@ export async function shutdownRuntime(): Promise<void> {
   await credentialSafeCuaAdapter.close().catch(() => undefined);
   await credentialSafeBrowser?.close().catch(() => undefined);
   await runtime.close();
-  await usageRuntime?.close().catch(() => undefined);
 }
 
 export { config };
