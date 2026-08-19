@@ -180,7 +180,7 @@ gcloud run services update maps-browser-mcp \
   --max-instances=1
 ```
 
-A `1Gi` instance was observed to cross its memory limit during repeated headless `maps_search` + `maps_read_place_summary` calls, causing Cloud Run to terminate the container and return HTTP `503`. This is a deployment-capacity failure, not a bounded-reader exception to catch inside the MCP process.
+A `1Gi` instance was observed to cross its memory limit during repeated headless `maps_search` + `maps_read_place_summary` calls, causing Cloud Run to terminate the container and return HTTP `503`. The remote MCP client surfaced that transport failure as an `UNKNOWN`/TaskGroup-style exception. This is a deployment-capacity failure, not a bounded-reader exception to catch inside the MCP process.
 
 The default container Chrome profile is ephemeral. That is acceptable for protocol/transport dogfood and a disposable signed-out Google acceptance run, but it is **not durable signed-in Maps state**. If persistent authenticated Maps workflows are required later, use a controlled single-user runtime with an appropriate persistent profile strategy and the same V5 isolation rules.
 
