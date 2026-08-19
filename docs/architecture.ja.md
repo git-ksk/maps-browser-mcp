@@ -43,7 +43,7 @@ Google Maps Web
 
 ## Browser Lifecycle
 
-デフォルトではrepository外の次の専用profileでChrome / Chromiumを起動または再利用します。
+Browser ownershipは `MAPS_BROWSER_BACKEND` で選択します。既定の `local` ownerはrepository外の次の専用profileでChrome / Chromiumを起動または再利用します。optionalな `steel` ownerは1つのstateful hosted Steel browser sessionを作り、server-side CDP WebSocket経由でautomation runtimeを接続します。provider固有ownershipはconsumer側 `BrowserSessionOwner` boundaryの内側に置き、`mcp-execution-handoff` はbrowser lifecycleを所有しません。
 
 ```text
 ~/.maps-browser-mcp/chrome-profile
@@ -61,7 +61,9 @@ Unix系OSでは専用profile directoryを現在userだけがアクセスでき�
 
 CDP targetがstale、再接続、watchdog resetされた場合、以前のsearch / directions状態を新しいpageへ引き継がずsemantic stateを無効化します。
 
-Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solverは使いません。
+Steel ownerではautomationとHuman Live Viewがexact same hosted browser sessionを参照します。CDP WebSocketとprovider API keyはserver-side限定です。optionalなSteel profile idでprovider session間の通常browser stateをpersistできますが、Maps runtime自体はsingle-user/single-sessionのままで、複数principal間で1 hosted sessionを共有しません。
+
+Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solverは使いません。Steel integrationでもprovider側CAPTCHA solvingを明示的に無効化してsessionを作ります。
 
 ## Navigation Fast Path
 
@@ -135,12 +137,36 @@ Action / read counterはprocess-local safety guardであり、再起動でreset�
 
 自然発生したconsent / sign-in / CAPTCHA / access challengeは既存Execution Handoffでagent authorityを停止します。
 
-- MCPはaccount credentialを受け取らない
-- challengeをsolve / bypassしない
+- MCPはaccount credential、MFA/OTP、passkey material、cookie、browser-session bearer material、provider API keyを受け取らない
+- challengeをsolve / bypassせず、Passkey/WebAuthn ceremonyはHuman/provider controlのまま
 - Human control完了をpending actionや別actionのapprovalとみなさない
 - state-changing / state-dependent semantic operationはfresh reissue / revalidationを要求
 - reconnect / restart後に旧semantic operationを自動replayしない
 - V4 cleanupはintervention stateを確認し、handoff activeならUI inputを送らない
+
+Credential-safe Human controlは同じ `ExternalHumanSurfaceProvider` contractの背後でconsumer-ownedな2 lifecycleを使います。
+
+```text
+local/Mac profile-switch
+  automation CDP Chrome
+    -> Human authority
+    -> automation Chrome終了
+    -> same dedicated profileをCDPなしnormal Chromeで開く
+    -> external OS surface または optional Cua provider
+    -> Human surface revoke + normal Chrome終了
+    -> fresh automation browser + fresh validation
+
+hosted/Cloud Run shared-session
+  stateful hosted browser + automation CDP attachment
+    -> Human authority
+    -> automation CDP attachmentだけ閉じる
+    -> exact same browser sessionのprovider Live View
+    -> Human surface revoke
+    -> same sessionへfresh automation CDP attachment
+    -> fresh validation
+```
+
+hosted実装はURL credential/query/fragmentを含むLive View locatorをMCPへ出す前に拒否します。operator locator自体をsecret bearer/session materialにしないgeneric handoff ruleを維持します。
 
 ## MCP Apps Render Boundary
 

@@ -78,6 +78,28 @@ HTTP port precedence is:
 
 `PORT` exists only as a generic runtime fallback. `MCP_HTTP_PORT` remains the project-specific configuration and takes precedence whenever both are present.
 
+## Hosted browser backend for Cloud Run
+
+Cloud/container deployments do not have to make the container-owned Chromium process the Human handoff surface. Set `MAPS_BROWSER_BACKEND=steel` to use the current hosted reference backend: one stateful Steel browser session is owned by the Maps process, normal automation attaches over its server-side CDP WebSocket, and credential-safe Human handoff uses Live View for that exact session.
+
+A credential-safe hosted configuration is shaped like:
+
+```bash
+MAPS_BROWSER_BACKEND=steel
+STEEL_API_KEY=<load from Secret Manager>
+MAPS_CREDENTIAL_SAFE_HANDOFF=true
+MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view
+# optional
+MAPS_STEEL_PROFILE_ID=<dedicated single-user profile id>
+MAPS_STEEL_SESSION_TIMEOUT_SECONDS=1800
+```
+
+`STEEL_API_KEY` and the generated CDP WebSocket are server-side secrets. Do not place them in MCP results, logs, client configuration, source control, or a Human operator URL. The integration refuses secret-shaped Live View locators with URL credentials/query/fragment and explicitly disables Steel CAPTCHA solving. Passkey, MFA, consent, and challenge completion remain Human actions.
+
+`STEEL_BASE_URL` may point the SDK at an API-compatible self-hosted Steel origin. That configuration path is not a compatibility claim for every Steel deployment/version; validate its session and Live View behavior before production use. The current hosted implementation is a single-user reference path, not multi-tenant browser isolation.
+
+This path is designed for Cloud Run-style compute because the stateful browser lives in the browser backend rather than depending on a local interactive desktop. It does not change the pending live Google sign-in acceptance status; that test remains separate and manual.
+
 ## Browser profile
 
 The image defaults to an ephemeral dedicated profile:

@@ -41,7 +41,7 @@ The design is for a single local user/browser session. Multi-user hosting would 
 
 ## Browser lifecycle
 
-By default, the runtime starts or reuses a dedicated Chrome/Chromium process/profile outside the repository at `~/.maps-browser-mcp/chrome-profile`.
+Browser ownership is selected by `MAPS_BROWSER_BACKEND`. The default `local` owner starts or reuses a dedicated Chrome/Chromium process/profile outside the repository at `~/.maps-browser-mcp/chrome-profile`. The optional `steel` owner creates one stateful hosted Steel browser session and connects the automation runtime to that session over a server-side CDP WebSocket. Provider-specific ownership stays behind the consumer-side `BrowserSessionOwner` boundary; `mcp-execution-handoff` does not own browser lifecycle.
 
 Chrome is launched with a separate `--user-data-dir`, `--remote-debugging-address=127.0.0.1`, and `--remote-debugging-port=0`. The project-managed endpoint is read from Chrome's `DevToolsActivePort` record and is reused only when **both** the numeric port and browser WebSocket identity match the live `/json/version` endpoint. This avoids trusting a stale profile file if an unrelated Chrome process later reuses the same numeric port. On Unix-like systems, the dedicated profile directory is restricted to the current user.
 
@@ -51,7 +51,9 @@ When connecting to the dedicated browser, the runtime accepts zero or one Google
 
 If the CDP target becomes stale, reconnects, or is reset by the watchdog, semantic state is invalidated rather than assuming that the newly attached page still represents the previous search/directions operation.
 
-No stealth plugins, fingerprint spoofing, proxy rotation, or CAPTCHA solvers are used.
+For the Steel owner, automation and Human Live View intentionally reference the exact same hosted browser session. The CDP WebSocket and provider API key remain server-side. An optional Steel profile id may persist normal browser state between provider sessions, but the Maps runtime remains single-user/single-session and does not share one hosted session across principals.
+
+No stealth plugins, fingerprint spoofing, proxy rotation, or CAPTCHA solvers are used. The Steel integration explicitly creates sessions with provider CAPTCHA solving disabled.
 
 ## Navigation fast path
 
@@ -127,12 +129,36 @@ Naturally occurring consent, sign-in, CAPTCHA, and access-challenge surfaces sus
 
 The boundary is deliberately separate from semantic action approval:
 
-- MCP never receives account credentials,
-- challenges are not solved or bypassed,
+- MCP never receives account credentials, MFA/OTP values, passkey material, cookies, browser-session bearer material, or provider API keys,
+- challenges are not solved or bypassed, and Passkey/WebAuthn ceremonies remain Human/provider controlled,
 - completing human control does not approve the pending or a different action,
 - state-changing/state-dependent semantic operations require fresh reissue and revalidation,
 - reconnect/restart never automatically replays an older semantic operation,
 - V4 operation cleanup must test intervention state before sending any best-effort UI input.
+
+Credential-safe Human control has two consumer-owned lifecycle implementations behind the same `ExternalHumanSurfaceProvider` contract:
+
+```text
+local/Mac profile-switch
+  automation CDP Chrome
+    -> Human authority
+    -> close automation Chrome
+    -> open the same dedicated profile in normal Chrome without CDP
+    -> external OS surface or optional Cua provider
+    -> revoke Human surface + close normal Chrome
+    -> fresh automation browser + fresh validation
+
+hosted/Cloud Run shared-session
+  stateful hosted browser + automation CDP attachment
+    -> Human authority
+    -> close only the automation CDP attachment
+    -> provider Live View on the exact same browser session
+    -> revoke Human surface
+    -> fresh automation CDP attachment to that same session
+    -> fresh validation
+```
+
+The hosted implementation rejects a Live View locator containing URL credentials, query parameters, or fragments before it can be surfaced through MCP. This preserves the generic handoff rule that an operator locator must not double as secret bearer/session material.
 
 ## MCP Apps render boundary
 

@@ -207,6 +207,41 @@ test("credential-safe browser suspension keeps Human authority active while stop
   );
 });
 
+
+test("credential-safe browser suspension detaches automation without closing a hosted browser owner", async () => {
+  let suspended = 0;
+  let closed = 0;
+  const hosted = {
+    async start() { return { kind: "browser_websocket" as const, websocketUrl: "wss://example.invalid/session" }; },
+    async suspendForHuman() { suspended += 1; },
+    async close() { closed += 1; }
+  };
+  const policy = {
+    isAllowedMapsUrl(value: string) {
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname === "www.google.com" &&
+          (url.pathname === "/maps" || url.pathname.startsWith("/maps/"));
+      } catch { return false; }
+    }
+  } as PolicyEngine;
+  const runtime = new MapsBrowserRuntime(hosted, policy);
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+
+  await runtime.suspendAutomationForCredentialSafeHumanControl(human.id, human.epoch);
+
+  assert.equal(suspended, 1);
+  assert.equal(closed, 0);
+  assert.equal(runtime.getActiveIntervention()?.authority, "human");
+});
+
 test("selected route identity is bounded semantic state and is cleared by later semantic mutation", () => {
   const runtime = makeRuntime();
   const mutable = runtime as unknown as {

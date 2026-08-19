@@ -44,6 +44,8 @@ Managed profileではChromeの `DevToolsActivePort` recordについて、数値p
 
 専用profile内にGoogle Maps page targetが複数ある曖昧な状態では、先頭tabを勝手に選ばず起動を拒否します。
 
+`MAPS_BROWSER_BACKEND=steel` を使う場合、Steel API keyとCDP WebSocketはDevTools endpointと同等のbrowser-control secretとして扱います。server-side限定で、logやMCPへ返しません。Credential-safe Human handoffではexact hosted browser sessionを維持したままautomation attachmentを閉じ、検証済みLive View locatorだけをHumanへ出します。URL credential/query/fragment付きlocatorはbearer/session secretがMCP boundaryを越える可能性があるため拒否します。Steel CAPTCHA solvingは無効で、CAPTCHA、MFA、consent、Passkey/WebAuthnはHuman/provider controlのままbypassしません。
+
 ## Runtime Failure Containment
 
 1 processが1 semantic browser stateを管理するため、browser operationは直列化します。`MAPS_MAX_PENDING_ACTIONS` がqueue上限です。
@@ -74,6 +76,8 @@ Bug Report、log、commit、screenshotへ以下を含めないでください。
 - Tunnel credential
 - Bearer token
 - Authorization header
+- hosted-browser API key / CDP WebSocket URL
+- MFA/OTP value、passkey material、challenge answer
 - private location history
 - 個人email address
 - その他accountを特定できる情報

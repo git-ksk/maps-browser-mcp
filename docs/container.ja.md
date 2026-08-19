@@ -78,6 +78,28 @@ HTTP port は次の順番で決まります。
 
 `PORT` は一般的な runtime 向け fallback にすぎません。`MCP_HTTP_PORT` が指定されている場合は、必ずそちらが優先されます。
 
+## Cloud Run向けHosted Browser Backend
+
+Cloud/container deploymentでcontainer-owned ChromiumをHuman handoff surfaceに固定する必要はありません。`MAPS_BROWSER_BACKEND=steel` を指定するとcurrent hosted reference backendを使います。Maps processが1つのstateful Steel browser sessionを所有し、通常automationはserver-side CDP WebSocketでattachし、credential-safe Human handoffはexact same sessionのLive Viewを使います。
+
+Credential-safe hosted構成例:
+
+```bash
+MAPS_BROWSER_BACKEND=steel
+STEEL_API_KEY=<Secret Managerから注入>
+MAPS_CREDENTIAL_SAFE_HANDOFF=true
+MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view
+# optional
+MAPS_STEEL_PROFILE_ID=<dedicated single-user profile id>
+MAPS_STEEL_SESSION_TIMEOUT_SECONDS=1800
+```
+
+`STEEL_API_KEY` と生成CDP WebSocketはserver-side secretです。MCP result、log、client config、source control、Human operator URLへ出してはいけません。URL credential/query/fragmentを含むsecret-shaped Live View locatorは拒否し、SteelのCAPTCHA solvingも明示的に無効化します。Passkey、MFA、consent、challenge completionはHuman actionのままです。
+
+`STEEL_BASE_URL` でSDKをAPI-compatible self-hosted Steel originへ向けられますが、全Steel deployment/versionへの互換保証ではありません。production利用前にsession/Live View behaviorを検証してください。現在のhosted実装はsingle-user reference pathであり、multi-tenant browser isolationではありません。
+
+この経路はstateful browserをbrowser backend側へ置けるためCloud Run型computeを想定した設計です。Pending中のGoogle sign-in live acceptance statusを変更するものではなく、live testは別途manualで行います。
+
 ## Browser profile
 
 イメージでは、次の一時専用 profile をデフォルトで使用します。

@@ -342,17 +342,22 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MCP_ALLOW_NONLOOPBACK` | `false` | Explicit opt-in before non-loopback bind |
 | `MCP_BEARER_TOKEN` | empty | Optional guard; mandatory for non-loopback bind; minimum 24 chars |
 | `MCP_MAX_BODY_BYTES` | `262144` | Maximum MCP request body size |
-| `MAPS_CHROME_EXECUTABLE` | auto-detect | Chrome/Chromium executable |
-| `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | Dedicated profile directory |
-| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Explicit opt-in before existing-CDP attachment |
+| `MAPS_BROWSER_BACKEND` | `local` | Browser owner: `local` managed Chrome/Chromium or `steel` stateful hosted browser session |
+| `MAPS_CHROME_EXECUTABLE` | auto-detect | Local backend Chrome/Chromium executable |
+| `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | Local backend dedicated profile directory |
+| `STEEL_API_KEY` | unset | Server-side Steel Cloud API key for `MAPS_BROWSER_BACKEND=steel`; never returned through MCP |
+| `STEEL_BASE_URL` | unset | Optional API-compatible self-hosted Steel origin; HTTPS except loopback development |
+| `MAPS_STEEL_PROFILE_ID` | unset | Optional Steel profile id for persistent hosted browser state |
+| `MAPS_STEEL_SESSION_TIMEOUT_SECONDS` | `1800` | Hosted Steel session lifetime, 300-86400 seconds |
+| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Local backend explicit opt-in before existing-CDP attachment |
 | `MAPS_CDP_PORT` | unset | Advanced: existing local CDP endpoint |
 | `MAPS_HEADLESS` | `false` | Headless Chrome |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable bounded visible-state reading and V4 semantic UI operations that require it |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | Enable the fail-closed bounded V5 authenticated tools; also requires Interactive Assist and the dedicated single-user profile gate |
-| `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Enable normal-browser Human authentication handoff for sign-in/consent; managed CDP Chrome is stopped before credential entry |
-| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` uses an existing OS-level remote-access surface; `cua_takeover` reuses the authenticated Takeover UI with local Cua Driver native capture/input |
-| `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | Optional fixed HTTPS locator for `external` transport only; credentials/query/fragment are rejected |
+| `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Enable Human-only handoff for Google sign-in/consent/challenge surfaces; local ownership stops CDP Chrome, hosted ownership detaches automation while keeping the same browser session alive |
+| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` uses an OS-level local surface; `cua_takeover` uses local Cua; `steel_live_view` uses the exact hosted Steel session Live View |
+| `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | Optional fixed HTTPS locator for local `external` transport only; credentials/query/fragment are rejected |
 | `MAPS_CUA_DRIVER_COMMAND` | `cua-driver` | Cua Driver executable used only by `cua_takeover`; the integration invokes only a fixed seven-tool Human transport allowlist |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | Optional restricted Maps Embed API key for the MCP Apps directions view; the text/structured render tool remains available without it |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
@@ -366,7 +371,13 @@ Invalid boolean/integer configuration fails fast instead of being silently coerc
 
 ### V5 authenticated-workflow opt-in
 
-`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. When `MAPS_CREDENTIAL_SAFE_HANDOFF=true` is also enabled, `maps_request_human_sign_in` adds a Human-only authentication ceremony: the managed CDP browser is fully stopped, the same dedicated profile is opened in normal Chrome without remote-debugging/automation attachment, and automation resumes only after the normal browser is closed and fresh readiness is re-read. `MAPS_CREDENTIAL_SAFE_TRANSPORT=external` points at an existing OS-level remote-access product. `cua_takeover` instead reuses the authenticated short-lived Takeover UI and a local Cua Driver bridge bound to the exact dedicated Chrome PID/window and limited to frame capture plus tap/scroll/text/key primitives. Human-entered text stays out of the northbound Maps MCP, model context, process argv, and repository logs while being transiently delivered over local Cua MCP stdin. `cua_takeover` requires Remote Takeover to be enabled. The setting rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden. The send mutation additionally requires a modern MCP 2026-07-28 client with form elicitation support.
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. When `MAPS_CREDENTIAL_SAFE_HANDOFF=true` is also enabled, `maps_request_human_sign_in` adds a Human-only ceremony for Google sign-in; naturally detected consent and CAPTCHA/access-challenge surfaces use the same Human boundary. Credentials, MFA/OTP values, passkey material, cookies, browser-session bearer material, and provider API keys never become MCP/model/log content, and passkey/WebAuthn ceremonies are not bypassed.
+
+With the default `MAPS_BROWSER_BACKEND=local`, `external` and `cua_takeover` use the existing profile-switch lifecycle: managed CDP Chrome is stopped, the same dedicated profile is opened in normal Chrome without remote-debugging/automation attachment, and automation relaunches only after the Human surface is revoked and fresh readiness is re-read. Cua is one optional Mac/local provider, not a Maps runtime dependency; `cua_takeover` still requires authenticated Remote Takeover and keeps Human input out of the northbound MCP.
+
+With `MAPS_BROWSER_BACKEND=steel`, credential-safe handoff must use `steel_live_view`. Automation and Human control share one stateful Steel browser session: the automation CDP attachment is closed while Human authority is exclusive, the provider Live View controls that exact session, and automation creates a fresh CDP attachment to the same session only after the Human surface is revoked. Steel CAPTCHA solving is explicitly disabled. The Steel API key/CDP WebSocket remain server-side; a Live View locator containing URL credentials, query, or fragment is rejected before it can be returned northbound. The hosted path is intended as the Cloud Run reference shape and remains single-user until per-principal browser isolation is implemented. It is not a claim that the pending live Google sign-in acceptance test has passed.
+
+Both ownership modes reject stale automatic replay after Human handoff. Existing-CDP attachment remains incompatible with credential-safe local ownership, `MCP_AUTH_PROVIDER=module` remains rejected for V5 until per-principal isolation exists, and the send mutation still requires a modern MCP 2026-07-28 client with form elicitation support.
 
 For the current remote single-user design, authenticate the public MCP client at an external gateway and use the private `static-bearer` hop to this core server. Do not forward a caller's public OAuth access token into the browser runtime. The versioned [reference OAuth gateway](reference/oauth-gateway/README.md) implements this shape as an isolated dogfood package; it is not included in the published root npm package. See [V5 authenticated workflows](docs/v5-authenticated-workflows.md) and [OAuth gateway pattern](docs/oauth-gateway.md).
 

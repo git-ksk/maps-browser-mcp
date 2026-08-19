@@ -33,6 +33,8 @@ For project-managed profiles, Chrome's `DevToolsActivePort` record is validated 
 
 The runtime also refuses ambiguous startup when multiple Google Maps page targets are open in the dedicated profile instead of silently taking control of the first target.
 
+When `MAPS_BROWSER_BACKEND=steel` is used, treat the Steel API key and CDP WebSocket as browser-control secrets equivalent in sensitivity to a DevTools endpoint. They stay server-side and must not be logged or returned through MCP. Credential-safe Human handoff closes the automation attachment while preserving the exact hosted browser session, then exposes only a validated Live View locator. A locator with URL credentials, query, or fragment is rejected rather than risking a bearer/session secret crossing the MCP boundary. Steel CAPTCHA solving is disabled; CAPTCHA, MFA, consent, and Passkey/WebAuthn are Human/provider-controlled rather than bypassed.
+
 ## Runtime failure containment
 
 One process controls one semantic browser state, so browser operations are serialized. `MAPS_MAX_PENDING_ACTIONS` bounds the queue. `MAPS_OPERATION_TIMEOUT_MS` bounds each active operation; on timeout the runtime resets the browser/CDP session before the queue proceeds, invalidating stale semantic state.
@@ -57,6 +59,8 @@ Do not include any of the following in bug reports, logs, commits, or screenshot
 - tunnel credentials,
 - bearer tokens,
 - authentication headers,
+- hosted-browser API keys or CDP WebSocket URLs,
+- MFA/OTP values, passkey material, or challenge answers,
 - private location history,
 - personal email addresses or other identifying account data.
 

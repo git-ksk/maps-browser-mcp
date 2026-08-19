@@ -12,6 +12,7 @@ const KEYS = [
   "MCP_AUTH_PROVIDER_MODULE",
   "MCP_ALLOWED_HOSTS",
   "MCP_ALLOWED_ORIGINS",
+  "MAPS_BROWSER_BACKEND",
   "MAPS_CDP_PORT",
   "MAPS_ALLOW_EXTERNAL_CDP",
   "MAPS_ALLOW_UNSANDBOXED_CHROMIUM",
@@ -24,6 +25,10 @@ const KEYS = [
   "MAPS_CREDENTIAL_SAFE_TRANSPORT",
   "MAPS_CREDENTIAL_SAFE_OPERATOR_URL",
   "MAPS_CUA_DRIVER_COMMAND",
+  "STEEL_API_KEY",
+  "STEEL_BASE_URL",
+  "MAPS_STEEL_PROFILE_ID",
+  "MAPS_STEEL_SESSION_TIMEOUT_SECONDS",
   "MAPS_HANDOFF_CHECKPOINT_FILE",
   "MAPS_HANDOFF_CHECKPOINT_KEY",
   "MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS",
@@ -396,7 +401,42 @@ test("credential-safe Cua takeover is explicit and reuses the authenticated take
   });
 
   await withEnv({ MAPS_CREDENTIAL_SAFE_TRANSPORT: "unknown" }, () => {
-    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover/);
+    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover, steel_live_view/);
+  });
+});
+
+
+test("Steel Live View handoff requires the hosted browser owner and never falls back to local profile switching", async () => {
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "steel_live_view",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_BROWSER_BACKEND=steel/);
+  });
+
+  await withEnv({
+    MAPS_BROWSER_BACKEND: "steel",
+    STEEL_API_KEY: "steel-test-api-key",
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "steel_live_view",
+    MAPS_STEEL_PROFILE_ID: "maps-profile",
+    MAPS_STEEL_SESSION_TIMEOUT_SECONDS: "1800"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.browser.backend, "steel");
+    assert.equal(config.browser.steel.profileId, "maps-profile");
+    assert.equal(config.browser.steel.timeoutMs, 1_800_000);
+    assert.equal(config.credentialSafeHandoff.transport, "steel_live_view");
+  });
+
+  await withEnv({
+    MAPS_BROWSER_BACKEND: "steel",
+    STEEL_API_KEY: "steel-test-api-key",
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "external"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_CREDENTIAL_SAFE_TRANSPORT=steel_live_view/);
   });
 });
 

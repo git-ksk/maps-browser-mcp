@@ -14,13 +14,35 @@ import {
   type AuthenticatedMapsReadiness
 } from "./authenticated-readiness.js";
 import { classifyGoogleInterventionSurface } from "./intervention-surface.js";
-import { ChromeProcess } from "./chrome-process.js";
+import { normalizeBrowserAutomationEndpoint, type BrowserAutomationEndpoint, type BrowserSessionOwner } from "./browser-session-owner.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 type CdpClient = Awaited<ReturnType<typeof CDP>>;
+
+function bindFlattenedCdpSession(raw: CdpClient, sessionId: string): CdpClient {
+  const bound = Object.create(raw) as CdpClient;
+  for (const name of ["Page", "Runtime", "DOM", "Input"] as const) {
+    const domain = raw[name] as unknown as Record<string | symbol, unknown>;
+    (bound as unknown as Record<string, unknown>)[name] = new Proxy(domain, {
+      get(target, property, receiver) {
+        const value = Reflect.get(target, property, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => Reflect.apply(value, target, [...args, sessionId]);
+      }
+    });
+  }
+  Object.defineProperty(bound, "close", {
+    value: async () => {
+      await raw.Target.detachFromTarget({ sessionId }).catch(() => undefined);
+      await raw.close();
+    }
+  });
+  return bound;
+}
+
 type CandidateKind = "place" | "route";
 type MapsPathKind = "search" | "place" | "directions" | "map" | "root" | "other";
 export type MapsInterventionReason = "access_challenge" | "sign_in" | "consent" | "external_surface";
@@ -168,7 +190,7 @@ export class BrowserRuntimeError extends Error {
 
 export class MapsBrowserRuntime {
   private client?: CdpClient;
-  private port?: number;
+  private endpoint?: BrowserAutomationEndpoint;
   private targetId?: string;
   private lastAction?: MapsAction;
   private selectedRoute?: SelectedRouteIdentity;
@@ -176,7 +198,7 @@ export class MapsBrowserRuntime {
   private readonly handoff = new ExecutionHandoffState<MapsAction, MapsInterventionReason>();
 
   constructor(
-    private readonly chrome: ChromeProcess,
+    private readonly chrome: BrowserSessionOwner,
     private readonly policy: PolicyEngine
   ) {}
 
@@ -387,9 +409,10 @@ export class MapsBrowserRuntime {
       );
     }
     await this.resetClient();
-    this.port = undefined;
+    this.endpoint = undefined;
     this.invalidateSemanticState(false);
-    await this.chrome.close();
+    if (this.chrome.suspendForHuman) await this.chrome.suspendForHuman();
+    else await this.chrome.close();
   }
 
   async getClient(): Promise<CdpClient> {
@@ -547,7 +570,7 @@ export class MapsBrowserRuntime {
     try {
       await this.resetClient();
     } finally {
-      this.port = undefined;
+      this.endpoint = undefined;
       const active = this.handoff.getActive();
       if (active) {
         this.handoff.cancel(active.id);
@@ -686,21 +709,45 @@ export class MapsBrowserRuntime {
     }
 
     try {
-      this.port = await this.chrome.start();
-      const targets = await CDP.List({ port: this.port });
-      const mapsTargets = targets.filter(
-        (candidate) => candidate.type === "page" && this.policy.isAllowedMapsUrl(candidate.url)
-      );
-      if (mapsTargets.length > 1) {
-        this.invalidateSemanticState();
-        throw new BrowserRuntimeError(
-          "BROWSER_UNAVAILABLE",
-          "Multiple Google Maps tabs are open in the dedicated browser profile. Keep one Maps tab open, close the others, then retry."
+      this.endpoint = normalizeBrowserAutomationEndpoint(await this.chrome.start());
+      if (this.endpoint.kind === "local_port") {
+        const targets = await CDP.List({ port: this.endpoint.port });
+        const mapsTargets = targets.filter(
+          (candidate) => candidate.type === "page" && this.policy.isAllowedMapsUrl(candidate.url)
         );
+        if (mapsTargets.length > 1) {
+          this.invalidateSemanticState();
+          throw new BrowserRuntimeError(
+            "BROWSER_UNAVAILABLE",
+            "Multiple Google Maps tabs are open in the dedicated browser profile. Keep one Maps tab open, close the others, then retry."
+          );
+        }
+        const target = mapsTargets[0] ?? await CDP.New({ port: this.endpoint.port, url: "about:blank" });
+        this.targetId = target.id;
+        this.client = await CDP({ port: this.endpoint.port, target: this.targetId });
+      } else {
+        const raw = await CDP({ target: this.endpoint.websocketUrl });
+        try {
+          const { targetInfos } = await raw.Target.getTargets();
+          const mapsTargets = targetInfos.filter(
+            (candidate) => candidate.type === "page" && this.policy.isAllowedMapsUrl(candidate.url)
+          );
+          if (mapsTargets.length > 1) {
+            this.invalidateSemanticState();
+            throw new BrowserRuntimeError(
+              "BROWSER_UNAVAILABLE",
+              "Multiple Google Maps tabs are open in the hosted browser session. Keep one Maps tab open, close the others, then retry."
+            );
+          }
+          const targetId = mapsTargets[0]?.targetId ?? (await raw.Target.createTarget({ url: "about:blank" })).targetId;
+          const attached = await raw.Target.attachToTarget({ targetId, flatten: true });
+          this.targetId = targetId;
+          this.client = bindFlattenedCdpSession(raw, attached.sessionId);
+        } catch (error) {
+          await raw.close().catch(() => undefined);
+          throw error;
+        }
       }
-      const target = mapsTargets[0] ?? await CDP.New({ port: this.port, url: "about:blank" });
-      this.targetId = target.id;
-      this.client = await CDP({ port: this.port, target: this.targetId });
       await Promise.all([
         this.client.Page.enable(),
         this.client.Runtime.enable(),
@@ -709,10 +756,11 @@ export class MapsBrowserRuntime {
       if (!this.lastAction) this.viewState = "blank";
     } catch (error) {
       if (error instanceof PolicyError || error instanceof BrowserRuntimeError) throw error;
-      console.error("[maps-browser-mcp] Chrome/CDP connection failed", error);
+      // Do not log connection objects: hosted CDP WebSocket URLs may contain provider API keys.
+      console.error("[maps-browser-mcp] Chrome/CDP connection failed");
       throw new BrowserRuntimeError(
         "BROWSER_UNAVAILABLE",
-        "Unable to connect to the dedicated Chrome/Chromium session. Check the local browser configuration."
+        "Unable to connect to the dedicated browser session. Check the configured browser backend."
       );
     }
   }

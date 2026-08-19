@@ -60,6 +60,7 @@ import { CredentialAwareTakeoverAdapter } from "./browser/credential-aware-takeo
 import { CuaTakeoverHumanProvider } from "./browser/cua-takeover-human-provider.js";
 import { SystemBrowserCredentialSession } from "./browser/system-browser-credential-session.js";
 import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provider.js";
+import { SteelHostedBrowserSession, SteelLiveViewHumanProvider } from "./browser/steel-hosted-browser.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
@@ -79,28 +80,41 @@ const policy = new PolicyEngine({
   maxActionsPerMinute: config.policy.maxActionsPerMinute,
   maxVisibleReadsPerHour: config.policy.maxVisibleReadsPerHour
 });
-const chrome = new ChromeProcess(config.browser);
-const runtime = new MapsBrowserRuntime(chrome, policy);
+const localChrome = new ChromeProcess(config.browser);
+const steelBrowser = config.browser.backend === "steel"
+  ? new SteelHostedBrowserSession({
+      apiKey: config.browser.steel.apiKey,
+      baseUrl: config.browser.steel.baseUrl,
+      profileId: config.browser.steel.profileId,
+      timeoutMs: config.browser.steel.timeoutMs
+    })
+  : undefined;
+const browserOwner = steelBrowser ?? localChrome;
+const runtime = new MapsBrowserRuntime(browserOwner, policy);
 const credentialSafeCuaAdapter = new CuaHumanTakeoverAdapter(
   () => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand)
 );
 const takeoverAdapter = new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter);
 const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover);
-const credentialSafeBrowser = config.credentialSafeHandoff.enabled
+const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.browser.backend === "local"
   ? new SystemBrowserCredentialSession({
       executable: config.browser.executable,
       profileDir: config.browser.profileDir,
       startUrl: "https://www.google.com/maps"
     })
   : undefined;
-const credentialSafeProvider = credentialSafeBrowser
-  ? config.credentialSafeHandoff.transport === "cua_takeover"
-    ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
-    : new SystemBrowserHumanProvider(
-        credentialSafeBrowser,
-        config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
-      )
-  : undefined;
+const credentialSafeProvider = !config.credentialSafeHandoff.enabled
+  ? undefined
+  : config.credentialSafeHandoff.transport === "steel_live_view" && steelBrowser
+    ? new SteelLiveViewHumanProvider(steelBrowser)
+    : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover"
+      ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
+      : credentialSafeBrowser
+        ? new SystemBrowserHumanProvider(
+            credentialSafeBrowser,
+            config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
+          )
+        : undefined;
 const credentialSafeSurface = credentialSafeProvider
   ? new CredentialSafeHumanSurfaceRuntime(credentialSafeProvider)
   : undefined;
@@ -250,17 +264,27 @@ function handoffPrompt(intervention: MapsIntervention, owner: HandoffOwner): str
   return `${base}\n\nRemote human takeover is available through the configured authenticated HTTPS gateway:\n${takeoverUrl}\n\nOpen that URL on your phone, complete the manual browser interaction, close remote control with Done, then return here and choose Continue. The capability is short-lived, bound to this intervention and resource epoch, and must not be forwarded.`;
 }
 
-function credentialSafePrompt(intervention: MapsIntervention, locator: string): string {
+function credentialSafePrompt(
+  intervention: MapsIntervention,
+  surface: { providerKind: string; locator: string }
+): string {
   const base = mapsInterventionPrompt(intervention.reason);
-  const remote = /^https?:\/\//i.test(locator)
-    ? `Open the configured external Human access surface:\n${locator}`
-    : "Use the local or separately configured OS-level remote-access surface to control the dedicated browser.";
+  const remote = /^https?:\/\//i.test(surface.locator)
+    ? `Open the configured Human access surface:\n${surface.locator}`
+    : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
+  const ownership = surface.providerKind === "steel-live-view"
+    ? "Automation CDP control is detached while the same stateful hosted browser session remains alive for Human Live View control."
+    : "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without CDP/remote-debugging attachment.";
+  const recovery = surface.providerKind === "steel-live-view"
+    ? "Choose Continue after the browser-side step is complete. Human authority is revoked before automation reconnects fresh to the same hosted browser session; stale pre-auth actions are not replayed."
+    : "Choose Continue after the browser-side step is complete. The normal browser is closed before fresh automation state is re-established; stale pre-auth actions are not replayed.";
   return [
     base,
-    "Automation control has been fully detached and the same dedicated profile is now open in normal Chrome without CDP/remote-debugging attachment.",
+    ownership,
     remote,
-    "Complete only the authentication/consent step as a Human. Do not send credentials, MFA values, cookies, tokens, or account identifiers through MCP.",
-    "Choose Continue after the browser-side step is complete. The normal browser will be closed before fresh automation state is re-established; stale pre-auth actions are not replayed."
+    "Complete only the authentication/consent/challenge step as a Human. Do not send credentials, MFA values, cookies, tokens, account identifiers, or passkey material through MCP.",
+    "Passkey/WebAuthn ceremonies remain provider-controlled Human interactions and are never bypassed or synthesized by this handoff.",
+    recovery
   ].join("\n\n");
 }
 
@@ -272,7 +296,7 @@ async function prepareHandoffPrompt(intervention: MapsIntervention, owner: Hando
     takeoverBroker.revokeForIntervention(intervention.id);
     await runtime.suspendAutomationForCredentialSafeHumanControl(intervention.id, intervention.epoch);
     const surface = await credentialSafeSurface.begin(intervention, owner.principalBinding);
-    return credentialSafePrompt(intervention, surface.locator);
+    return credentialSafePrompt(intervention, surface);
   }
   return handoffPrompt(intervention, owner);
 }
