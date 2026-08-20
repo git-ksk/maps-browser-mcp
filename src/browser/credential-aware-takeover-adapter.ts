@@ -10,10 +10,6 @@ export class CredentialAwareTakeoverAdapter implements TakeoverBrowserAdapter {
   captureHumanTakeoverFrame(interventionId: string, epoch: number) {
     return this.backend(interventionId, epoch).captureHumanTakeoverFrame(interventionId, epoch);
   }
-  streamHumanTakeoverFrames(interventionId: string, epoch: number, signal: AbortSignal) {
-    const backend = this.backend(interventionId, epoch);
-    return backend.streamHumanTakeoverFrames?.(interventionId, epoch, signal);
-  }
   tapHumanTakeover(interventionId: string, epoch: number, x: number, y: number) {
     return this.backend(interventionId, epoch).tapHumanTakeover(interventionId, epoch, x, y);
   }
