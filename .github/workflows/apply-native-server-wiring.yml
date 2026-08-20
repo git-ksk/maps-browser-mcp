@@ -94,7 +94,7 @@ jobs:
               ? nativeCredentialTakeover
                 ? new ThinTakeoverHumanProvider(nativeCredentialTakeover)
                 : undefined
-              : credentialSafeBrowser && credentialSafeHandoff.transport === "cua_takeover" && credentialSafeCuaAdapter
+              : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover" && credentialSafeCuaAdapter
                 ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
                 : credentialSafeBrowser
                   ? new SystemBrowserHumanProvider(
@@ -102,9 +102,6 @@ jobs:
                       config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
                     )
                   : undefined;'''
-
-          # Keep the replacement source literal free of accidental variable renames.
-          new_block = new_block.replace("credentialSafeHandoff.transport", "config.credentialSafeHandoff.transport")
 
           if text.count(old_block) != 1:
               raise SystemExit("takeover initialization anchor changed")
