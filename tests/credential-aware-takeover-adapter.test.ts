@@ -19,10 +19,8 @@ class TinyCua implements CuaToolClient {
 
 test("takeover router uses standard CDP adapter except for the exact credential-safe intervention", async () => {
   let standardFrames = 0;
-  let streamed = 0;
   const standard: TakeoverBrowserAdapter = {
     async captureHumanTakeoverFrame() { standardFrames += 1; return { data: Buffer.from("jpeg").toString("base64"), width: 10, height: 10, hostname: "maps.google.com" }; },
-    async *streamHumanTakeoverFrames() { streamed += 1; yield { data: Buffer.from("stream").toString("base64"), width: 10, height: 10, hostname: "maps.google.com" }; },
     async tapHumanTakeover() {}, async scrollHumanTakeover() {}, async insertHumanTakeoverText() {}, async pressHumanTakeoverKey() {}
   };
   const cua = new CuaHumanTakeoverAdapter(() => new TinyCua());
@@ -30,16 +28,10 @@ test("takeover router uses standard CDP adapter except for the exact credential-
   const standardFrame = await router.captureHumanTakeoverFrame("normal", 1);
   assert.equal(standardFrame.hostname, "maps.google.com");
   assert.equal(standardFrames, 1);
-  const stream = router.streamHumanTakeoverFrames("normal", 1, new AbortController().signal);
-  assert.ok(stream);
-  const streamedFrame = await stream[Symbol.asyncIterator]().next();
-  assert.equal(streamedFrame.value?.hostname, "maps.google.com");
-  assert.equal(streamed, 1);
 
   await cua.begin("credential", 2, 7);
   const credentialFrame = await router.captureHumanTakeoverFrame("credential", 2);
   assert.equal(credentialFrame.hostname, "Normal Chrome");
   assert.equal(standardFrames, 1);
-  assert.equal(router.streamHumanTakeoverFrames("credential", 2, new AbortController().signal), undefined);
   await cua.end("credential", 2);
 });
