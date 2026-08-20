@@ -55,6 +55,10 @@ function json(status, error) {
   });
 }
 
+function headResponse(response) {
+  return new Response(null, { status: response.status, headers: response.headers });
+}
+
 const coreUrl = safeCoreUrl(env("MCP_CORE_URL"));
 const privateBearer = assertPrivateBearer(env("MCP_CORE_BEARER_TOKEN"));
 const oauth = await createOAuthBoundary();
@@ -96,6 +100,16 @@ const server = http.createServer(async (req, res) => {
       return await writeNodeResponse(res, await takeoverOperator.createSession(request));
     }
 
+    if (path === takeoverOperator?.nativeAuthPath) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return await writeNodeResponse(res, json(405, "method_not_allowed"));
+      }
+      const response = takeoverOperator.isAuthorized(request)
+        ? takeoverOperator.nativeAuthorizedPage()
+        : takeoverOperator.nativeLoginPage();
+      return await writeNodeResponse(res, request.method === "HEAD" ? headResponse(response) : response);
+    }
+
     if (path.startsWith("/takeover/")) {
       if (!takeoverOperator) return await writeNodeResponse(res, json(404, "not_found"));
       if (!takeoverOperator.isAuthorized(request)) {
@@ -108,9 +122,7 @@ const server = http.createServer(async (req, res) => {
           }), { coreUrl, privateBearer });
           if (probe.status !== 200) return await writeNodeResponse(res, probe);
           const response = takeoverOperator.loginPage();
-          return await writeNodeResponse(res, request.method === "HEAD"
-            ? new Response(null, { status: response.status, headers: response.headers })
-            : response);
+          return await writeNodeResponse(res, request.method === "HEAD" ? headResponse(response) : response);
         }
         return await writeNodeResponse(res, json(401, "operator_auth_required"));
       }
