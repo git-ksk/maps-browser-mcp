@@ -35,6 +35,12 @@ const TAKEOVER_RESPONSE_HEADERS = new Set([
 ]);
 
 const TAKEOVER_PATH_PATTERN = /^\/takeover\/[A-Za-z0-9._~-]{1,512}$/;
+const TAKEOVER_API_PATH_PATTERN = /^\/takeover\/api\/(?:bootstrap|claim|reconnect|webrtc-prepare-claim|webrtc-prepare-reconnect|webrtc-connect|webrtc-metrics|webrtc-suspend|frame|input|done|cancel)\/[A-Za-z0-9-]{8,100}$/;
+const NATIVE_OPERATOR_AUTH_PATH = "/takeover/operator/native-auth";
+
+function takeoverGatewayPathAllowed(pathname) {
+  return TAKEOVER_PATH_PATTERN.test(pathname) || TAKEOVER_API_PATH_PATTERN.test(pathname);
+}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -167,7 +173,25 @@ function startLoopbackTakeoverGateway(port, coreBaseUrl, bearer) {
       return;
     }
     if (
-      !TAKEOVER_PATH_PATTERN.test(requestUrl.pathname) ||
+      requestUrl.pathname === NATIVE_OPERATOR_AUTH_PATH &&
+      !requestUrl.search &&
+      !requestUrl.hash &&
+      ["GET", "HEAD"].includes(req.method || "") &&
+      process.env.MAPS_ACCEPT_TRUSTED_OPERATOR_EDGE === "YES"
+    ) {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
+        "x-content-type-options": "nosniff",
+        "x-takeover-native-authorized": "1",
+        "content-security-policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      });
+      res.end(req.method === "HEAD" ? undefined : "<!doctype html><meta charset=utf-8><title>Native takeover authorized</title><p>Authorized by the trusted operator edge. Return to the Native Takeover app.</p>");
+      return;
+    }
+    if (
+      !takeoverGatewayPathAllowed(requestUrl.pathname) ||
       requestUrl.search ||
       requestUrl.hash ||
       !["GET", "HEAD", "POST"].includes(req.method || "")
@@ -186,10 +210,14 @@ function startLoopbackTakeoverGateway(port, coreBaseUrl, bearer) {
     }
     headers.authorization = `Bearer ${bearer}`;
 
+    const diagnostic = process.env.MAPS_ACCEPT_TAKEOVER_DIAGNOSTICS === "YES";
+    if (diagnostic) console.error(`[takeover-gateway] -> ${req.method || "?"} ${requestUrl.pathname}`);
+
     const proxy = httpRequest(upstream, {
       method: req.method,
       headers
     }, (upstreamRes) => {
+      if (diagnostic) console.error(`[takeover-gateway] <- ${req.method || "?"} ${requestUrl.pathname} ${upstreamRes.statusCode || 0}`);
       const responseHeaders = {};
       for (const [name, value] of Object.entries(upstreamRes.headers)) {
         if (TAKEOVER_RESPONSE_HEADERS.has(name.toLowerCase()) && value !== undefined) {
@@ -253,9 +281,41 @@ if (process.env.MAPS_ACCEPT_REAL_GOOGLE_SIGN_IN !== "YES") {
 
 const profileDir = await fsp.mkdtemp(path.join(os.tmpdir(), "maps-browser-mcp-google-signin-"));
 const corePort = await freePort();
-const gatewayPort = await freePort();
+const requestedGatewayPort = process.env.MAPS_ACCEPT_TAKEOVER_GATEWAY_PORT?.trim();
+const gatewayPort = requestedGatewayPort ? Number(requestedGatewayPort) : await freePort();
+assert(
+  Number.isInteger(gatewayPort) && gatewayPort >= 1_024 && gatewayPort <= 65_535,
+  "MAPS_ACCEPT_TAKEOVER_GATEWAY_PORT must be an integer from 1024 through 65535"
+);
 const coreBaseUrl = `http://127.0.0.1:${corePort}`;
 const gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
+const configuredTakeoverBaseUrl = process.env.MAPS_TAKEOVER_PUBLIC_BASE_URL?.trim();
+const takeoverPublicBaseUrl = configuredTakeoverBaseUrl || gatewayBaseUrl;
+const takeoverPublicUrl = new URL(takeoverPublicBaseUrl);
+assert(
+  !takeoverPublicUrl.username &&
+    !takeoverPublicUrl.password &&
+    !takeoverPublicUrl.search &&
+    !takeoverPublicUrl.hash &&
+    (takeoverPublicUrl.pathname === "/" || takeoverPublicUrl.pathname === ""),
+  "MAPS_TAKEOVER_PUBLIC_BASE_URL must be an origin URL without credentials, path, query, or fragment"
+);
+if (takeoverPublicUrl.origin !== gatewayBaseUrl) {
+  assert(
+    takeoverPublicUrl.protocol === "https:",
+    "External MAPS_TAKEOVER_PUBLIC_BASE_URL must use HTTPS"
+  );
+  assert(
+    process.env.MAPS_ACCEPT_TRUSTED_OPERATOR_EDGE === "YES",
+    "External takeover acceptance requires MAPS_ACCEPT_TRUSTED_OPERATOR_EDGE=YES for a separately authenticated operator edge"
+  );
+}
+const takeoverAutoOpen = process.env.MAPS_ACCEPT_TAKEOVER_AUTO_OPEN !== "NO";
+const acceptanceTransport = process.env.MAPS_ACCEPT_CREDENTIAL_SAFE_TRANSPORT?.trim() || "thin_takeover";
+assert(
+  acceptanceTransport === "thin_takeover" || acceptanceTransport === "webrtc_takeover" || acceptanceTransport === "cua_takeover",
+  "MAPS_ACCEPT_CREDENTIAL_SAFE_TRANSPORT must be thin_takeover, webrtc_takeover, or cua_takeover"
+);
 const bearer = randomBytes(32).toString("base64url");
 let stderr = "";
 let gateway;
@@ -270,13 +330,13 @@ try {
       MCP_HTTP_HOST: "127.0.0.1",
       MCP_HTTP_PORT: String(corePort),
       MCP_ALLOWED_HOSTS: "localhost,127.0.0.1",
-      MCP_ALLOWED_ORIGINS: gatewayBaseUrl,
+      MCP_ALLOWED_ORIGINS: [gatewayBaseUrl, takeoverPublicUrl.origin].join(","),
       MCP_AUTH_PROVIDER: "static-bearer",
       MCP_BEARER_TOKEN: bearer,
       MAPS_REMOTE_TAKEOVER: "true",
-      MAPS_TAKEOVER_PUBLIC_BASE_URL: gatewayBaseUrl,
+      MAPS_TAKEOVER_PUBLIC_BASE_URL: takeoverPublicUrl.origin,
       MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
-      MAPS_CREDENTIAL_SAFE_TRANSPORT: "thin_takeover",
+      MAPS_CREDENTIAL_SAFE_TRANSPORT: acceptanceTransport,
       MAPS_CHROME_PROFILE_DIR: profileDir,
       MAPS_HEADLESS: "false",
       INTERACTIVE_ASSIST_MODE: "true",
@@ -293,20 +353,31 @@ try {
   const search = await postMcp(coreBaseUrl, bearer, "search-1", "maps_search", { query: "Tokyo Station" });
   toolJson(search, "maps_search");
 
-  const before = toolJson(
-    await postMcp(coreBaseUrl, bearer, "readiness-before", "maps_read_authenticated_readiness", {}),
-    "maps_read_authenticated_readiness"
-  );
-  assert(before.state === "signed_out", `Disposable profile must start signed_out; got ${before.state}`);
+  let before;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    before = toolJson(
+      await postMcp(coreBaseUrl, bearer, `readiness-before-${attempt}`, "maps_read_authenticated_readiness", {}),
+      "maps_read_authenticated_readiness"
+    );
+    if (before.state === "signed_out") break;
+    if (before.state !== "unknown") break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  assert(before?.state === "signed_out", `Disposable profile must start signed_out; got ${before?.state ?? "missing"}`);
   console.log("Precondition passed: disposable dedicated profile is signed_out.");
 
   const handoff = await postMcp(coreBaseUrl, bearer, "sign-in-1", "maps_request_human_sign_in", {});
-  const takeover = takeoverLocatorFromInputRequired(handoff, gatewayBaseUrl);
+  const takeover = takeoverLocatorFromInputRequired(handoff, takeoverPublicUrl.origin);
   const requestState = handoff.result.requestState;
   assert(typeof requestState === "string" && requestState.length > 0, "Handoff did not return requestState");
 
-  openMacUrlWithoutArgv(takeover.openUrl);
-  console.log("Local Thin Takeover opened. Complete Google sign-in there. No credential values are read or logged by this harness.");
+  if (takeoverAutoOpen) {
+    openMacUrlWithoutArgv(takeover.openUrl);
+    console.log(`Local credential-safe Takeover opened (${acceptanceTransport}). Complete Google sign-in there. No credential values are read or logged by this harness.`);
+  } else {
+    console.log(`Credential-safe Takeover ready for manual Human open (${acceptanceTransport}): ${takeover.openUrl}`);
+    console.log("Complete Google sign-in there. No credential values are read or logged by this harness.");
+  }
   await rl.question("After sign-in is visibly complete and you have pressed Done in Takeover, press Enter here to continue: ");
 
   const resumed = await postMcp(coreBaseUrl, bearer, "sign-in-2", "maps_request_human_sign_in", {}, {

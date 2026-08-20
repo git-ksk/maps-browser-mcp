@@ -115,10 +115,10 @@ function externalHumanOperatorUrl(name: string): string | undefined {
   return url.toString();
 }
 
-function credentialSafeTransport(name: string): "external" | "cua_takeover" | "thin_takeover" {
+function credentialSafeTransport(name: string): "external" | "cua_takeover" | "thin_takeover" | "webrtc_takeover" {
   const raw = process.env[name]?.trim().toLowerCase() || "external";
-  if (raw === "external" || raw === "cua_takeover" || raw === "thin_takeover") return raw;
-  throw new Error(`${name} must be one of: external, cua_takeover, thin_takeover`);
+  if (raw === "external" || raw === "cua_takeover" || raw === "thin_takeover" || raw === "webrtc_takeover") return raw;
+  throw new Error(`${name} must be one of: external, cua_takeover, thin_takeover, webrtc_takeover`);
 }
 
 function requiredAbsolutePath(name: string): string {
@@ -170,9 +170,13 @@ export interface AppConfig {
   };
   credentialSafeHandoff: {
     enabled: boolean;
-    transport: "external" | "cua_takeover" | "thin_takeover";
+    transport: "external" | "cua_takeover" | "thin_takeover" | "webrtc_takeover";
     operatorUrl?: string;
     cuaCommand: string;
+    webRtcRuntime?: {
+      hostExecutable: string;
+      displayId?: number;
+    };
     nativeRuntime?: {
       hostExecutable: string;
       revokeExecutable: string;
@@ -308,12 +312,13 @@ export function loadConfig(): AppConfig {
   const credentialSafeOperatorUrl = externalHumanOperatorUrl("MAPS_CREDENTIAL_SAFE_OPERATOR_URL");
   const cuaCommand = process.env.MAPS_CUA_DRIVER_COMMAND?.trim() || "cua-driver";
   let nativeRuntime: AppConfig["credentialSafeHandoff"]["nativeRuntime"];
+  let webRtcRuntime: AppConfig["credentialSafeHandoff"]["webRtcRuntime"];
 
   if (credentialSafeOperatorUrl && !credentialSafeHandoff) {
     throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
   }
   if (credentialSafeTransportMode !== "external" && !credentialSafeHandoff) {
-    throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when using cua_takeover or thin_takeover");
+    throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when using cua_takeover, thin_takeover, or webrtc_takeover");
   }
   if (credentialSafeTransportMode === "cua_takeover") {
     if (!remoteTakeover) {
@@ -325,6 +330,18 @@ export function loadConfig(): AppConfig {
     if (!cuaCommand || cuaCommand.includes("\0")) {
       throw new Error("MAPS_CUA_DRIVER_COMMAND must name one executable without NUL characters");
     }
+  }
+  if (credentialSafeTransportMode === "webrtc_takeover") {
+    if (!remoteTakeover) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover requires MAPS_REMOTE_TAKEOVER=true because the Handoff broker owns the WebRTC operator surface");
+    }
+    if (credentialSafeOperatorUrl) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover because the Handoff broker issues the operator locator");
+    }
+    webRtcRuntime = {
+      hostExecutable: requiredAbsolutePath("MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE"),
+      displayId: envOptionalInt("MAPS_WEBRTC_TAKEOVER_DISPLAY_ID", 1, 4_294_967_295)
+    };
   }
   if (credentialSafeTransportMode === "thin_takeover") {
     if (!remoteTakeover) {
@@ -429,7 +446,8 @@ export function loadConfig(): AppConfig {
       transport: credentialSafeTransportMode,
       operatorUrl: credentialSafeOperatorUrl,
       cuaCommand,
-      nativeRuntime
+      nativeRuntime,
+      webRtcRuntime
     },
     mcpApps: {
       googleMapsEmbedApiKey: process.env.GOOGLE_MAPS_EMBED_API_KEY?.trim() || undefined

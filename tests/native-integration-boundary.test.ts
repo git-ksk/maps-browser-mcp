@@ -10,11 +10,12 @@ function read(relativePath: string): string {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
 
-test("Maps Native integration remains a thin Native-only lifecycle boundary", () => {
-  const boundary = read("src/browser/native-credential-takeover-boundary.ts");
-  const provider = read("src/browser/thin-takeover-human-provider.ts");
+test("Maps Handoff integration remains a thin transport lifecycle boundary", () => {
+  const nativeBoundary = read("src/browser/native-credential-takeover-boundary.ts");
+  const webRtcBoundary = read("src/browser/webrtc-credential-takeover-boundary.ts");
+  const provider = read("src/browser/credential-takeover-human-provider.ts");
   const server = read("src/server.ts");
-  const mapsOwnedNativeSurface = `${boundary}\n${provider}\n${server}`;
+  const mapsOwnedTakeoverSurface = `${nativeBoundary}\n${webRtcBoundary}\n${provider}\n${server}`;
 
   for (const forbidden of [
     "ScreenCaptureKit",
@@ -24,41 +25,53 @@ test("Maps Native integration remains a thin Native-only lifecycle boundary", ()
     "rootKeyBase64Url",
     "THIN_TAKEOVER_SESSION_KEY",
     "ChaCha20",
-    "HKDF"
+    "HKDF",
+    "RTCPeerConnection",
+    "RTCDataChannel",
+    "setRemoteDescription",
+    "iceServers",
+    "DTLS",
+    "RtpPacket"
   ]) {
     assert.equal(
-      mapsOwnedNativeSurface.includes(forbidden),
+      mapsOwnedTakeoverSurface.includes(forbidden),
       false,
-      `Maps Native integration must not own ${forbidden} implementation details`
+      `Maps takeover integration must not own ${forbidden} implementation details`
     );
   }
 
-  assert.match(boundary, /start\(request: NativeCredentialTakeoverStartRequest\): string/);
-  assert.match(boundary, /broker\.createNativeLink\(/);
-  assert.match(boundary, /async revoke\(interventionId: string\): Promise<void>/);
+  assert.match(nativeBoundary, /broker\.createNativeLink\(/);
+  assert.match(nativeBoundary, /broker\.revokeNativeForIntervention\(/);
+  assert.match(webRtcBoundary, /broker\.createWebRtcLink\(/);
+  assert.match(webRtcBoundary, /broker\.revokeWebRtcForIntervention\(/);
   assert.match(server, /new InheritedFdNativeRuntimeProvider\(config\.credentialSafeHandoff\.nativeRuntime\)/);
+  assert.match(server, /new SpawnedWebRtcRuntimeProvider\(config\.credentialSafeHandoff\.webRtcRuntime\)/);
   assert.match(server, /new NativeCredentialTakeoverBoundary\(takeoverBroker\)/);
+  assert.match(server, /new WebRtcCredentialTakeoverBoundary\(takeoverBroker\)/);
+  assert.match(provider, /SystemBrowserCredentialSession/);
+  assert.match(provider, /await this\.browser\.start\(\)/);
+  assert.match(provider, /this\.browser\.getPid\(\)/);
+  assert.match(provider, /targetProcessId/);
+  assert.match(nativeBoundary, /\{ processId: request\.targetProcessId \}/);
+  assert.match(webRtcBoundary, /\{ processId: request\.targetProcessId \}/);
+  assert.match(provider, /await this\.browser\.close\(\)/);
+  assert.match(server, /suspendAutomationForCredentialSafeHumanControl\(intervention\.id, intervention\.epoch\)/);
+  assert.doesNotMatch(server, /preserveBrowserSession:\s*config\.credentialSafeHandoff\.transport === "thin_takeover"/);
 });
 
-test("thin_takeover does not instantiate the CUA transport", () => {
+test("Native and WebRTC transports are siblings and neither instantiates CUA", () => {
   const server = read("src/server.ts");
-
-  assert.match(
-    server,
-    /credentialSafeHandoff\.transport === "cua_takeover"\s*\? new CuaHumanTakeoverAdapter/
-  );
-  assert.match(
-    server,
-    /credentialSafeHandoff\.transport === "thin_takeover"[\s\S]*?new ThinTakeoverHumanProvider\(nativeCredentialTakeover\)/
-  );
-  assert.doesNotMatch(
-    read("src/browser/native-credential-takeover-boundary.ts"),
-    /Cua|CUA|cua-driver/
-  );
+  assert.match(server, /credentialSafeHandoff\.transport === "cua_takeover"\s*\? new CuaHumanTakeoverAdapter/);
+  assert.match(server, /credentialSafeHandoff\.transport === "thin_takeover"[\s\S]*?CredentialTakeoverHumanProvider\("thin-takeover"/);
+  assert.match(server, /credentialSafeHandoff\.transport === "webrtc_takeover"[\s\S]*?CredentialTakeoverHumanProvider\("webrtc-takeover"/);
+  assert.doesNotMatch(read("src/browser/native-credential-takeover-boundary.ts"), /Cua|CUA|cua-driver/);
+  assert.doesNotMatch(read("src/browser/webrtc-credential-takeover-boundary.ts"), /Cua|CUA|cua-driver/);
 });
 
-test("thin_takeover prompt directs the Human to the Native app instead of the legacy Web surface", () => {
+test("credential prompts distinguish Native app from direct Safari WebRTC takeover", () => {
   const server = read("src/server.ts");
   assert.match(server, /Open the Native Takeover app and use this short-lived Native-only locator/);
-  assert.match(server, /legacy Web bootstrap\/frame\/input are disabled/);
+  assert.match(server, /Open this short-lived WebRTC takeover locator in iPhone Safari/);
+  assert.match(server, /Control only the dedicated Chrome window directly with tap\/swipe and the iOS keyboard/);
+  assert.match(server, /Legacy button-driven frame\/input takeover is disabled/);
 });

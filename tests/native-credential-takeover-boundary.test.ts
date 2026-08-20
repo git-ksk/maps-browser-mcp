@@ -5,8 +5,8 @@ import { NativeCredentialTakeoverBoundary } from "../src/browser/native-credenti
 
 function fakeBroker(calls: string[]): TakeoverBroker {
   return {
-    createNativeLink(ref: { id: string; epoch: number }, principalBinding: string) {
-      calls.push(`create-native:${ref.id}:${ref.epoch}:${principalBinding}`);
+    createNativeLink(ref: { id: string; epoch: number }, principalBinding: string, target?: { processId: number }) {
+      calls.push(`create-native:${ref.id}:${ref.epoch}:${principalBinding}:${target?.processId ?? "none"}`);
       return "https://takeover.example/takeover/native-locator";
     },
     async revokeNativeForIntervention(interventionId: string) {
@@ -29,11 +29,12 @@ test("native credential boundary exposes only Native-only start and revoke lifec
   const locator = boundary.start({
     interventionId: "int-1",
     epoch: 7,
-    principalBinding: "principal-a"
+    principalBinding: "principal-a",
+    targetProcessId: 4242
   });
   assert.equal(locator, "https://takeover.example/takeover/native-locator");
-  assert.deepEqual(calls, ["create-native:int-1:7:principal-a"]);
+  assert.deepEqual(calls, ["create-native:int-1:7:principal-a:4242"]);
 
   await boundary.revoke("int-1");
-  assert.deepEqual(calls, ["create-native:int-1:7:principal-a", "revoke:int-1"]);
+  assert.deepEqual(calls, ["create-native:int-1:7:principal-a:4242", "revoke:int-1"]);
 });

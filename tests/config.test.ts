@@ -35,6 +35,8 @@ const KEYS = [
   "MAPS_NATIVE_TAKEOVER_DISPLAY_ID",
   "MAPS_NATIVE_TAKEOVER_HOST_EXECUTABLE",
   "MAPS_NATIVE_TAKEOVER_REVOKE_EXECUTABLE",
+  "MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE",
+  "MAPS_WEBRTC_TAKEOVER_DISPLAY_ID",
   "STEEL_API_KEY",
   "STEEL_BASE_URL",
   "MAPS_STEEL_PROFILE_ID",
@@ -411,10 +413,50 @@ test("credential-safe Cua takeover is explicit and reuses the authenticated take
   });
 
   await withEnv({ MAPS_CREDENTIAL_SAFE_TRANSPORT: "unknown" }, () => {
-    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover, thin_takeover/);
+    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover, thin_takeover, webrtc_takeover/);
   });
 });
 
+
+test("WebRTC Takeover requires the authenticated broker and a Handoff-owned macOS helper", async () => {
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-webrtc-host"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-webrtc-host",
+    MAPS_WEBRTC_TAKEOVER_DISPLAY_ID: "7"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.credentialSafeHandoff.transport, "webrtc_takeover");
+    assert.equal(config.credentialSafeHandoff.webRtcRuntime?.hostExecutable, "/opt/thin/takeover-webrtc-host");
+    assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, 7);
+    assert.equal(config.takeover.enabled, true);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "relative/takeover-webrtc-host"
+  }, () => {
+    assert.throws(() => loadConfig(), /must be an absolute path/);
+  });
+});
 
 test("keyless Thin Takeover requires the authenticated broker and rejects Steel provider settings", async () => {
   await withEnv({

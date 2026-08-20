@@ -49,7 +49,7 @@ A caller may instead set `MAPS_CDP_PORT` to attach to an existing **local** CDP 
 
 When connecting to the dedicated browser, the runtime accepts zero or one Google Maps page target. If more than one Maps tab is open, it refuses to guess which tab to control. If a CDP target becomes stale, reconnects, or is reset by the watchdog, semantic state is invalidated rather than inherited.
 
-The primary `thin_takeover` path keeps this same Chrome process/session alive. Agent-owned automation CDP/input authority is explicitly detached and fenced before a separate intervention/epoch-bound Human CDP attachment is allowed. Human completion/revocation aborts active frame streams and closes that Human attachment before automation may establish a fresh CDP attachment. The invariant is therefore **exclusive input authority**, not the absence of every CDP connection while a Human is active.
+Normal Maps automation remains process-owned Chrome + CDP. For a credential ceremony, including the `thin_takeover` Native path, Agent CDP authority is detached and the automation Chrome process is stopped. The same dedicated profile is then reopened in normal Chrome without remote-debugging/automation flags. Human completion/revocation stops the Human surface and closes normal Chrome before a fresh automation Chrome process/CDP attachment may verify readiness. The invariant is **exclusive authority plus a provider-supported normal-browser credential ceremony**.
 
 No stealth plugins, fingerprint spoofing, proxy rotation, CAPTCHA solvers, hosted-browser provider API keys, or passkey bypasses are used. Steel is not a runtime dependency; it may be used externally only as a comparison/UX benchmark.
 
@@ -134,40 +134,25 @@ The boundary is deliberately separate from semantic action approval:
 - reconnect/restart never automatically replays an older semantic operation,
 - V4 operation cleanup must test intervention state before sending any best-effort UI input.
 
-Credential-safe Human control has two consumer-owned lifecycle shapes behind the same `ExternalHumanSurfaceProvider` contract:
+Credential-safe Human control uses one profile-switch lifecycle behind the same `ExternalHumanSurfaceProvider` contract, with interchangeable Human transports:
 
 ```text
-external / optional Cua profile-switch
-  Agent-owned automation CDP Chrome
-    -> Human authority
-    -> close automation Chrome
-    -> open the same dedicated profile in normal Chrome without Agent CDP authority
-    -> external OS surface or optional Cua provider
-    -> revoke Human surface + close normal Chrome
-    -> fresh automation browser + fresh validation
-
-primary thin_takeover same-session path
-  process-owned Chrome + Agent-owned automation CDP
-    -> Human authority
-    -> detach + fence Agent-owned automation CDP/input authority
-    -> fresh intervention/epoch-bound Human CDP attachment
-       -> CdpScreencastCapture -> EncodedImageFrame
-       -> FramePipeline passthrough -> authenticated frame stream
-       -> bounded Human input
-    -> revoke Human surface + abort active stream
-    -> close Human-owned CDP attachment
-    -> fresh Agent-owned automation CDP attachment
-    -> fresh readiness / semantic validation
+Agent-owned automation CDP Chrome
+  -> Human authority
+  -> close automation Chrome
+  -> open the same dedicated profile in normal Chrome without Agent CDP authority
+  -> Handoff transport
+       external / optional Cua
+       Native `thin_takeover`
+       browser `webrtc_takeover`
+  -> revoke Human transport + close normal Chrome
+  -> fresh automation Chrome + fresh CDP attachment
+  -> fresh readiness / semantic validation
 ```
 
-Phase 1 deliberately treats CDP screencast JPEG as an already encoded image. It does **not** pass it through `EncoderAdapter`, avoiding a JPEG decode/raw-frame/video re-encode loop. The replaceable frame boundary is:
+For `thin_takeover`, Handoff owns the Native ScreenCaptureKit/VideoToolbox/CoreGraphics data plane and short-lived Native locator. For `webrtc_takeover`, Handoff owns ScreenCaptureKit -> H.264 -> RTP/WebRTC video, direct-touch/keyboard DataChannels, generation-bound reconnect, and browser session teardown. Maps supplies only the PID of the normal Chrome process it just started as a bounded ownership hint; Handoff must resolve exactly one eligible on-screen window for that PID, crop capture to that window, map pointer input to the same bounds, and fail closed on missing/ambiguous windows. Maps never owns ScreenCaptureKit window discovery and never processes SDP, ICE, RTP, framebuffer bytes, or raw Human input. WebRTC-only locators cannot fall back to the legacy HTTP frame/input UI.
 
-```text
-EncodedImageFrame -> FramePipeline -> image/frame transport
-RawFrame          -> FramePipeline -> EncoderAdapter -> encoded video -> WebRTC (Phase 2)
-```
-
-The intended reusable Thin Takeover boundary is `TakeoverSessionController + CaptureAdapter + FramePipeline + EncoderAdapter + WebRtcTransport + ReconnectCoordinator + LatencyMetrics`. Phase 1 already exercises authority, reconnect/fencing, encoded-frame passthrough, bounded input, and metrics over the authenticated broker stream; WebRTC video/DataChannel and raw compositor/native capture remain Phase 2. The Human locator contains no takeover capability; the capability stays in authenticated request headers.
+The initial Safari path is same-network only: Handoff configures host ICE candidates with `iceServers: []`. TURN/WAN/cellular relay support requires a separate explicit relay trust-policy decision. Human Done is teardown, not authentication proof; Maps always performs a fresh automation attach and coarse authenticated-readiness check afterwards.
 
 ## MCP Apps render boundary
 

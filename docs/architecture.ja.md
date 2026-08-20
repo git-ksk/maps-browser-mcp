@@ -51,7 +51,7 @@ Chromeは別 `--user-data-dir`、`--remote-debugging-address=127.0.0.1`、`--rem
 
 専用browserではGoogle Maps page targetを0または1枚だけ受け入れ、複数Maps tabがあれば推測せず拒否します。CDP targetがstale/reconnect/watchdog resetされた場合もsemantic stateを引き継ぎません。
 
-本命の `thin_takeover` はsame Chrome process/sessionを維持します。Human authorityへ移る前にAgent-owned automation CDP/input authorityを明示的にdetach + fenceし、その後だけintervention/epoch-boundな別Human CDP attachmentを許可します。Human完了/revoke時はactive frame streamをabortし、Human attachmentを閉じた後でfresh automation CDP attachmentを許可します。したがってinvariantは「Human中にCDPが一切ない」ではなく **input authorityがexclusiveであること** です。
+通常Maps automationはprocess-owned Chrome + CDPを維持します。credential ceremonyでは `thin_takeover` Native経路を含め、Agent CDP authorityをdetachしautomation Chrome processを停止します。その後same dedicated profileをremote-debugging/automation flagなしのnormal Chromeで開きます。Human完了/revoke後はHuman surfaceとnormal Chromeを終了し、fresh automation Chrome process/CDP attachmentからreadinessを再検証します。invariantは **exclusive authorityとprovider-supported normal-browser credential ceremony** です。
 
 Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solver、hosted-browser provider API key、passkey bypassは使いません。Steelはruntime dependencyではなく、必要なら外部比較/UX benchmarkの参考に限定します。
 
@@ -134,40 +134,25 @@ Action / read counterはprocess-local safety guardであり、再起動でreset�
 - reconnect / restart後に旧semantic operationを自動replayしない
 - V4 cleanupはintervention stateを確認し、handoff activeならUI inputを送らない
 
-Credential-safe Human controlは同じ `ExternalHumanSurfaceProvider` contractの背後でconsumer-ownedな2 lifecycleを使います。
+Credential-safe Human controlは同じ `ExternalHumanSurfaceProvider` contractの背後で1つのprofile-switch lifecycleを使い、Human transportだけを差し替えます。
 
 ```text
-external / optional Cua profile-switch
-  Agent-owned automation CDP Chrome
-    -> Human authority
-    -> automation Chrome終了
-    -> same dedicated profileをAgent CDP authorityなしnormal Chromeで開く
-    -> external OS surface または optional Cua provider
-    -> Human surface revoke + normal Chrome終了
-    -> fresh automation browser + fresh validation
-
-本命 thin_takeover same-session path
-  process-owned Chrome + Agent-owned automation CDP
-    -> Human authority
-    -> Agent-owned automation CDP/input authorityをdetach + fence
-    -> fresh intervention/epoch-bound Human CDP attachment
-       -> CdpScreencastCapture -> EncodedImageFrame
-       -> FramePipeline passthrough -> authenticated frame stream
-       -> bounded Human input
-    -> Human surface revoke + active stream abort
-    -> Human-owned CDP attachment終了
-    -> fresh Agent-owned automation CDP attachment
-    -> fresh readiness / semantic validation
+Agent-owned automation CDP Chrome
+  -> Human authority
+  -> automation Chrome終了
+  -> same dedicated profileをAgent CDP authorityなしnormal Chromeで開く
+  -> Handoff transport
+       external / optional Cua
+       Native `thin_takeover`
+       browser `webrtc_takeover`
+  -> Human transport revoke + normal Chrome終了
+  -> fresh automation Chrome + fresh CDP attachment
+  -> fresh readiness / semantic validation
 ```
 
-Phase 1ではCDP screencast JPEGを既にencodedなimageとして扱い、`EncoderAdapter` を通しません。JPEG decode -> raw frame -> video re-encodeの無駄を避けます。replaceable frame boundaryは次です。
+`thin_takeover` ではNative ScreenCaptureKit / VideoToolbox / CoreGraphics data planeと短命Native locatorをHandoffが所有します。`webrtc_takeover` ではScreenCaptureKit -> H.264 -> RTP/WebRTC video、direct-touch / keyboard DataChannel、generation-bound reconnect、browser session teardownをHandoffが所有します。MapsがHandoffへ渡すのは、自分が直前に起動したnormal ChromeのPIDというbounded ownership hintだけです。HandoffはそのPIDからeligibleなon-screen windowを厳密に1つだけ解決し、そのwindowだけへcaptureをcropしてpointer inputも同じboundsへmapし、missing/ambiguousならfail closedします。MapsはScreenCaptureKitのwindow探索を所有せず、SDP / ICE / RTP / framebuffer bytes / raw Human inputも扱いません。WebRTC-only locatorから旧HTTP frame/input UIへのfallbackも不可です。
 
-```text
-EncodedImageFrame -> FramePipeline -> image/frame transport
-RawFrame          -> FramePipeline -> EncoderAdapter -> encoded video -> WebRTC（Phase 2）
-```
-
-再利用可能なThin Takeover boundaryは `TakeoverSessionController + CaptureAdapter + FramePipeline + EncoderAdapter + WebRtcTransport + ReconnectCoordinator + LatencyMetrics` を想定します。Phase 1ではauthenticated broker stream上でauthority、reconnect/fencing、encoded-frame passthrough、bounded input、metricsまで実装し、WebRTC video/DataChannelとraw compositor/native captureはPhase 2です。Human locator自体にtakeover capabilityは含めず、capabilityは認証済みrequest header内に維持します。
+初期Safari経路はsame-network専用で、Handoffはhost ICE candidateのみ（`iceServers: []`）を使います。TURN / WAN / cellular relayは別の明示的relay trust-policy設計が必要です。Human Doneはteardownであり認証成功証明ではないため、その後Mapsはfresh automation attachとcoarse authenticated-readiness確認を必ず行います。
 
 ## MCP Apps Render Boundary
 

@@ -353,9 +353,11 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなbounded V5 authenticated toolを有効化。Interactive Assistと専用single-user profile gateも必須 |
 | `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Google sign-in / consent / challenge向けHuman-only handoff |
-| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` はlocal OS-level surface、`cua_takeover` はlocal Cua、`thin_takeover` はsame managed Chromeを維持するkeyless Thin Takeover |
+| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` はlocal OS-level surface、`cua_takeover` はlocal Cua、`thin_takeover` はNative Thin Takeover runtime、`webrtc_takeover` はinstall不要のiPhone Safari WebRTC takeover |
 | `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | local `external` transport専用fixed HTTPS locator。credential/query/fragment付きURLは拒否 |
 | `MAPS_CUA_DRIVER_COMMAND` | `cua-driver` | `cua_takeover` 専用Cua Driver executable。Human transport用の固定7 tool allowlist以外は呼ばない |
+| `MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE` | unset | `webrtc_takeover` で必須のHandoff `takeover-webrtc-host` 絶対path |
+| `MAPS_WEBRTC_TAKEOVER_DISPLAY_ID` | unset | WebRTC capture対象のoptional macOS display ID |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | MCP Apps directions view用のoptional restricted Maps Embed API key。未設定でもtext/structured render toolは利用可能 |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | process-local操作上限 |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | 独立したbounded visible-state/UI read上限 |
@@ -370,11 +372,9 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 
 `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` はbounded authenticated V5 semantics用の追加fail-closed Opt-inです。`INTERACTIVE_ASSIST_MODE=true` と組み合わせると、V5 baselineのidentity-free readiness、bounded selected-place save-state read、exact existing-list Save、bounded selected-route Send-to-phone target read、approval-gated single-device sendだけを公開します。`MAPS_CREDENTIAL_SAFE_HANDOFF=true` も有効な場合、`maps_request_human_sign_in` がGoogle sign-in用Human-only ceremonyを追加し、自然発生したconsent / CAPTCHA / access-challengeも同じHuman boundaryへ送ります。credential、MFA/OTP、passkey material、cookie、browser-session bearer material、provider API keyはMCP/model/logへ出さず、Passkey/WebAuthn ceremonyをbypassしません。
 
-`external` / `cua_takeover` は既存profile-switch lifecycleを使います。managed CDP Chromeを停止し、same dedicated profileをAgent-owned remote-debugging/automation authorityなしのnormal Chromeで開き、Human surface revoke後にfresh readinessを確認してautomationを再起動します。CuaはMac/local fallbackの1候補でありMaps runtime固定依存ではありません。
+credential-safe transportはすべてprofile-switch lifecycleを使います。managed CDP Chromeを停止し、same dedicated profileをremote-debugging/automation flagなしのnormal Chromeで開き、Human surface revoke後にfresh readinessを確認してautomationを再起動します。`external` はOS-level Human surface、`cua_takeover` はlocal fallback/reference、`thin_takeover` は低遅延Native runtime、`webrtc_takeover` はHandoff-ownedなSafari direct-touch surfaceです。Native/WebRTC credential takeoverでMapsが渡すcapture ownership情報は、自分が起動したnormal ChromeのPIDだけです。Handoffはeligible windowが厳密に1つであることを要求し、desktop全体ではなくそのwindowだけへcapture/inputをscopeします。ScreenCaptureKit / VideoToolbox / WebRTC signaling・RTP・DataChannel / reconnect fencing / input deliveryはMapsへ持ち込みません。Done/revokeはHuman authorityを停止してnormal Chromeを閉じますが、それ自体を認証成功とは扱いません。
 
-`thin_takeover` が低遅延の本命経路です。same process-owned Chrome sessionを生かしたままAgent-owned automation CDP/input authorityをdetach + fenceし、intervention/epochにboundしたfresh Human CDP attachmentをThin Takeover Runtimeが所有します。Phase 1は `CdpScreencastCapture -> EncodedImageFrame -> FramePipeline passthrough -> authenticated broker stream` で、JPEGをdecode/re-encodeしません。click / scroll / keyboard / bounded text inputもHuman-owned CDPからだけ注入します。revoke時はactive frame streamをabortし、Human CDP attachmentを閉じた後でのみfresh automation CDP attachmentとreadiness/semantic validationへ戻します。
-
-capture/transport boundaryは差し替え可能です。将来のraw-frame経路はcompositor/native captureから `RawFrame -> EncoderAdapter -> WebRTC video` とし、既にencodedなJPEG/PNGは `EncoderAdapter` を通しません。WebRTC/DataChannelはPhase 2 targetで、Phase 1 dependencyではありません。vendor browser API keyやhosted-browser backendは不要です。Steelは外部比較/UX benchmarkの参考に限定し、runtime dependencyにはしません。
+WebRTCはdirect-firstです。ICE credential provider未設定時は従来どおり `iceServers: []` のdirect-onlyです。Handoff serverへCloudflare Realtime TURNを明示設定した場合だけshort-lived STUN/TURN credentialを追加し、`iceTransportPolicy: all` のままsame-LAN/direct ICEを優先しつつWAN/CGNATではrelayへfallbackできます。long-lived TURN tokenはserver-sideだけに保持し、Maps / Chrome / browser client / helperへ渡しません。vendor browser API keyやhosted-browser backendは不要です。Steelは外部比較/UX benchmarkの参考に限定し、runtime dependencyにはしません。
 
 両lifecycleともHuman handoff後のstale automatic replayは禁止です。credential-safe ownershipとexisting-CDP attachの併用は拒否し、V5の `MCP_AUTH_PROVIDER=module` はper-principal isolationまで引き続き拒否します。Send mutationにはmodern MCP 2026-07-28 clientのform elicitation supportも必要です。
 

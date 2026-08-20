@@ -60,8 +60,9 @@ import { CredentialAwareTakeoverAdapter } from "./browser/credential-aware-takeo
 import { CuaTakeoverHumanProvider } from "./browser/cua-takeover-human-provider.js";
 import { SystemBrowserCredentialSession } from "./browser/system-browser-credential-session.js";
 import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provider.js";
-import { ThinTakeoverHumanProvider } from "./browser/thin-takeover-human-provider.js";
+import { CredentialTakeoverHumanProvider } from "./browser/credential-takeover-human-provider.js";
 import { NativeCredentialTakeoverBoundary } from "./browser/native-credential-takeover-boundary.js";
+import { WebRtcCredentialTakeoverBoundary } from "./browser/webrtc-credential-takeover-boundary.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
@@ -70,7 +71,7 @@ import { TRANSIT_TIME_MODES } from "./browser/transit-time.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { resolveFreshRouteSendTarget, type RouteSendActionInput } from "./browser/route-send.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
-import { InheritedFdNativeRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
+import { InheritedFdNativeRuntimeProvider, SpawnedWebRtcRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.3.2";
@@ -94,11 +95,19 @@ const nativeTakeoverRuntime = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.nativeRuntime
   ? new InheritedFdNativeRuntimeProvider(config.credentialSafeHandoff.nativeRuntime)
   : undefined;
-const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime);
+const webRtcTakeoverRuntime = config.credentialSafeHandoff.enabled &&
+  config.credentialSafeHandoff.transport === "webrtc_takeover" &&
+  config.credentialSafeHandoff.webRtcRuntime
+  ? new SpawnedWebRtcRuntimeProvider(config.credentialSafeHandoff.webRtcRuntime)
+  : undefined;
+const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime, webRtcTakeoverRuntime);
 const nativeCredentialTakeover = nativeTakeoverRuntime
   ? new NativeCredentialTakeoverBoundary(takeoverBroker)
   : undefined;
-const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport !== "thin_takeover"
+const webRtcCredentialTakeover = webRtcTakeoverRuntime
+  ? new WebRtcCredentialTakeoverBoundary(takeoverBroker)
+  : undefined;
+const credentialSafeBrowser = config.credentialSafeHandoff.enabled
   ? new SystemBrowserCredentialSession({
       executable: config.browser.executable,
       profileDir: config.browser.profileDir,
@@ -108,9 +117,13 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.cre
 const credentialSafeProvider = !config.credentialSafeHandoff.enabled
   ? undefined
   : config.credentialSafeHandoff.transport === "thin_takeover"
-    ? nativeCredentialTakeover
-      ? new ThinTakeoverHumanProvider(nativeCredentialTakeover)
+    ? nativeCredentialTakeover && credentialSafeBrowser
+      ? new CredentialTakeoverHumanProvider("thin-takeover", credentialSafeBrowser, nativeCredentialTakeover)
       : undefined
+    : config.credentialSafeHandoff.transport === "webrtc_takeover"
+      ? webRtcCredentialTakeover && credentialSafeBrowser
+        ? new CredentialTakeoverHumanProvider("webrtc-takeover", credentialSafeBrowser, webRtcCredentialTakeover)
+        : undefined
     : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover" && credentialSafeCuaAdapter
       ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
       : credentialSafeBrowser
@@ -275,15 +288,13 @@ function credentialSafePrompt(
   const base = mapsInterventionPrompt(intervention.reason);
   const remote = surface.providerKind === "thin-takeover" && /^https?:\/\//i.test(surface.locator)
     ? `Open the Native Takeover app and use this short-lived Native-only locator:\n${surface.locator}\n\nDo not use the locator as a Web takeover page; legacy Web bootstrap/frame/input are disabled for this Human session.`
-    : /^https?:\/\//i.test(surface.locator)
-      ? `Open the configured Human access surface:\n${surface.locator}`
-      : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
-  const ownership = surface.providerKind === "thin-takeover"
-    ? "Agent-owned automation CDP/input authority is detached and fenced while the same stateful Chrome session remains alive. The Thin Takeover Runtime may hold its own intervention/epoch-bound CDP connection only for encoded-frame capture and bounded Human input."
-    : "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without agent-owned CDP/remote-debugging authority.";
-  const recovery = surface.providerKind === "thin-takeover"
-    ? "Choose Continue after the browser-side step is complete. Human authority and the Human-owned CDP connection are revoked before automation establishes a fresh CDP attachment and readiness check; stale pre-auth actions are not replayed."
-    : "Choose Continue after the browser-side step is complete. The normal browser is closed before fresh automation state is re-established; stale pre-auth actions are not replayed.";
+    : surface.providerKind === "webrtc-takeover" && /^https?:\/\//i.test(surface.locator)
+      ? `Open this short-lived WebRTC takeover locator in iPhone Safari:\n${surface.locator}\n\nControl only the dedicated Chrome window directly with tap/swipe and the iOS keyboard. Legacy button-driven frame/input takeover is disabled for this Human session.`
+      : /^https?:\/\//i.test(surface.locator)
+        ? `Open the configured Human access surface:\n${surface.locator}`
+        : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
+  const ownership = "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without agent-owned CDP/remote-debugging authority.";
+  const recovery = "Choose Continue after the browser-side step is complete. Human authority is revoked and the normal browser is closed before automation establishes a fresh Chrome process/CDP attachment and readiness check; stale pre-auth actions are not replayed.";
   return [
     base,
     ownership,
@@ -300,9 +311,7 @@ async function prepareHandoffPrompt(intervention: MapsIntervention, owner: Hando
     selectHumanSurface(intervention.reason, CREDENTIAL_SAFE_REASONS) === "credential_safe_external"
   ) {
     takeoverBroker.revokeForIntervention(intervention.id);
-    await runtime.suspendAutomationForCredentialSafeHumanControl(intervention.id, intervention.epoch, {
-      preserveBrowserSession: config.credentialSafeHandoff.transport === "thin_takeover"
-    });
+    await runtime.suspendAutomationForCredentialSafeHumanControl(intervention.id, intervention.epoch);
     const surface = await credentialSafeSurface.begin(intervention, owner.principalBinding);
     return credentialSafePrompt(intervention, surface);
   }
@@ -377,11 +386,8 @@ async function humanInputRequired(
 
 async function cancelIntervention(interventionId: string, owner: HandoffOwner): Promise<CallToolResult> {
   takeoverBroker.revokeForIntervention(interventionId);
-  const providerKind = await revokeCredentialSafeSurface(interventionId, owner);
+  await revokeCredentialSafeSurface(interventionId, owner);
   const active = runtime.getActiveIntervention();
-  if (providerKind === "thin-takeover" && active?.id === interventionId && active.status === "human_active") {
-    await runtime.releaseHumanTakeoverConnection(active.id, active.epoch);
-  }
   if (active?.id === interventionId) runtime.cancelHumanIntervention(interventionId);
   handoffOwners.delete(interventionId);
   clearHandoffCheckpoint(owner);
@@ -505,10 +511,7 @@ async function runToolWithHandoff<T>(input: {
   const activeCredentialSafeSurface = credentialSafeSurface?.getActive();
   const usedCredentialSafeSurface = activeCredentialSafeSurface?.interventionId === state.interventionId;
   try {
-    const providerKind = await revokeCredentialSafeSurface(state.interventionId, owner);
-    if (providerKind === "thin-takeover") {
-      await runtime.releaseHumanTakeoverConnection(state.interventionId, state.epoch);
-    }
+    await revokeCredentialSafeSurface(state.interventionId, owner);
     runtime.markHumanControlComplete(state.interventionId);
     await operationQueue.run(() => usedCredentialSafeSurface
       ? runtime.verifyCredentialSafeHumanIntervention(state.interventionId)
