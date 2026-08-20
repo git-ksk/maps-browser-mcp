@@ -5,8 +5,8 @@ import { NativeCredentialTakeoverBoundary } from "../src/browser/native-credenti
 
 function fakeBroker(calls: string[]): TakeoverBroker {
   return {
-    createLink(ref: { id: string; epoch: number }, principalBinding: string) {
-      calls.push(`create:${ref.id}:${ref.epoch}:${principalBinding}`);
+    createNativeLink(ref: { id: string; epoch: number }, principalBinding: string) {
+      calls.push(`create-native:${ref.id}:${ref.epoch}:${principalBinding}`);
       return "https://takeover.example/takeover/native-locator";
     },
     async revokeNativeForIntervention(interventionId: string) {
@@ -22,7 +22,7 @@ test("native credential boundary fails closed away from macOS", () => {
   );
 });
 
-test("native credential boundary exposes only start and revoke lifecycle", async () => {
+test("native credential boundary exposes only Native-only start and revoke lifecycle", async () => {
   const calls: string[] = [];
   const boundary = new NativeCredentialTakeoverBoundary(fakeBroker(calls), "darwin");
 
@@ -32,8 +32,8 @@ test("native credential boundary exposes only start and revoke lifecycle", async
     principalBinding: "principal-a"
   });
   assert.equal(locator, "https://takeover.example/takeover/native-locator");
-  assert.deepEqual(calls, ["create:int-1:7:principal-a"]);
+  assert.deepEqual(calls, ["create-native:int-1:7:principal-a"]);
 
   await boundary.revoke("int-1");
-  assert.deepEqual(calls, ["create:int-1:7:principal-a", "revoke:int-1"]);
+  assert.deepEqual(calls, ["create-native:int-1:7:principal-a", "revoke:int-1"]);
 });
