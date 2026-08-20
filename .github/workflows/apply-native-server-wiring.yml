@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-      - name: Apply deterministic server integration
+      - name: Repair native server integration
         shell: python
         run: |
           from pathlib import Path
@@ -29,89 +29,27 @@ jobs:
           path = Path("src/server.ts")
           text = path.read_text()
 
-          old_import = 'import { ThinTakeoverHumanProvider } from "./browser/thin-takeover-human-provider.js";\n'
-          new_import = old_import + 'import { NativeCredentialTakeoverBoundary } from "./browser/native-credential-takeover-boundary.js";\n'
-          if text.count(old_import) != 1:
-              raise SystemExit("ThinTakeoverHumanProvider import anchor changed")
-          text = text.replace(old_import, new_import, 1)
+          bad = "config.config.credentialSafeHandoff"
+          count = text.count(bad)
+          if count != 4:
+              raise SystemExit(f"expected 4 duplicated config anchors, found {count}")
+          text = text.replace(bad, "config.credentialSafeHandoff")
 
-          old_broker_import = 'import { TakeoverBroker } from "mcp-execution-handoff/browser-takeover";'
-          new_broker_import = 'import { InheritedFdNativeRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";'
-          if text.count(old_broker_import) != 1:
-              raise SystemExit("TakeoverBroker import anchor changed")
-          text = text.replace(old_broker_import, new_broker_import, 1)
+          old_shutdown = "await credentialSafeCuaAdapter.close().catch(() => undefined);"
+          if text.count(old_shutdown) != 1:
+              raise SystemExit("CUA shutdown anchor changed")
+          text = text.replace(
+              old_shutdown,
+              "await credentialSafeCuaAdapter?.close().catch(() => undefined);",
+              1,
+          )
 
-          old_block = '''const credentialSafeCuaAdapter = new CuaHumanTakeoverAdapter(
-            () => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand)
-          );
-          const takeoverAdapter = new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter);
-          const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover);
-          const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport !== "thin_takeover"
-            ? new SystemBrowserCredentialSession({
-                executable: config.browser.executable,
-                profileDir: config.browser.profileDir,
-                startUrl: "https://www.google.com/maps"
-              })
-            : undefined;
-          const credentialSafeProvider = !config.credentialSafeHandoff.enabled
-            ? undefined
-            : config.credentialSafeHandoff.transport === "thin_takeover"
-              ? new ThinTakeoverHumanProvider(takeoverBroker)
-              : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover"
-                ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
-                : credentialSafeBrowser
-                  ? new SystemBrowserHumanProvider(
-                      credentialSafeBrowser,
-                      config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
-                    )
-                  : undefined;'''
-
-          new_block = '''const credentialSafeCuaAdapter = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport === "cua_takeover"
-            ? new CuaHumanTakeoverAdapter(() => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand))
-            : undefined;
-          const takeoverAdapter: TakeoverBrowserAdapter = credentialSafeCuaAdapter
-            ? new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter)
-            : runtime;
-          const nativeTakeoverRuntime = config.credentialSafeHandoff.enabled &&
-            config.credentialSafeHandoff.transport === "thin_takeover" &&
-            config.credentialSafeHandoff.nativeRuntime
-            ? new InheritedFdNativeRuntimeProvider(config.credentialSafeHandoff.nativeRuntime)
-            : undefined;
-          const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime);
-          const nativeCredentialTakeover = nativeTakeoverRuntime
-            ? new NativeCredentialTakeoverBoundary(takeoverBroker)
-            : undefined;
-          const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport !== "thin_takeover"
-            ? new SystemBrowserCredentialSession({
-                executable: config.browser.executable,
-                profileDir: config.browser.profileDir,
-                startUrl: "https://www.google.com/maps"
-              })
-            : undefined;
-          const credentialSafeProvider = !config.credentialSafeHandoff.enabled
-            ? undefined
-            : config.credentialSafeHandoff.transport === "thin_takeover"
-              ? nativeCredentialTakeover
-                ? new ThinTakeoverHumanProvider(nativeCredentialTakeover)
-                : undefined
-              : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover" && credentialSafeCuaAdapter
-                ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
-                : credentialSafeBrowser
-                  ? new SystemBrowserHumanProvider(
-                      credentialSafeBrowser,
-                      config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
-                    )
-                  : undefined;'''
-
-          if text.count(old_block) != 1:
-              raise SystemExit("takeover initialization anchor changed")
-          text = text.replace(old_block, new_block, 1)
           path.write_text(text)
-      - name: Commit server wiring
+      - name: Commit repaired server wiring
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/server.ts
-          git commit -m "feat(takeover): wire native runtime into Maps"
+          git commit -m "fix(takeover): repair native Maps wiring"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
