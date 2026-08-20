@@ -10,7 +10,7 @@ export interface NativeCredentialTakeoverStartRequest {
  * Maps-facing boundary for Native credential takeover.
  *
  * Native media/input/runtime details stay inside mcp-execution-handoff. Maps owns only the
- * intervention lifecycle: create one short-lived locator and revoke the matching native runtime.
+ * intervention lifecycle: create one short-lived Native-only locator and revoke the matching runtime.
  */
 export class NativeCredentialTakeoverBoundary {
   constructor(
@@ -23,7 +23,7 @@ export class NativeCredentialTakeoverBoundary {
   }
 
   start(request: NativeCredentialTakeoverStartRequest): string {
-    const locator = this.broker.createLink(
+    const locator = this.broker.createNativeLink(
       { id: request.interventionId, epoch: request.epoch },
       request.principalBinding
     );
