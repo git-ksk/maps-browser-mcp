@@ -83,14 +83,14 @@ const policy = new PolicyEngine({
 });
 const localChrome = new ChromeProcess(config.browser);
 const runtime = new MapsBrowserRuntime(localChrome, policy);
-const credentialSafeCuaAdapter = config.credentialSafeHandoff.enabled && config.config.credentialSafeHandoff.transport === "cua_takeover"
+const credentialSafeCuaAdapter = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport === "cua_takeover"
   ? new CuaHumanTakeoverAdapter(() => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand))
   : undefined;
 const takeoverAdapter: TakeoverBrowserAdapter = credentialSafeCuaAdapter
   ? new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter)
   : runtime;
 const nativeTakeoverRuntime = config.credentialSafeHandoff.enabled &&
-  config.config.credentialSafeHandoff.transport === "thin_takeover" &&
+  config.credentialSafeHandoff.transport === "thin_takeover" &&
   config.credentialSafeHandoff.nativeRuntime
   ? new InheritedFdNativeRuntimeProvider(config.credentialSafeHandoff.nativeRuntime)
   : undefined;
@@ -98,7 +98,7 @@ const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nati
 const nativeCredentialTakeover = nativeTakeoverRuntime
   ? new NativeCredentialTakeoverBoundary(takeoverBroker)
   : undefined;
-const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.config.credentialSafeHandoff.transport !== "thin_takeover"
+const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport !== "thin_takeover"
   ? new SystemBrowserCredentialSession({
       executable: config.browser.executable,
       profileDir: config.browser.profileDir,
@@ -107,7 +107,7 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.con
   : undefined;
 const credentialSafeProvider = !config.credentialSafeHandoff.enabled
   ? undefined
-  : config.config.credentialSafeHandoff.transport === "thin_takeover"
+  : config.credentialSafeHandoff.transport === "thin_takeover"
     ? nativeCredentialTakeover
       ? new ThinTakeoverHumanProvider(nativeCredentialTakeover)
       : undefined
@@ -1464,7 +1464,7 @@ export async function shutdownRuntime(): Promise<void> {
   const active = runtime.getActiveIntervention();
   if (active) takeoverBroker.revokeForIntervention(active.id);
   await operationQueue.drain();
-  await credentialSafeCuaAdapter.close().catch(() => undefined);
+  await credentialSafeCuaAdapter?.close().catch(() => undefined);
   await credentialSafeBrowser?.close().catch(() => undefined);
   await runtime.close();
 }
