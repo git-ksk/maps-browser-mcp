@@ -273,9 +273,11 @@ function credentialSafePrompt(
   surface: { providerKind: string; locator: string }
 ): string {
   const base = mapsInterventionPrompt(intervention.reason);
-  const remote = /^https?:\/\//i.test(surface.locator)
-    ? `Open the configured Human access surface:\n${surface.locator}`
-    : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
+  const remote = surface.providerKind === "thin-takeover" && /^https?:\/\//i.test(surface.locator)
+    ? `Open the Native Takeover app and use this short-lived Native-only locator:\n${surface.locator}\n\nDo not use the locator as a Web takeover page; legacy Web bootstrap/frame/input are disabled for this Human session.`
+    : /^https?:\/\//i.test(surface.locator)
+      ? `Open the configured Human access surface:\n${surface.locator}`
+      : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
   const ownership = surface.providerKind === "thin-takeover"
     ? "Agent-owned automation CDP/input authority is detached and fenced while the same stateful Chrome session remains alive. The Thin Takeover Runtime may hold its own intervention/epoch-bound CDP connection only for encoded-frame capture and bounded Human input."
     : "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without agent-owned CDP/remote-debugging authority.";
