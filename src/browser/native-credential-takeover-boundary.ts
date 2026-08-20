@@ -13,7 +13,14 @@ export interface NativeCredentialTakeoverStartRequest {
  * intervention lifecycle: create one short-lived locator and revoke the matching native runtime.
  */
 export class NativeCredentialTakeoverBoundary {
-  constructor(private readonly broker: TakeoverBroker) {}
+  constructor(
+    private readonly broker: TakeoverBroker,
+    platform: NodeJS.Platform = process.platform
+  ) {
+    if (platform !== "darwin") {
+      throw new Error("Native credential takeover currently requires a macOS host runtime");
+    }
+  }
 
   start(request: NativeCredentialTakeoverStartRequest): string {
     const locator = this.broker.createLink(

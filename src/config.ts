@@ -333,9 +333,6 @@ export function loadConfig(): AppConfig {
     if (credentialSafeOperatorUrl) {
       throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover because the Handoff broker issues the operator locator");
     }
-    if (process.platform !== "darwin") {
-      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover currently requires macOS because the native host uses ScreenCaptureKit, VideoToolbox, and CoreGraphics");
-    }
 
     const advertisedHost = nativeIp("MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST");
     const inputBindHost = nativeIp("MAPS_NATIVE_TAKEOVER_INPUT_BIND_HOST", advertisedHost);
@@ -396,7 +393,7 @@ export function loadConfig(): AppConfig {
     }
     if (!path.isAbsolute(profileDir)) {
       throw new Error(
-        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated browser profile path"
+        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path"
       );
     }
   }

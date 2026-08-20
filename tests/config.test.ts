@@ -421,11 +421,17 @@ test("keyless Thin Takeover requires the authenticated broker and rejects Steel 
     MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
     MAPS_REMOTE_TAKEOVER: "true",
     MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
-    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST: "192.0.2.10",
+    MAPS_NATIVE_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-macos-host",
+    MAPS_NATIVE_TAKEOVER_REVOKE_EXECUTABLE: "/opt/thin/takeover-control-send"
   }, () => {
     const config = loadConfig();
     assert.equal(config.credentialSafeHandoff.transport, "thin_takeover");
     assert.equal(config.takeover.enabled, true);
+    assert.equal(config.credentialSafeHandoff.nativeRuntime?.advertisedHost, "192.0.2.10");
+    assert.equal(config.credentialSafeHandoff.nativeRuntime?.controlBindHost, "127.0.0.1");
+    assert.equal(config.credentialSafeHandoff.nativeRuntime?.hostExecutable, "/opt/thin/takeover-macos-host");
   });
 
   await withEnv({
