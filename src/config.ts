@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -14,6 +15,16 @@ function envInt(name: string, fallback: number, min: number, max: number): numbe
   const raw = process.env[name];
   if (raw === undefined) return fallback;
   const parsed = Number(raw.trim());
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+  return parsed;
+}
+
+function envOptionalInt(name: string, min: number, max: number): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
     throw new Error(`${name} must be an integer between ${min} and ${max}`);
   }
@@ -110,6 +121,27 @@ function credentialSafeTransport(name: string): "external" | "cua_takeover" | "t
   throw new Error(`${name} must be one of: external, cua_takeover, thin_takeover`);
 }
 
+function requiredAbsolutePath(name: string): string {
+  const raw = process.env[name]?.trim();
+  if (!raw) throw new Error(`${name} is required`);
+  if (raw.includes("\0") || !path.isAbsolute(raw)) {
+    throw new Error(`${name} must be an absolute path without NUL characters`);
+  }
+  return raw;
+}
+
+function nativeIp(name: string, fallback?: string): string {
+  const value = process.env[name]?.trim() || fallback;
+  if (!value || isIP(value) === 0) throw new Error(`${name} must be an IP literal`);
+  return value;
+}
+
+function rejectWildcardBind(name: string, value: string): void {
+  if (value === "0.0.0.0" || value === "::") {
+    throw new Error(`${name} must bind an explicit interface address, not a wildcard address`);
+  }
+}
+
 export interface AppConfig {
   auth: {
     provider: "none" | "static-bearer" | "module";
@@ -141,6 +173,18 @@ export interface AppConfig {
     transport: "external" | "cua_takeover" | "thin_takeover";
     operatorUrl?: string;
     cuaCommand: string;
+    nativeRuntime?: {
+      hostExecutable: string;
+      revokeExecutable: string;
+      advertisedHost: string;
+      inputBindHost: string;
+      feedbackBindHost: string;
+      controlBindHost: string;
+      inputPort: number;
+      controlPort: number;
+      videoFeedbackPort: number;
+      displayId?: number;
+    };
   };
   mcpApps: {
     googleMapsEmbedApiKey?: string;
@@ -263,6 +307,8 @@ export function loadConfig(): AppConfig {
   const credentialSafeTransportMode = credentialSafeTransport("MAPS_CREDENTIAL_SAFE_TRANSPORT");
   const credentialSafeOperatorUrl = externalHumanOperatorUrl("MAPS_CREDENTIAL_SAFE_OPERATOR_URL");
   const cuaCommand = process.env.MAPS_CUA_DRIVER_COMMAND?.trim() || "cua-driver";
+  let nativeRuntime: AppConfig["credentialSafeHandoff"]["nativeRuntime"];
+
   if (credentialSafeOperatorUrl && !credentialSafeHandoff) {
     throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
   }
@@ -287,6 +333,40 @@ export function loadConfig(): AppConfig {
     if (credentialSafeOperatorUrl) {
       throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover because the Handoff broker issues the operator locator");
     }
+    if (process.platform !== "darwin") {
+      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover currently requires macOS because the native host uses ScreenCaptureKit, VideoToolbox, and CoreGraphics");
+    }
+
+    const advertisedHost = nativeIp("MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST");
+    const inputBindHost = nativeIp("MAPS_NATIVE_TAKEOVER_INPUT_BIND_HOST", advertisedHost);
+    const feedbackBindHost = nativeIp("MAPS_NATIVE_TAKEOVER_FEEDBACK_BIND_HOST", advertisedHost);
+    const controlBindHost = nativeIp("MAPS_NATIVE_TAKEOVER_CONTROL_BIND_HOST", "127.0.0.1");
+    rejectWildcardBind("MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST", advertisedHost);
+    rejectWildcardBind("MAPS_NATIVE_TAKEOVER_INPUT_BIND_HOST", inputBindHost);
+    rejectWildcardBind("MAPS_NATIVE_TAKEOVER_FEEDBACK_BIND_HOST", feedbackBindHost);
+    if (!isLoopbackBind(controlBindHost)) {
+      throw new Error("MAPS_NATIVE_TAKEOVER_CONTROL_BIND_HOST must remain loopback; revoke control is local-only");
+    }
+
+    const inputPort = envInt("MAPS_NATIVE_TAKEOVER_INPUT_PORT", 45_556, 1, 65_535);
+    const controlPort = envInt("MAPS_NATIVE_TAKEOVER_CONTROL_PORT", 45_557, 1, 65_535);
+    const videoFeedbackPort = envInt("MAPS_NATIVE_TAKEOVER_VIDEO_FEEDBACK_PORT", 45_558, 1, 65_535);
+    if (new Set([inputPort, controlPort, videoFeedbackPort]).size !== 3) {
+      throw new Error("MAPS_NATIVE_TAKEOVER_INPUT_PORT, CONTROL_PORT, and VIDEO_FEEDBACK_PORT must be distinct");
+    }
+
+    nativeRuntime = {
+      hostExecutable: requiredAbsolutePath("MAPS_NATIVE_TAKEOVER_HOST_EXECUTABLE"),
+      revokeExecutable: requiredAbsolutePath("MAPS_NATIVE_TAKEOVER_REVOKE_EXECUTABLE"),
+      advertisedHost,
+      inputBindHost,
+      feedbackBindHost,
+      controlBindHost,
+      inputPort,
+      controlPort,
+      videoFeedbackPort,
+      displayId: envOptionalInt("MAPS_NATIVE_TAKEOVER_DISPLAY_ID", 1, 4_294_967_295)
+    };
   }
   if (credentialSafeHandoff) {
     if (allowExternalCdp) {
@@ -316,7 +396,7 @@ export function loadConfig(): AppConfig {
     }
     if (!path.isAbsolute(profileDir)) {
       throw new Error(
-        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path"
+        "MAPS_V5_AUTHENTICATED_WORKFLOWS=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated browser profile path"
       );
     }
   }
@@ -351,7 +431,8 @@ export function loadConfig(): AppConfig {
       enabled: credentialSafeHandoff,
       transport: credentialSafeTransportMode,
       operatorUrl: credentialSafeOperatorUrl,
-      cuaCommand
+      cuaCommand,
+      nativeRuntime
     },
     mcpApps: {
       googleMapsEmbedApiKey: process.env.GOOGLE_MAPS_EMBED_API_KEY?.trim() || undefined
