@@ -88,6 +88,7 @@ function nativeAuthorizedPage() {
     "cache-control": "no-store",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
+    "x-takeover-native-authorized": "1",
     "content-security-policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
   }});
 }
