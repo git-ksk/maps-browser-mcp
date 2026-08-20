@@ -1,0 +1,66 @@
+name: Repair Native Config
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/repair-native-config.yml
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feat/hosted-human-surface'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Apply portable config and runtime platform fence
+        shell: python
+        run: |
+          from pathlib import Path
+
+          config_path = Path("src/config.ts")
+          config = config_path.read_text()
+          platform_block = '''    if (process.platform !== "darwin") {\n      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover currently requires macOS because the native host uses ScreenCaptureKit, VideoToolbox, and CoreGraphics");\n    }\n'''
+          if config.count(platform_block) != 1:
+              raise SystemExit("native platform config anchor changed")
+          config = config.replace(platform_block, "", 1)
+          config = config.replace(
+              "absolute dedicated browser profile path",
+              "absolute dedicated profile path",
+              1,
+          )
+          config_path.write_text(config)
+
+          boundary_path = Path("src/browser/native-credential-takeover-boundary.ts")
+          boundary = boundary_path.read_text()
+          old_ctor = '  constructor(private readonly broker: TakeoverBroker) {}\n'
+          new_ctor = '''  constructor(\n    private readonly broker: TakeoverBroker,\n    platform: NodeJS.Platform = process.platform\n  ) {\n    if (platform !== "darwin") {\n      throw new Error("Native credential takeover currently requires a macOS host runtime");\n    }\n  }\n'''
+          if boundary.count(old_ctor) != 1:
+              raise SystemExit("native boundary constructor anchor changed")
+          boundary = boundary.replace(old_ctor, new_ctor, 1)
+          boundary_path.write_text(boundary)
+
+          test_path = Path("tests/config.test.ts")
+          tests = test_path.read_text()
+          old_env = '''    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",\n    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"\n  }, () => {\n    const config = loadConfig();\n    assert.equal(config.credentialSafeHandoff.transport, "thin_takeover");\n    assert.equal(config.takeover.enabled, true);\n  });'''
+          new_env = '''    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",\n    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",\n    MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST: "192.0.2.10",\n    MAPS_NATIVE_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-macos-host",\n    MAPS_NATIVE_TAKEOVER_REVOKE_EXECUTABLE: "/opt/thin/takeover-control-send"\n  }, () => {\n    const config = loadConfig();\n    assert.equal(config.credentialSafeHandoff.transport, "thin_takeover");\n    assert.equal(config.takeover.enabled, true);\n    assert.equal(config.credentialSafeHandoff.nativeRuntime?.advertisedHost, "192.0.2.10");\n    assert.equal(config.credentialSafeHandoff.nativeRuntime?.controlBindHost, "127.0.0.1");\n    assert.equal(config.credentialSafeHandoff.nativeRuntime?.hostExecutable, "/opt/thin/takeover-macos-host");\n  });'''
+          if tests.count(old_env) != 1:
+              raise SystemExit("thin config test anchor changed")
+          tests = tests.replace(old_env, new_env, 1)
+          test_path.write_text(tests)
+      - name: Commit config hardening
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/config.ts src/browser/native-credential-takeover-boundary.ts tests/config.test.ts
+          git commit -m "fix(takeover): separate native config from platform execution"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
