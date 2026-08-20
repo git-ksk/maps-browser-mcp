@@ -1,0 +1,42 @@
+name: Repair Native Takeover Prompt
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/repair-native-prompt.yml
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feat/hosted-human-surface'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Make Native-only operator instructions explicit
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("src/server.ts")
+          text = path.read_text()
+          old = '''  const remote = /^https?:\\/\\//i.test(surface.locator)\n    ? `Open the configured Human access surface:\\n${surface.locator}`\n    : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";'''
+          new = '''  const remote = surface.providerKind === "thin-takeover" && /^https?:\\/\\//i.test(surface.locator)\n    ? `Open the Native Takeover app and use this short-lived Native-only locator:\\n${surface.locator}\\n\\nDo not use the locator as a Web takeover page; legacy Web bootstrap/frame/input are disabled for this Human session.`\n    : /^https?:\\/\\//i.test(surface.locator)\n      ? `Open the configured Human access surface:\\n${surface.locator}`\n      : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";'''
+          if text.count(old) != 1:
+              raise SystemExit("credential-safe remote prompt anchor changed")
+          path.write_text(text.replace(old, new, 1))
+      - name: Commit Native-only prompt
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/server.ts
+          git commit -m "fix(takeover): direct Native-only locators to the iPhone app"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
