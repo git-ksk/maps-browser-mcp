@@ -61,6 +61,7 @@ import { CuaTakeoverHumanProvider } from "./browser/cua-takeover-human-provider.
 import { SystemBrowserCredentialSession } from "./browser/system-browser-credential-session.js";
 import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provider.js";
 import { ThinTakeoverHumanProvider } from "./browser/thin-takeover-human-provider.js";
+import { NativeCredentialTakeoverBoundary } from "./browser/native-credential-takeover-boundary.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
@@ -69,7 +70,7 @@ import { TRANSIT_TIME_MODES } from "./browser/transit-time.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { resolveFreshRouteSendTarget, type RouteSendActionInput } from "./browser/route-send.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
-import { TakeoverBroker } from "mcp-execution-handoff/browser-takeover";
+import { InheritedFdNativeRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.3.2";
@@ -82,12 +83,22 @@ const policy = new PolicyEngine({
 });
 const localChrome = new ChromeProcess(config.browser);
 const runtime = new MapsBrowserRuntime(localChrome, policy);
-const credentialSafeCuaAdapter = new CuaHumanTakeoverAdapter(
-  () => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand)
-);
-const takeoverAdapter = new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter);
-const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover);
-const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport !== "thin_takeover"
+const credentialSafeCuaAdapter = config.credentialSafeHandoff.enabled && config.config.credentialSafeHandoff.transport === "cua_takeover"
+  ? new CuaHumanTakeoverAdapter(() => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand))
+  : undefined;
+const takeoverAdapter: TakeoverBrowserAdapter = credentialSafeCuaAdapter
+  ? new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter)
+  : runtime;
+const nativeTakeoverRuntime = config.credentialSafeHandoff.enabled &&
+  config.config.credentialSafeHandoff.transport === "thin_takeover" &&
+  config.credentialSafeHandoff.nativeRuntime
+  ? new InheritedFdNativeRuntimeProvider(config.credentialSafeHandoff.nativeRuntime)
+  : undefined;
+const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime);
+const nativeCredentialTakeover = nativeTakeoverRuntime
+  ? new NativeCredentialTakeoverBoundary(takeoverBroker)
+  : undefined;
+const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.config.credentialSafeHandoff.transport !== "thin_takeover"
   ? new SystemBrowserCredentialSession({
       executable: config.browser.executable,
       profileDir: config.browser.profileDir,
@@ -96,9 +107,11 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled && config.cre
   : undefined;
 const credentialSafeProvider = !config.credentialSafeHandoff.enabled
   ? undefined
-  : config.credentialSafeHandoff.transport === "thin_takeover"
-    ? new ThinTakeoverHumanProvider(takeoverBroker)
-    : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover"
+  : config.config.credentialSafeHandoff.transport === "thin_takeover"
+    ? nativeCredentialTakeover
+      ? new ThinTakeoverHumanProvider(nativeCredentialTakeover)
+      : undefined
+    : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover" && credentialSafeCuaAdapter
       ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
       : credentialSafeBrowser
         ? new SystemBrowserHumanProvider(
