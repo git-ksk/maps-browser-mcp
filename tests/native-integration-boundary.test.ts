@@ -10,7 +10,7 @@ function read(relativePath: string): string {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
 
-test("Maps Native integration remains a thin lifecycle boundary", () => {
+test("Maps Native integration remains a thin Native-only lifecycle boundary", () => {
   const boundary = read("src/browser/native-credential-takeover-boundary.ts");
   const provider = read("src/browser/thin-takeover-human-provider.ts");
   const server = read("src/server.ts");
@@ -34,6 +34,7 @@ test("Maps Native integration remains a thin lifecycle boundary", () => {
   }
 
   assert.match(boundary, /start\(request: NativeCredentialTakeoverStartRequest\): string/);
+  assert.match(boundary, /broker\.createNativeLink\(/);
   assert.match(boundary, /async revoke\(interventionId: string\): Promise<void>/);
   assert.match(server, /new InheritedFdNativeRuntimeProvider\(config\.credentialSafeHandoff\.nativeRuntime\)/);
   assert.match(server, /new NativeCredentialTakeoverBoundary\(takeoverBroker\)/);
@@ -54,4 +55,10 @@ test("thin_takeover does not instantiate the CUA transport", () => {
     read("src/browser/native-credential-takeover-boundary.ts"),
     /Cua|CUA|cua-driver/
   );
+});
+
+test("thin_takeover prompt directs the Human to the Native app instead of the legacy Web surface", () => {
+  const server = read("src/server.ts");
+  assert.match(server, /Open the Native Takeover app and use this short-lived Native-only locator/);
+  assert.match(server, /legacy Web bootstrap\/frame\/input are disabled/);
 });
