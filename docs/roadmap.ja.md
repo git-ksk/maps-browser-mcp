@@ -6,6 +6,10 @@
 
 ## 現在のベースライン
 
+現在の安定source releaseは **v0.3.3** です。Product baselineには、V4未ログインsemantic coverageのcloseout、V5-A〜V5-Dのbounded authenticated workflow、さらにdedicated profileが未ログイン/再認証になった時だけ使うoptionalなcredential-safe Human Handoffまで含まれます。
+
+V5に **WebRTC / Cloudflare / TURN / remote takeover製品は必須ではありません**。最も単純な構成は、HumanがローカルでログインしたpersistentなMaps専用Chrome profileです。WebRTC Handoffはcredential ceremony / recoveryのoptional transportであり、authenticated Maps toolの前提条件ではありません。
+
 現在のserverは、意図的に2つの利用モードを分離しています。
 
 - **Navigation-only** — render済みMaps contentを読まず、Google Mapsのsearch / directions / map / Street View surfaceを開く
@@ -44,7 +48,7 @@ V4は小さくreview可能なsliceとして実装・closeoutしました。
 
 ログイン必須capabilityはV4へ入れずV5へ送ります。利用中にconsent / sign-in / CAPTCHA / access challengeが自然発生した場合は既存Human Interventionで停止し、突破しません。Human Intervention完了を別semantic actionのapprovalとはみなしません。
 
-Mapsは抽出済み `mcp-execution-handoff` formal upstreamのimmutableなv0.1.0 source-release commitをconsumerとして組み込み済みです。Japan Cinemaを含むtwo-real-adapter validationも完了済みで、この統合でMaps serverをgeneric browser / desktop / shell MCPへ広げません。
+Mapsは抽出済み `mcp-execution-handoff` upstreamをimmutable dependency pinでconsumerとして組み込みます。v0.3.3 baselineでは、same-LAN direct / cellular TURN relayのHandoff-owned Safari WebRTC pathまで物理acceptance済みですが、Maps自身はtransport-blindのままMaps-specificなHuman-intervention lifecycleだけを所有します。Japan Cinemaを含むtwo-real-adapter validationも完了済みで、この統合でMaps serverをgeneric browser / desktop / shell MCPへ広げません。
 
 ### V4最初の実装slice（完了済み）
 
@@ -148,21 +152,32 @@ Canonical contract / security rule / evidence / completion criteriaは [MCP Apps
 
 ## pre-v1 release progression
 
-残る主要なpre-v1 workは、現時点では次のrelease themeへ対応付けます。これは各項目を必ずそのversionでshipすると約束するものではありません。Live Google Maps Web behavior、MCP host support、安全性制約の観測結果に応じてscopeは移動できます。
+Roadmapは、完了済みcapability baselineと次のevidence-driven release themeが分かれる形へ整理します。Version labelはplanning targetであり、必ずそのversionでshipする約束ではありません。Live Google Maps Web behavior、MCP host support、安全性制約の観測結果に応じてscopeは移動できます。
 
-- **v0.3.0 — V5 authenticated workflows + clean remote-auth foundation**
-  - broad signed-in browser automationを有効化せず、下記V5を段階的に実装する。
-  - Issue #74のclean external OAuth reference gatewayは完了。Versionedなisolated implementationでMaps専用OAuth boundary + loopback private hopを提供し、MCP Runtime / ChatGPT dogfood・reconnect validationを通過、traffic確認後にhistorical Monokura-derived serviceもretire済みで、#74はcloseした。
-- **v0.4.0 — MCP Apps production portability**
-  - 既存host-neutral MCP Apps surfaceを、適切なsecond production host + real restricted Google Maps Embed keyで再検証する。
-  - production-host evidenceが揃った後だけexperimental labelを再評価し、text / structured fallbackを維持してrich UIをcore必須にはしない。
-- **v0.5.0 — reliability / UI-change resilience / observability**
-  - fail-closed behaviorを維持したままGoogle Maps Web UI driftの検知・診断を強化する。
-  - generic browser automationへ広げず、共通semantic identity / postcondition、failure classification、live compatibility evidence、locale差・A/B variation耐性を改善する。
+### 完了済み — v0.3.x capability baseline
+
+- **V4未ログインsemantic coverage** — V4-F closeoutまで完了。
+- **V5-A〜V5-D authenticated workflow** — fail-closed Opt-in / Interactive Assist boundary配下で実装済み。V5-E Historyは意図的にevaluated / blockedのままで、scopeを暗黙に広げない。
+- **Clean remote-auth / OAuth reference boundary** — Maps専用OAuth gateway + loopback private hopを確立し、historical derived serviceもretire済み。
+- **Credential-safe Human Handoff** — v0.3.3でoptionalなSafari WebRTC pathを追加し、same-LAN direct / cellular TURN、exact-window fencing、revoke / stale-locator rejection、Human-only Google sign-in後のfresh `signed_in` + bounded V5-B readまで物理acceptance済み。
+
+### 次 — v0.4.0: MCP Apps production portability
+
+- 既存host-neutral MCP Apps surfaceを、適切な **second production host** + real restricted Google Maps Embed keyで再検証する。
+- Real render、CSP / sandbox、lifecycle、text / structured fallbackを確認し、rich UIをcore必須にしない。
+- Production-host evidenceが揃った後だけ `experimental` labelを再評価する。
+
+### その次 — v0.5.0: reliability / UI-change resilience / observability
+
+- fail-closed behaviorを維持したままGoogle Maps Web UI driftの検知・診断を強化する。
+- 共通semantic identity / postcondition、failure classification、live compatibility evidence、locale差・A/B variation耐性を改善する。
+- Diagnosticsはbounded / privacy-safeを維持し、generic browser automationへ広げない。
+
+### v1.0.0へ向けて
 
 それ以降のpre-v1 releaseは、実利用で得たevidenceに基づくsemantic capability gapやhardeningのため意図的に未確定とします。**v1.0.0は未決機能を最後に詰め込むreleaseにはしません**。すでに完成してbounded・documented・operationally matureになったproduct surfaceをstableへ昇格するreleaseとします。
 
-## V5 / v0.3.0 — Authenticated Google Maps Web Workflows
+## V5 — Authenticated Google Maps Web Workflows
 
 V5は **bounded authenticated Google Maps Web workflow。最初はread-orientedかつlow-consequenceなreversible account stateを優先** と定義します。V5-A〜V5-Dは既存のfail-closed Opt-in / Interactive Assist boundary配下で実装済み、V5-Eはprivacy/browser-surface gateとして評価完了しhistory toolは意図的に追加していません。物理V5 sign-in acceptanceもHandoff-owned Safari WebRTC経路（direct / cellular TURN）で、fresh `signed_out` → Human-only Google sign-in → revoke / stale-locator fencing → fresh `signed_in` readiness → bounded V5-B readまで完了済みです。残るmobile viewport / reload polishはMaps semantic capability gapではなくgeneric Handoff workとして `mcp-execution-handoff` #17で追跡します。
 
@@ -179,6 +194,17 @@ Timelineは、現行Google Maps公式情報でcomputer版Mapsでは利用不可�
 MCP authorization principalとdedicated browserでactiveなGoogle Accountは別identityです。Per-principal browser/profile isolationができるまではV5 account-backed toolをsingle-user deployment/profileだけで扱うdesignとします。Sign-in確認だけのためにraw Google account identifierをMCP outputへ返しません。
 
 Entry gate、proposed semantic shape、logging/privacy rule、test plan、explicit deferralは [V5 authenticated workflows — design baseline](v5-authenticated-workflows.ja.md) を参照してください。
+
+## Cross-repository Handoff follow-up — Maps release blockerではない
+
+残るHandoff workは、新しいMaps-specific semantic requirementが発生しない限りupstream側で扱います。Mapsはtransport logicを再実装せず、narrowなstart/revoke lifecycle経由で改善を取り込みます。
+
+- [`mcp-execution-handoff` #17](https://github.com/git-ksk/mcp-execution-handoff/issues/17) — adaptive mobile viewport、keyboard-aware composition、safe reload/reconnect。v0.3.3物理baseline後の最優先WebRTC usability follow-up。
+- [`mcp-execution-handoff` #19](https://github.com/git-ksk/mcp-execution-handoff/issues/19) — provider-neutral relay ownership。現時点の物理acceptance済みreferenceはCloudflare Realtime TURNだが、Mapsはrelay providerを知らないまま維持する。
+- [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane / private execution-worker topology。現行built-in capture/inputはmacOS worker capabilityであり、Linux / Cloud Run control planeをexecution workerとして扱わない。
+- [`mcp-execution-handoff` #13](https://github.com/git-ksk/mcp-execution-handoff/issues/13) — optional Native / Thin Takeover transportとreconnect path。Nativeはsibling / experimental optionで、acceptedなSafari WebRTC pathの前提ではない。
+
+これらupstream itemはV5-A〜V5-Dをre-openせず、v0.3.3 Maps baselineのrelease blockerでもありません。Upstream変更がMaps-owned lifecycleまたはbrowser authority boundaryへmaterialな影響を与えた時だけMaps consumer acceptanceを再実行します。
 
 ## ロードマップでも維持する非ゴール
 
