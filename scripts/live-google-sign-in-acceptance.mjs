@@ -35,7 +35,7 @@ const TAKEOVER_RESPONSE_HEADERS = new Set([
 ]);
 
 const TAKEOVER_PATH_PATTERN = /^\/takeover\/[A-Za-z0-9._~-]{1,512}$/;
-const TAKEOVER_API_PATH_PATTERN = /^\/takeover\/api\/(?:bootstrap|claim|reconnect|webrtc-prepare-claim|webrtc-prepare-reconnect|webrtc-connect|webrtc-metrics|webrtc-suspend|frame|input|done|cancel)\/[A-Za-z0-9-]{8,100}$/;
+const TAKEOVER_API_PATH_PATTERN = /^\/takeover\/api\/(?:bootstrap|claim|reconnect|webrtc-prepare-claim|webrtc-prepare-reconnect|webrtc-connect|webrtc-diagnostics|webrtc-metrics|webrtc-suspend|frame|input|done|cancel)\/[A-Za-z0-9-]{8,100}$/;
 const NATIVE_OPERATOR_AUTH_PATH = "/takeover/operator/native-auth";
 
 function takeoverGatewayPathAllowed(pathname) {

@@ -59,6 +59,12 @@ test("execution handoff upstream source release is pinned to an immutable commit
   );
 });
 
+test("local Google sign-in acceptance proxy keeps the Handoff WebRTC diagnostic route explicitly bounded", () => {
+  const source = read("scripts/live-google-sign-in-acceptance.mjs");
+  assert.match(source, /webrtc-connect\|webrtc-diagnostics\|webrtc-metrics\|webrtc-suspend/);
+  assert.doesNotMatch(source, /takeover\\\/api\\\/(?:\.\*|\[\^\/\]\+)/);
+});
+
 test("GitHub Actions dependencies are pinned to immutable commit SHAs", () => {
   const workflows = [
     ".github/workflows/ci.yml",
