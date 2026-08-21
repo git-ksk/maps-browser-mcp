@@ -477,7 +477,7 @@ Contributions are welcome within the project's constrained scope. Read **[CONTRI
 
 ## Release status
 
-Repository metadata is now `0.3.3` for the v0.3.3 release candidate. The latest published stable tag remains **v0.3.2** until the v0.3.3 sequential V5 release gate is completed and the exact tested `main` commit is tagged. V5-A through V5-D remain disabled by default behind the authenticated-workflow opt-in, and `maps-browser-mcp` remains unpublished on npm.
+The current release baseline is **v0.3.3** and repository metadata is `0.3.3`. V5-A through V5-D remain disabled by default behind the authenticated-workflow opt-in, WebRTC Human takeover is optional, and `maps-browser-mcp` remains unpublished on npm. Use the GitHub source tag/Release for the stable source baseline.
 
 See **[Release checklist](docs/release.md)** before tagging or publishing.
 

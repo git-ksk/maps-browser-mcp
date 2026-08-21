@@ -242,6 +242,16 @@ There is no V5-E history MCP tool. Re-run this gate only when evaluating whether
 4. Do not change activity settings, delete history, auto-scroll, paginate, read cookies/storage/account identity, intercept network/internal APIs, or persist screenshots/logs containing private activity.
 5. Timeline remains outside the desktop-Web roadmap unless navigation remains on an official dedicated desktop Timeline surface with a freshly observable bounded semantic target; a menu link or redirect back to the normal map is insufficient.
 
+### v0.3.3 credential-safe handoff release validation — 2026-08-21 / ja-JP
+
+- Fresh disposable dedicated profile started `signed_out`.
+- Physical iPhone Safari WebRTC takeover completed Human-only Google sign-in, then Done/revoke invalidated the active locator and stale reuse was rejected.
+- Fresh automation attachment returned identity-free `signed_in`, followed by a bounded V5-B save-state read without printing account identity or private list labels.
+- Same-LAN direct WebRTC and cellular/4G TURN relay had already passed the same target/runtime physical acceptance, including target-window re-activation, tap/focus, text, Backspace, scroll, and identifier-free bounded diagnostics.
+- v0.3.3 does **not** repeat V5-C Save or V5-D device send. The exact mutation/approval sources `src/browser/place-save-action.ts`, `src/browser/place-save-state.ts`, `src/browser/route-send.ts`, `src/action-approval.ts`, and `src/action-approval-mcp.ts` are unchanged from the v0.3.2 live evidence. Shared runtime changes were reviewed as credential-handoff/browser-ownership mechanics plus bounded place-selection settling; deterministic C/D tests remain green.
+- Reused evidence: v0.3.2 sequential V5 validation below. This release makes no claim that C/D mutation/send was re-executed for v0.3.3.
+- Release head required Node 20/22/24 checks, macOS/Windows browser smoke, CodeQL zero findings, local 305 pass / 1 platform skip / 0 fail, build/smoke/package checks, and npm audit with zero vulnerabilities.
+
 ### v0.3.2 sequential V5 release validation — 2026-08-19 / ja-JP
 
 - V5-A: **PASS** — fresh dedicated-profile readiness returned `signed_in`; no account identity was read.

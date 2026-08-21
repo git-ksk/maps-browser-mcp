@@ -6,29 +6,25 @@
 
 ## 最新安定版
 
-この文書で扱うrelease baselineは **v0.3.2** です。Exact tested release commitはGitHub tag / Releaseを正本とします。
+最新安定版は **v0.3.3** です。Exact tested release commitはGitHub tag / Releaseを正本とします。
 
-- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.2
+- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.3
 - Draft: いいえ
 - Prerelease: いいえ
 - npm: **未公開**
 
-v0.3.2ではcredential-safe Cuaのfocus handlingとlive V5-C existing-list Saveのactivation / postcondition pathをhardeningし、dedicated signed-in profileでV5-A〜Dのsequential release gateを再実行します。Approved Send-to-phoneはMCP側device activation 1回・retryなしで、HumanがiPhone到着を確認しました。同じ1 activationからiOS側で同一通知3件を観測したため、external delivery duplicationとして記録します。v0.3.0でbounded V5 authenticated workflow（A〜D）を追加し、v0.3.1でtop-level README tool inventoryを同期しました。V5はdefault無効、account-backed automationはsingle-user / dedicated-profile限定、npmは引き続き未公開です。
+v0.3.3ではsingle-user macOS向けopt-in credential-safe WebRTC Human takeover、物理acceptance済みHandoff runtime pin、macOS + iPhone Safari向け利用者ガイドを追加します。V5自体にWebRTCは必須ではなく、persistentな専用profileがすでにsigned-inならremote takeoverなしでbounded authenticated toolを利用できます。
+
+変更されたhandoff boundaryはfresh `signed_out` → Human-only Google sign-in → Done/revoke + stale locator拒否 → fresh automation attach → identity-free `signed_in` → bounded V5-B readまで物理acceptance済みです。V5-C/V5-D mutationとaction-approval実装fileはv0.3.2 live evidenceからunchangedのため、v0.3.3ではimpact-based release gateに従ってそのexact C/D evidenceを再利用し、不要なaccount mutation/device sendは再実行していません。
 
 詳細な変更履歴は [CHANGELOG 日本語版](../CHANGELOG.ja.md) を参照してください。
-
-## Current `main` / v0.3.3 release candidate
-
-Current release-candidate branchのrepository metadataは `0.3.3` です。First-class credential-safe WebRTC Human takeover、物理acceptance済みHandoff runtime/docs pin、macOS + iPhone Safari向け利用者Quick Startを追加します。Real `signed_out` -> Human-only Google sign-in -> revoke / stale-locator fence -> fresh `signed_in` -> bounded V5-B read acceptanceはPASS済みです。
-
-**v0.3.3はまだ公開Releaseではありません。** Exact tested `main` commitへtagを作る前に、release checklistのsequential V5-A〜V5-D gate（別途Human approvalが必要なV5-C Save / V5-D send mutationを含む）を完了する必要があります。
 
 ## 安定版を使う場合
 
 検証・公開されたsourceをそのまま使う場合はrelease tagをcheckoutしてください。
 
 ```bash
-git clone --branch v0.3.2 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
+git clone --branch v0.3.3 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm ci --ignore-scripts
 npm run build

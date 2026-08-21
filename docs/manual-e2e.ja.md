@@ -252,6 +252,16 @@ V5-Eのhistory MCP toolはありません。Surfaceをre-open可能か再評価�
 4. Activity setting変更、history deletion、auto-scroll、pagination、cookie/storage/account identity read、network/internal API interception、private activityを含むscreenshot/logの永続化は禁止。
 5. Timelineはofficial dedicated desktop Timeline surfaceに留まりbounded semantic targetをfresh observationできる場合だけWeb roadmapをre-openする。Menu linkがあるだけ、またはnormal mapへredirectされるだけでは不十分。
 
+### v0.3.3 credential-safe handoff release validation — 2026-08-21 / ja-JP
+
+- Fresh disposable dedicated profileは `signed_out` から開始。
+- 物理iPhone Safari WebRTC takeoverでHuman-only Google sign-inを完了し、Done/revoke後はactive locatorを無効化してstale reuseを拒否。
+- Fresh automation attach後にidentity-free `signed_in` を確認し、account identity / private list labelをpublic出力せずbounded V5-B save-state readまでPASS。
+- Same-LAN direct WebRTCとcellular/4G TURN relayは同じtarget/runtime shapeで物理acceptance済み。Target-window再activation、tap/focus、text、Backspace、scroll、identifier-free bounded diagnosticsも確認済み。
+- v0.3.3ではV5-C Save / V5-D device sendを**再実行しない**。`src/browser/place-save-action.ts`、`src/browser/place-save-state.ts`、`src/browser/route-send.ts`、`src/action-approval.ts`、`src/action-approval-mcp.ts` はv0.3.2 live evidenceからunchanged。Shared runtime変更はcredential handoff/browser ownership mechanics + bounded place-selection settleとしてreviewし、deterministic C/D testもgreenを維持。
+- Reused evidenceは直下のv0.3.2 sequential V5 validation。このreleaseではC/D mutation/sendをv0.3.3で再実行したとはclaimしない。
+- Release headはNode 20/22/24、macOS/Windows browser smoke、CodeQL zero findings、local 305 pass / 1 platform skip / 0 fail、build/smoke/package check、npm audit 0 vulnerabilitiesを要求。
+
 ### v0.3.2 sequential V5 release validation — 2026-08-19 / ja-JP
 
 - V5-A: **PASS** — dedicated profileのfresh readinessが `signed_in`。Account identityは取得しない。

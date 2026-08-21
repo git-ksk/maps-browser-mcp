@@ -120,15 +120,29 @@ CAPTCHA、consent、sign-in、access challengeを意図的に発生させたり�
 
 Docs-only等、明らかにruntimeへ影響しない変更では、Live compatibility baselineに疑いがない限り新しいLive Maps runは通常不要です。
 
-## 6.1. v0.3.2+ Sequential V5 Release Gate
+## 6.1. v0.3.2+ Impact-based V5 Live Release Gate
 
-V5 authenticated workflow、credential-safe handoff、existing-list Save、Send to phoneを変更するreleaseでは、version / tag作業をrelease-complete扱いする前に同じdedicated profileで以下をsequential実行します。
+Releaseの変更影響に応じてV5 live gateを選びます。Credential handoff transportだけが変わったことを理由に、無関係なaccount mutationやdevice sendを毎回繰り返しません。
+
+Canonical sliceは次のままです。
 
 1. **V5-A readiness:** fresh Maps surfaceでidentity-free `signed_in` のみ確認。Account identityは記録しない。
 2. **V5-B save-state read:** public place 1件についてbounded existing-list membershipをreadし、private list labelをpublic logへ出さない。
 3. **V5-C existing-list Save:** exact safe target 1件を必須とする。Test-purpose listを優先するが、Humanがexisting list 1件の利用を明示許可してもよい。Save activationはexactly 1回、create/delete/unsave禁止、fresh readでsame hidden targetの `saved=true` を必須確認。
 4. **V5-D Cancel:** fresh simple route + bounded device read後にexplicit approvalを要求し、1回Cancelしてsend actionなしを確認。
 5. **V5-D approved send:** route/device stateを最初からfresh取得し、新しいexact Human approvalを得た上でdevice activationを1回だけ実行する。Ambiguous postcondition後はautomatic retryせず、Humanへphysical arrival確認を依頼する。
+
+V5-C/V5-D mutation実装、action-approval semantics、save-list / route / device抽出・postcondition、mutation dispatch、またはC/D actionへ影響し得るshared runtime/state logicを変更したreleaseでは **A -> Dをfull sequential実行**します。
+
+**Credential-safe handoffだけ、またはpre-auth transportだけを変更**したreleaseでは、fresh automation recoveryを通して最低V5-A + V5-Bまでlive再実行します。V5-C/V5-Dの過去evidenceを再利用できるのは、releaseごとに `docs/manual-e2e.ja.md` へ次を記録した場合だけです。
+
+- 再利用するexact prior release/evidence;
+- そのbaselineからV5-C/V5-Dとaction-approval実装fileがunchangedであること;
+- shared runtime変更がnon-mutation mechanicsとしてreview済みで、deterministic C/D testが引き続きPASSすること;
+- 変更したhandoff pathからrevoke/re-attach後にfresh `signed_in` + bounded V5-B readまで到達したこと;
+- skipしたmutation/sendを今回新たに実行したようなrelease claimをしないこと。
+
+このreuse ruleは、変更境界のlive coverageを保ちながら不要なaccount mutation/device sendを減らすためのものです。影響範囲が曖昧ならfull sequenceを使います。
 
 Approved MCP activation 1回からdownstream platform notificationが重複した場合は別観測として記録し、agent/MCP replayとdownstream delivery duplicationを区別します。新しいHuman approvalなしに調査目的の再sendを行いません。
 
