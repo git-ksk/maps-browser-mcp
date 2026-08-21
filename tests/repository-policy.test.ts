@@ -143,7 +143,7 @@ test("reference Cloud Run image provisions the bounded Linux normal-browser WebR
   assert.match(dockerfile, /xdotool/);
   assert.match(dockerfile, /ffmpeg/);
   assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99/);
-  assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=\/app\/node_modules\/\.bin\/mcp-handoff-linux-webrtc-host/);
+  assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=\/app\/node_modules\/\.bin\/handoff-linux-webrtc-host/);
   assert.match(dockerfile, /XDG_RUNTIME_DIR=\/tmp\/maps-browser-mcp\/xdg-runtime/);
   assert.match(dockerfile, /chmod 1777 \/tmp\/\.X11-unix/);
   assert.match(dockerfile, /chmod 700 \/tmp\/maps-browser-mcp\/xdg-runtime/);
@@ -199,4 +199,16 @@ test("human-intervention detection stays fail-closed and contains no solver inte
 
   const packageJson = read("package.json");
   assert.doesNotMatch(packageJson, /recaptcha|captcha-solver|puppeteer-extra-plugin-stealth|playwright-extra|proxy-chain/i);
+});
+
+
+test("reference Linux WebRTC container uses the pinned Handoff package binary and isolated X11 runtime", () => {
+  const dockerfile = fs.readFileSync(path.join(root, "reference/oauth-gateway/Dockerfile"), "utf8");
+  const entrypoint = fs.readFileSync(path.join(root, "reference/oauth-gateway/entrypoint.sh"), "utf8");
+  assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=\/app\/node_modules\/\.bin\/handoff-linux-webrtc-host/);
+  assert.match(dockerfile, /xvfb openbox xdotool ffmpeg/);
+  assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99/);
+  assert.match(entrypoint, /Xvfb "\$DISPLAY" -screen 0 1280x800x24 -nolisten tcp -ac/);
+  assert.match(entrypoint, /openbox --sm-disable/);
+  assert.doesNotMatch(dockerfile, /mcp-handoff-linux-webrtc-host/);
 });
