@@ -152,7 +152,7 @@ Agent-owned automation CDP Chrome
 
 `thin_takeover` ではNative ScreenCaptureKit / VideoToolbox / CoreGraphics data planeと短命Native locatorをHandoffが所有します。`webrtc_takeover` ではScreenCaptureKit -> H.264 -> RTP/WebRTC video、direct-touch / keyboard DataChannel、generation-bound reconnect、browser session teardownをHandoffが所有します。MapsがHandoffへ渡すのは、自分が直前に起動したnormal ChromeのPIDというbounded ownership hintだけです。HandoffはそのPIDからeligibleなon-screen windowを厳密に1つだけ解決し、そのwindowだけへcaptureをcropしてpointer inputも同じboundsへmapし、missing/ambiguousならfail closedします。MapsはScreenCaptureKitのwindow探索を所有せず、SDP / ICE / RTP / framebuffer bytes / raw Human inputも扱いません。WebRTC-only locatorから旧HTTP frame/input UIへのfallbackも不可です。
 
-初期Safari経路はsame-network専用で、Handoffはhost ICE candidateのみ（`iceServers: []`）を使います。TURN / WAN / cellular relayは別の明示的relay trust-policy設計が必要です。Human Doneはteardownであり認証成功証明ではないため、その後Mapsはfresh automation attachとcoarse authenticated-readiness確認を必ず行います。
+Safari/browser peerはhost-only（`iceServers: []`）かつdirect-firstを維持します。HandoffのNode/werift peerはdependency内部で選ばれる暗黙third-party STUN defaultを使わずCloudflare STUNを明示し、optionalなCloudflare Realtime TURNも `iceTransportPolicy: all` のfallback-onlyです。このnetwork-metadata trust boundaryとICE/STUN/TURN処理はすべてHandoff内に留まり、Mapsはraw candidate / address / SDP / credential / transport media / Human inputを受け取りません。Human Doneはteardownであり認証成功証明ではないため、その後Mapsはfresh automation attachとcoarse authenticated-readiness確認を必ず行います。
 
 ## MCP Apps Render Boundary
 
