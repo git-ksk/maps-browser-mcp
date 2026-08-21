@@ -24,6 +24,7 @@ const KEYS = [
   "MAPS_CREDENTIAL_SAFE_HANDOFF",
   "MAPS_CREDENTIAL_SAFE_TRANSPORT",
   "MAPS_CREDENTIAL_SAFE_OPERATOR_URL",
+  "MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE",
   "MAPS_CUA_DRIVER_COMMAND",
   "MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST",
   "MAPS_NATIVE_TAKEOVER_INPUT_BIND_HOST",
@@ -413,10 +414,67 @@ test("credential-safe Cua takeover is explicit and reuses the authenticated take
   });
 
   await withEnv({ MAPS_CREDENTIAL_SAFE_TRANSPORT: "unknown" }, () => {
-    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover, thin_takeover, webrtc_takeover/);
+    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover, thin_takeover, webrtc_takeover, hosted_cdp/);
   });
 });
 
+
+test("hosted CDP takeover requires the authenticated broker and keeps deployment checkpoint optional", async () => {
+  await withEnv({ MAPS_CREDENTIAL_SAFE_TRANSPORT: "hosted_cdp" }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_CREDENTIAL_SAFE_HANDOFF=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "hosted_cdp",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-hosted-profile"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "hosted_cdp",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-hosted-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE: "/app/reference/oauth-gateway/profile-checkpoint-provider.mjs"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.credentialSafeHandoff.transport, "hosted_cdp");
+    assert.equal(config.browserProfileCheckpoint.module, "/app/reference/oauth-gateway/profile-checkpoint-provider.mjs");
+    assert.equal(config.takeover.enabled, true);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "hosted_cdp",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-hosted-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_CREDENTIAL_SAFE_OPERATOR_URL: "https://other.example/access"
+  }, () => {
+    assert.throws(() => loadConfig(), /cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=hosted_cdp/);
+  });
+});
+
+test("stopped browser profile checkpoint module is deployment-only and absolute", async () => {
+  await withEnv({
+    MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE: "/app/profile-provider.mjs"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_CREDENTIAL_SAFE_HANDOFF=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-profile",
+    MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE: "relative-provider.mjs"
+  }, () => {
+    assert.throws(() => loadConfig(), /must be an absolute local module path/);
+  });
+});
 
 test("WebRTC Takeover requires the authenticated broker and a Handoff-owned macOS helper", async () => {
   await withEnv({

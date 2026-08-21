@@ -82,21 +82,26 @@ HTTP port は次の順番で決まります。
 
 Container / Cloud RunはMCP control planeとprocess-owned Chromium automationをhostできますが、current built-in Native / WebRTC Human data planeは **macOS Handoff worker capability** であり、genericなCloud Run execution planeではありません。Linux Cloud Run instance自身がScreenCaptureKit / input injectionを提供できる前提で `thin_takeover` / `webrtc_takeover` を設定しないでください。
 
-現行container deploymentではcredential-safe transportを明示します。
+Container deploymentではcredential-safe transportを明示します。
 
+- 同じprocess-owned Chromium sessionをcontainer内に維持し、authenticated Handoff brokerのbounded frame/input surfaceだけをHumanへ公開する場合は `hosted_cdp` を使う。
 - Human surfaceをcontainer外で提供する場合は `external` を使う。
-- separate execution workerを配置する場合はHandoff control-plane / private-worker topologyを使う。generic hosted-worker topologyは `mcp-execution-handoff` #12で追跡します。
+- separate execution workerが必要な場合はHandoff control-plane / private-worker topologyを使う。
 
 ```bash
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=external
+MAPS_CREDENTIAL_SAFE_TRANSPORT=hosted_cdp
+MAPS_REMOTE_TAKEOVER=true
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://maps-mcp.example.com
 MAPS_HEADLESS=true
-# authenticated HTTP principal boundaryとoperator surfaceは別途設定
+# authenticated HTTP principalと独立したtakeover-operator boundaryを別途設定
 ```
 
-Co-locatedな物理Macでは `webrtc_takeover` がrecommended built-in mobile pathで、物理iPhone Safariにてsame-LAN direct WebRTC / cellular TURN relay、およびreal V5 Google sign-in recoveryまでacceptance済みです。`thin_takeover` はNative appの別物理acceptanceが完了するまでoptional / experimental siblingとして残します。どちらもhosted-browser vendor API keyは不要です。
+`hosted_cdp` はDevTools endpointを外部公開しません。Human authority開始前にAgent CDPをdetach/fenceし、brokerはprincipal / epochへbindした1 Human clientにだけconsumer adapterのbounded frame / tap / scroll / text / key操作を許可します。`Done` はbroker generationをrevokeします。その後MCP ContinueでHuman-owned CDPをdetachし、fresh Agent CDPでauthenticated readinessを確認し、成功した場合だけstopped-profile checkpointを実行してからinterventionをresumableにできます。credential / cookie / DOM / network data / raw CDP / address barはtakeover pageへ返しません。
 
-browser / Handoff authorityはprocess / worker-localのままです。instance終了・replacement時に別workerへresumeしたふりをせずfail closedします。durable browser/profile strategyが必要でもtakeover authorityとは分離し、raw credentialをMCP/Handoff stateへ永続化しません。
+Co-locatedな物理Macでは `webrtc_takeover` がrecommended built-in low-latency mobile pathで、物理iPhone Safariにてsame-LAN direct WebRTC / cellular TURN relay、およびreal V5 Google sign-in recoveryまでacceptance済みです。`thin_takeover` はNative appの別物理acceptanceが完了するまでoptional / experimental siblingとして残します。どちらもhosted-browser vendor API keyは不要です。
+
+browser / Handoff authorityはprocess / worker-localのままです。instance終了・replacement時に別workerへresumeしたふりをせずfail closedします。durable browser/profile stateはtakeover authorityと分離し、停止済み専用profileだけをsnapshot対象にします。raw credentialやactive Handoff authorityは永続化しません。
 
 ## Browser profile
 
@@ -106,7 +111,7 @@ browser / Handoff authorityはprocess / worker-localのままです。instance�
 /tmp/maps-browser-mcp/chrome-profile
 ```
 
-single-user で profile の永続化が本当に必要な場合のみ `MAPS_CHROME_PROFILE_DIR` で変更してください。普段使いの browser profile を指定したり、複数ユーザー・複数instanceで1つの profile を共有したりしないでください。
+single-user で profile の永続化が本当に必要な場合のみ `MAPS_CHROME_PROFILE_DIR` で変更してください。普段使いの browser profile を指定したり、複数ユーザー・複数instanceで1つの profile を共有したりしないでください。Reference OAuth gatewayでは `MAPS_PROFILE_SNAPSHOT_BUCKET` により停止済みprofileをrestore/checkpointできますが、live Chromiumはlocal ephemeral storageだけを使います。このsnapshot layer有効時はentrypointがdeployment-onlyな `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` を自動配線し、fresh verification済み `hosted_cdp` sign-inをHandoff resume前にcheckpointします。
 
 ## Health / Readiness
 

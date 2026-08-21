@@ -293,6 +293,70 @@ test("Thin Takeover release fails closed if Agent-owned CDP authority appears du
   );
 });
 
+test("verified hosted sign-in checkpoint stops Chromium only while the intervention is still verifying", async () => {
+  let chromeClosed = 0;
+  const chrome = { async close() { chromeClosed += 1; } } as ChromeProcess;
+  const policy = {
+    isAllowedMapsUrl(value: string) {
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname === "www.google.com" &&
+          (url.pathname === "/maps" || url.pathname.startsWith("/maps/"));
+      } catch { return false; }
+    }
+  } as PolicyEngine;
+  const runtime = new MapsBrowserRuntime(chrome, policy);
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+  runtime.markHumanControlComplete(human.id);
+
+  let clientClosed = 0;
+  const mutable = runtime as unknown as {
+    client?: { close(): Promise<void> };
+    clientOwner?: "automation" | "human";
+    endpoint?: unknown;
+  };
+  mutable.client = { async close() { clientClosed += 1; } };
+  mutable.clientOwner = "automation";
+  mutable.endpoint = { kind: "local_port", port: 9222 };
+
+  await runtime.stopBrowserForProfileCheckpoint(human.id);
+
+  assert.equal(clientClosed, 1);
+  assert.equal(chromeClosed, 1);
+  assert.equal(mutable.client, undefined);
+  assert.equal(mutable.clientOwner, undefined);
+  assert.equal(mutable.endpoint, undefined);
+  assert.equal(runtime.getActiveIntervention()?.status, "verifying");
+});
+
+test("profile checkpoint refuses to stop Chromium while Human CDP remains attached", async () => {
+  const runtime = makeRuntime();
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+  runtime.markHumanControlComplete(human.id);
+  const mutable = runtime as unknown as { client?: { close(): Promise<void> }; clientOwner?: "automation" | "human" };
+  mutable.client = { async close() {} };
+  mutable.clientOwner = "human";
+
+  await assert.rejects(
+    runtime.stopBrowserForProfileCheckpoint(human.id),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "UI_STATE_CHANGED"
+  );
+});
+
 test("selected route identity is bounded semantic state and is cleared by later semantic mutation", () => {
   const runtime = makeRuntime();
   const mutable = runtime as unknown as {

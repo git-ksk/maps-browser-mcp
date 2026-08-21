@@ -51,7 +51,7 @@ Chromeは別 `--user-data-dir`、`--remote-debugging-address=127.0.0.1`、`--rem
 
 専用browserではGoogle Maps page targetを0または1枚だけ受け入れ、複数Maps tabがあれば推測せず拒否します。CDP targetがstale/reconnect/watchdog resetされた場合もsemantic stateを引き継ぎません。
 
-通常Maps automationはprocess-owned Chrome + CDPを維持します。credential ceremonyでは `thin_takeover` Native経路を含め、Agent CDP authorityをdetachしautomation Chrome processを停止します。その後same dedicated profileをremote-debugging/automation flagなしのnormal Chromeで開きます。Human完了/revoke後はHuman surfaceとnormal Chromeを終了し、fresh automation Chrome process/CDP attachmentからreadinessを再検証します。invariantは **exclusive authorityとprovider-supported normal-browser credential ceremony** です。
+通常Maps automationはprocess-owned Chrome + CDPを維持します。local/macOSのcredential-safe transport（`thin_takeover` / `webrtc_takeover`を含む）ではAgent CDP authorityをdetachしautomation Chromeを停止し、same dedicated profileをAgent remote-debugging authorityなしのnormal Chromeで開きます。Linux/containerの `hosted_cdp` ではmanaged Chromium processを維持したままAgent CDPをdetach/fenceし、Handoff brokerだけがHuman ownerとしてCDPを再取得してbounded frame/input操作だけを公開します。Human完了/revoke後は必ずHuman transport/authorityを除去してからfresh Agent CDPでreadinessを再検証します。invariantは **exclusive authority + bounded Human control + fresh post-Human verification** です。
 
 Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solver、hosted-browser provider API key、passkey bypassは使いません。Steelはruntime dependencyではなく、必要なら外部比較/UX benchmarkの参考に限定します。
 
@@ -134,25 +134,24 @@ Action / read counterはprocess-local safety guardであり、再起動でreset�
 - reconnect / restart後に旧semantic operationを自動replayしない
 - V4 cleanupはintervention stateを確認し、handoff activeならUI inputを送らない
 
-Credential-safe Human controlは同じ `ExternalHumanSurfaceProvider` contractの背後で1つのprofile-switch lifecycleを使い、Human transportだけを差し替えます。
+Credential-safe Human controlは同じ `ExternalHumanSurfaceProvider` contractの背後で2つのexecution shapeを使います。
 
 ```text
 Agent-owned automation CDP Chrome
   -> Human authority
-  -> automation Chrome終了
-  -> same dedicated profileをAgent CDP authorityなしnormal Chromeで開く
-  -> Handoff transport
-       external / optional Cua
-       Native `thin_takeover`
-       browser `webrtc_takeover`
-  -> Human transport revoke + normal Chrome終了
-  -> fresh automation Chrome + fresh CDP attachment
+  -> local/macOS: automation Chromeを終了しsame profileをnormal Chromeで再open
+       external / optional Cua / Native `thin_takeover` / browser `webrtc_takeover`
+  -> Linux/container `hosted_cdp`: managed Chromiumを維持しAgent CDPをdetach、
+       Human-owned CDP経由のbroker-bounded frame/inputだけを公開
+  -> Human transport/leaseをrevokeしHuman CDP authorityを除去
+  -> fresh Agent CDP attachment
   -> fresh readiness / semantic validation
+  -> optional verified stopped-profile deployment checkpoint
 ```
 
 `thin_takeover` ではNative ScreenCaptureKit / VideoToolbox / CoreGraphics data planeと短命Native locatorをHandoffが所有します。`webrtc_takeover` ではScreenCaptureKit -> H.264 -> RTP/WebRTC video、direct-touch / keyboard DataChannel、generation-bound reconnect、browser session teardownをHandoffが所有します。MapsがHandoffへ渡すのは、自分が直前に起動したnormal ChromeのPIDというbounded ownership hintだけです。HandoffはそのPIDからeligibleなon-screen windowを厳密に1つだけ解決し、そのwindowだけへcaptureをcropしてpointer inputも同じboundsへmapし、missing/ambiguousならfail closedします。MapsはScreenCaptureKitのwindow探索を所有せず、SDP / ICE / RTP / framebuffer bytes / raw Human inputも扱いません。WebRTC-only locatorから旧HTTP frame/input UIへのfallbackも不可です。
 
-Current deploymentではNativeを前提条件にせず、各transportをsiblingとして扱います。`webrtc_takeover` はmacOS上で物理acceptance済みのbuilt-in mobile path（same-LAN direct、cellular TURN relay、real Google sign-in recovery）です。`thin_takeover` はNative app経路の別物理acceptanceが完了するまでoptional / experimentalとします。互換性defaultは `external` のままなので、built-in takeoverの有効化は常に明示的です。
+Current deploymentではNativeを前提条件にせず、各transportをsiblingとして扱います。`webrtc_takeover` はmacOS上で物理acceptance済みのbuilt-in mobile path（same-LAN direct、cellular TURN relay、real Google sign-in recovery）です。`thin_takeover` はNative app経路の別物理acceptanceが完了するまでoptional / experimentalとします。`hosted_cdp` はLinux/container pathでgeneric authenticated HTTP brokerを再利用し、Issue #113/#20 closeout前にreal Cloud Run + mobile-browser acceptanceを必須にします。互換性defaultは `external` のままなので、built-in takeoverの有効化は常に明示的です。
 
 Safari/browser peerはhost-only（`iceServers: []`）かつdirect-firstを維持します。HandoffのNode/werift peerはdependency内部で選ばれる暗黙third-party STUN defaultを使わずCloudflare STUNを明示し、optionalなCloudflare Realtime TURNも `iceTransportPolicy: all` のfallback-onlyです。このnetwork-metadata trust boundaryとICE/STUN/TURN処理はすべてHandoff内に留まり、Mapsはraw candidate / address / SDP / credential / transport media / Human inputを受け取りません。Human Doneはteardownであり認証成功証明ではないため、その後Mapsはfresh automation attachとcoarse authenticated-readiness確認を必ず行います。
 

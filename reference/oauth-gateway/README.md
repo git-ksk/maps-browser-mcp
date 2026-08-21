@@ -219,6 +219,8 @@ MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
 
 `MAPS_PROFILE_SNAPSHOT_REQUIRED=false` is the default. A first boot with no object therefore starts with an empty dedicated profile. Set it to `true` only when an operator intentionally wants a missing/invalid snapshot to prevent startup.
 
+For `MAPS_CREDENTIAL_SAFE_TRANSPORT=hosted_cdp`, the entrypoint automatically wires `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` to the reference checkpoint provider whenever `MAPS_PROFILE_SNAPSHOT_BUCKET` is configured. The sign-in flow revokes the Human broker/CDP authority, verifies `signed_in` from a fresh Agent CDP attachment, cleanly stops Chromium, and checkpoints the profile **before** Handoff becomes resumable. A checkpoint failure therefore fails the intervention closed instead of silently accepting an unpersisted sign-in.
+
 The snapshot helper:
 
 - restores before `maps-browser-mcp` starts;

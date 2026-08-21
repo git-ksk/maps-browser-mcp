@@ -206,6 +206,8 @@ MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
 
 `MAPS_PROFILE_SNAPSHOT_REQUIRED=false` がdefaultです。初回起動でsnapshotが無い場合は空の専用profileでsigned-out起動します。snapshot欠落/破損時に起動自体を止めたい運用だけ `true` にします。
 
+`MAPS_CREDENTIAL_SAFE_TRANSPORT=hosted_cdp` では、`MAPS_PROFILE_SNAPSHOT_BUCKET` 設定時にentrypointが `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` をreference checkpoint providerへ自動配線します。Sign-in flowはHuman broker/CDP authorityをrevokeし、fresh Agent CDPで `signed_in` を確認し、Chromiumをclean stopしてprofileをcheckpointした**後**にだけHandoffをresumableにします。checkpoint失敗時は未永続化sign-inを成功扱いせずfail closedします。
+
 snapshot helperは以下を保証します。
 
 - `maps-browser-mcp` 起動前にrestore
@@ -215,7 +217,7 @@ snapshot helperは以下を保証します。
 - cookie/token/account identifierを個別抽出・ログ出力しない
 - checkpointには `--browser-stopped` の明示が必要
 
-reference entrypointはCloud Runのgraceful `SIGTERM` 時も、private coreのbrowser shutdown完了後にcheckpointを試みます。core/gatewayのunexpected crashでは新snapshotを作りません。signed-in durabilityの主checkpointはLinux hosted Human Takeover実装後、`Done` でHuman authorityをrevokeしてChromium profileが安全になった直後へ結線します。これによりGoogleログイン直後のprofileを確実に保存できます。
+reference entrypointはCloud Runのgraceful `SIGTERM` 時も、private coreのbrowser shutdown完了後にcheckpointを試みます。core/gatewayのunexpected crashでは新snapshotを作りません。signed-in durabilityの主checkpointは `hosted_cdp` のHuman authority revoke後、fresh `signed_in` verificationとChromium clean stopを経た安全点へ結線済みです。これによりGoogleログイン直後のprofileを確実に保存できます。
 
 停止済みbrowser deployment container内でのmaintenance command:
 
