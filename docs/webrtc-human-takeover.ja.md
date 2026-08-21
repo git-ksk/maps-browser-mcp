@@ -1,24 +1,24 @@
-# WebRTC Human Takeover — macOS + iPhone Safari
+# WebRTC Human Takeover — macOS/Linux + iPhone Safari
 
 [English](webrtc-human-takeover.md) | 日本語
 
-現在の **single-user macOS** 構成で推奨するbuilt-in **remote Human handoff**です。ただしV5自体にWebRTC / Cloudflare / TURN / remote takeoverは必須ではありません。最も単純なV5構成は、Humanがローカルで一度ログインしたpersistentなMaps専用Chrome profileを使う形です。WebRTCは、後からsign-in / re-authentication、consent、challenge対応が必要になり、Humanが遠隔操作したい場合のoptional transportです。`MAPS_CREDENTIAL_SAFE_HANDOFF=true` と `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` を設定しない限り通常のMaps automation経路は変わりません。
+現在のsingle-user macOS / Linux-container構成向けbuilt-in **remote Human handoff**です。ただしV5自体にWebRTC / Cloudflare / TURN / remote takeoverは必須ではありません。最も単純なV5構成は、Humanがローカルで一度ログインしたpersistentなMaps専用Chrome profileを使う形です。WebRTCは、後からsign-in / re-authentication、consent、challenge対応が必要になり、Humanが遠隔操作したい場合のoptional transportです。`MAPS_CREDENTIAL_SAFE_HANDOFF=true` と `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` を設定しない限り通常のMaps automation経路は変わりません。
 
-物理Mac + iPhone Safariで、same-LAN direct WebRTCとcellular/4G TURN relayの両方、およびV5 Google sign-in recoveryまでacceptance済みです。Humanが操作するのはdedicated normal-Chrome windowだけで、Maps自体はframebuffer、raw Human input、SDP/ICE candidate、TURN credential、Google credential、MFA値、cookie、account identityを受け取りません。
+物理Mac + iPhone Safariでsame-LAN direct WebRTC / cellular TURN / V5 Google sign-in recoveryまでacceptance済みです。Linux hostは別途Ubuntu/Xvfb acceptanceでnormal-browser exact-window capture/input、H.264/WebRTC、stdin経由focused text、Enter、teardownまでPASSしています。Cloud Run + 物理iPhoneでのreal Google sign-in acceptanceは未実施です。Humanが操作するのはdedicated normal-Chrome windowだけで、Maps自体はframebuffer、raw Human input、SDP/ICE candidate、TURN credential、Google credential、MFA値、cookie、account identityを受け取りません。
 
 ## 1. 前提
 
-- Mapsとdedicated Chrome profileを動かすmacOS host;
+- Mapsとdedicated Chrome profileを動かすmacOSまたはLinux host;
 - Node.js 20+ とrepository checkout;
-- `takeover-webrtc-host` build用Xcode Command Line Tools / Swift toolchain;
+- macOS: `takeover-webrtc-host` build用Xcode Command Line Tools / Swift toolchain、および **画面収録** / **アクセシビリティ** 権限;
+- Linux: isolated X11/Xvfb display、軽量window manager、`xdotool`、`ffmpeg`;
 - Mapsが管理するdedicated non-default Chrome / Chromium profile;
-- Handoff helperを起動するprocessへのmacOS **画面収録（Screen Recording）** と **アクセシビリティ（Accessibility）** 権限;
 - Safari WebRTCを利用できるiPhone / iPad browser;
 - `/takeover/*` をloopback Maps/Handoff coreへproxyする **認証済みHTTPS operator origin**。CDPやloopback brokerを直接公開しないこと。
 
 現行single-userのpublic auth / private core構成はversioned [reference OAuth gateway](../reference/oauth-gateway/README.ja.md) がrepository内のreferenceです。独自gatewayでもsame principalとtakeover security boundaryを維持してください。
 
-Built-in capture/input executionは現在macOS-onlyです。Linux/Windows hostやstandalone Cloud Run instanceをScreenCaptureKit/input workerとしては使えません。詳細は [Container / headless Linux](container.ja.md) を参照してください。
+Built-in WebRTC runtimeはsame Handoff protocolの背後にmacOS / Linux別helperを持ちます。Windowsは未対応です。Linux/container詳細は [Container / headless Linux](container.ja.md) を参照してください。
 
 ## 2. Pin済みHandoff helperをbuild
 
@@ -42,7 +42,15 @@ WEBRTC_HOST="$(swift build -c release --package-path "$HANDOFF_SWIFT_PACKAGE" --
 test -x "$WEBRTC_HOST"
 ```
 
-`WEBRTC_HOST` のabsolute pathをMaps設定へ渡します。
+`WEBRTC_HOST` のabsolute pathをMaps設定へ渡します。LinuxではSwift buildではなくpin済みpackage binaryを使います。
+
+```bash
+WEBRTC_HOST="$PWD/node_modules/.bin/handoff-linux-webrtc-host"
+test -x "$WEBRTC_HOST"
+export MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99
+```
+
+Linux displayはsame single-user runtimeが所有するlocal isolated X11 displayに限定します。
 
 ## 3. Maps coreを設定
 
@@ -106,7 +114,8 @@ Connectivity debugのためraw candidate、SDP、address、framebuffer、Human i
 
 ## 7. 現在の制約
 
-- built-in WebRTC host runtimeはmacOS必須;
+- macOS / Linuxは別Handoff helperで対応。Windowsは未対応;
+- Linux Cloud Runのreal Google sign-inは本番昇格前に物理iPhone acceptanceが必要;
 - iOS software keyboardがremote targetの一部を覆う場合がある;
 - adaptive portrait/landscape target sizingと明示reload/reconnect UXはupstream Handoff #17のfollow-up;
 - browser reloadでactive leaseが維持される前提にしない。Explicit recoveryできない場合はgeneration fencingを迂回せずrevoke/reissueする;

@@ -55,7 +55,7 @@ test("execution handoff upstream source release is pinned to an immutable commit
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(
     pkg.dependencies?.["mcp-execution-handoff"],
-    "https://github.com/git-ksk/mcp-execution-handoff/archive/73dfabd9398535e8bca4daf19a676a5ff51e984e.tar.gz"
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/8246e82c6dd75085ffbbd1d59fb40e8763cc773c.tar.gz"
   );
 });
 
@@ -132,6 +132,31 @@ test("readiness, MCP, and takeover paths use the configured HTTP auth provider",
   assert.match(authSource, /bearerAllowed\(request\.headers\.authorization, expectedToken\)/);
   assert.match(authSource, /www-authenticate/);
   assert.match(authSource, /createAuthProvider/);
+});
+
+test("reference Cloud Run image provisions the bounded Linux normal-browser WebRTC surface", () => {
+  const dockerfile = read("reference/oauth-gateway/Dockerfile");
+  const entrypoint = read("reference/oauth-gateway/entrypoint.sh");
+
+  assert.match(dockerfile, /xvfb/);
+  assert.match(dockerfile, /openbox/);
+  assert.match(dockerfile, /xdotool/);
+  assert.match(dockerfile, /ffmpeg/);
+  assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99/);
+  assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=\/app\/node_modules\/\.bin\/mcp-handoff-linux-webrtc-host/);
+  assert.match(dockerfile, /XDG_RUNTIME_DIR=\/tmp\/maps-browser-mcp\/xdg-runtime/);
+  assert.match(dockerfile, /chmod 1777 \/tmp\/\.X11-unix/);
+  assert.match(dockerfile, /chmod 700 \/tmp\/maps-browser-mcp\/xdg-runtime/);
+  assert.doesNotMatch(dockerfile, /xclip/);
+
+  assert.match(entrypoint, /MAPS_CREDENTIAL_SAFE_TRANSPORT:-external.*webrtc_takeover/);
+  assert.match(entrypoint, /Xvfb "\$DISPLAY" -screen 0 1280x800x24 -nolisten tcp -ac/);
+  assert.match(entrypoint, /openbox --sm-disable/);
+  assert.match(entrypoint, /\/tmp\/\.X11-unix\/X\$\{display_number\}/);
+  assert.match(entrypoint, /kill -0 "\$xvfb_pid"/);
+  assert.match(entrypoint, /kill -0 "\$openbox_pid"/);
+  assert.match(entrypoint, /cleanup_graphics/);
+  assert.doesNotMatch(entrypoint, /remote-debugging|enable-automation|headless=new/);
 });
 
 test("reference Cloud Run profile protects the single Chromium runtime from OOM/parallelism regressions", () => {

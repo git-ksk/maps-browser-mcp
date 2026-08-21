@@ -14,21 +14,28 @@ RUN npm ci --ignore-scripts
 FROM node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS runtime
 
 ENV NODE_ENV=production \
+    HOME=/home/mcp \
     PORT=8080 \
     MCP_CORE_URL=http://127.0.0.1:8081/mcp \
     MAPS_CHROME_EXECUTABLE=/usr/bin/chromium \
     MAPS_CHROME_PROFILE_DIR=/tmp/maps-browser-mcp/chrome-profile \
     MAPS_HEADLESS=true \
+    DISPLAY=:99 \
+    MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99 \
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=/app/node_modules/.bin/mcp-handoff-linux-webrtc-host \
     XDG_CONFIG_HOME=/tmp/maps-browser-mcp/xdg-config \
-    XDG_CACHE_HOME=/tmp/maps-browser-mcp/xdg-cache
+    XDG_CACHE_HOME=/tmp/maps-browser-mcp/xdg-cache \
+    XDG_RUNTIME_DIR=/tmp/maps-browser-mcp/xdg-runtime
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates \
+    && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates xvfb openbox xdotool ffmpeg \
     && chromium --version \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system mcp \
     && useradd --system --gid mcp --create-home --home-dir /home/mcp mcp \
-    && mkdir -p /tmp/maps-browser-mcp/chrome-profile /tmp/maps-browser-mcp/xdg-config /tmp/maps-browser-mcp/xdg-cache \
+    && mkdir -p /tmp/.X11-unix /tmp/maps-browser-mcp/chrome-profile /tmp/maps-browser-mcp/xdg-config /tmp/maps-browser-mcp/xdg-cache /tmp/maps-browser-mcp/xdg-runtime \
+    && chmod 1777 /tmp/.X11-unix \
+    && chmod 700 /tmp/maps-browser-mcp/xdg-runtime \
     && chown -R mcp:mcp /tmp/maps-browser-mcp /home/mcp
 
 WORKDIR /app

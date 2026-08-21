@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isLoopbackBind, loadConfig } from "../src/config.js";
+import { isLoopbackBind, loadConfig, validateWebRtcPlatformDisplay } from "../src/config.js";
 
 const KEYS = [
   "MCP_HTTP_HOST",
@@ -38,6 +38,7 @@ const KEYS = [
   "MAPS_NATIVE_TAKEOVER_REVOKE_EXECUTABLE",
   "MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE",
   "MAPS_WEBRTC_TAKEOVER_DISPLAY_ID",
+  "MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME",
   "STEEL_API_KEY",
   "STEEL_BASE_URL",
   "MAPS_STEEL_PROFILE_ID",
@@ -476,7 +477,7 @@ test("stopped browser profile checkpoint module is deployment-only and absolute"
   });
 });
 
-test("WebRTC Takeover requires the authenticated broker and a Handoff-owned macOS helper", async () => {
+test("WebRTC Takeover requires the authenticated broker and a Handoff-owned platform helper", async () => {
   await withEnv({
     MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
     MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
@@ -514,6 +515,18 @@ test("WebRTC Takeover requires the authenticated broker and a Handoff-owned macO
   }, () => {
     assert.throws(() => loadConfig(), /must be an absolute path/);
   });
+});
+
+
+test("WebRTC platform display config supports macOS display ids and Linux X11 display names only", () => {
+  assert.deepEqual(validateWebRtcPlatformDisplay("darwin", 7, undefined), { displayId: 7 });
+  assert.deepEqual(validateWebRtcPlatformDisplay("linux", undefined, ":99"), { displayName: ":99" });
+  assert.deepEqual(validateWebRtcPlatformDisplay("linux", undefined, ":99.0"), { displayName: ":99.0" });
+  assert.throws(() => validateWebRtcPlatformDisplay("linux", undefined, undefined), /DISPLAY_NAME is required/);
+  assert.throws(() => validateWebRtcPlatformDisplay("linux", 7, ":99"), /DISPLAY_ID is macOS-only/);
+  assert.throws(() => validateWebRtcPlatformDisplay("darwin", undefined, ":99"), /DISPLAY_NAME is Linux-only/);
+  assert.throws(() => validateWebRtcPlatformDisplay("linux", undefined, "tcp:99"), /local X11 display/);
+  assert.throws(() => validateWebRtcPlatformDisplay("win32", undefined, undefined), /only on macOS or Linux/);
 });
 
 test("keyless Thin Takeover requires the authenticated broker and rejects Steel provider settings", async () => {

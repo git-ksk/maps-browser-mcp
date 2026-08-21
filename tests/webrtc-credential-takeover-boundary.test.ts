@@ -15,10 +15,12 @@ function fakeBroker(calls: string[]): TakeoverBroker {
   } as unknown as TakeoverBroker;
 }
 
-test("WebRTC credential boundary fails closed away from macOS", () => {
+test("WebRTC credential boundary supports macOS and Linux but fails closed elsewhere", () => {
+  assert.doesNotThrow(() => new WebRtcCredentialTakeoverBoundary(fakeBroker([]), "darwin"));
+  assert.doesNotThrow(() => new WebRtcCredentialTakeoverBoundary(fakeBroker([]), "linux"));
   assert.throws(
-    () => new WebRtcCredentialTakeoverBoundary(fakeBroker([]), "linux"),
-    /requires a macOS host runtime/
+    () => new WebRtcCredentialTakeoverBoundary(fakeBroker([]), "win32"),
+    /requires a macOS or Linux host runtime/
   );
 });
 
