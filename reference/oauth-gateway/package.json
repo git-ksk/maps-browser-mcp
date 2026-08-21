@@ -12,8 +12,10 @@
     "test": "node --test *.test.mjs"
   },
   "dependencies": {
+    "@google-cloud/storage": "8.0.1",
     "firebase-admin": "14.2.0",
-    "jose": "6.2.9"
+    "jose": "6.2.9",
+    "tar": "7.5.22"
   },
   "license": "MIT",
   "overrides": {

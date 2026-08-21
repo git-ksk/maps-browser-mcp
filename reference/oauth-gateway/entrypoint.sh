@@ -5,15 +5,40 @@ set -eu
 
 core_pid=""
 gateway_pid=""
+cleanup_started="false"
 
-shutdown() {
-  trap - INT TERM
+profile_restore() {
+  [ -n "${MAPS_PROFILE_SNAPSHOT_BUCKET:-}" ] || return 0
+  node reference/oauth-gateway/profile-snapshot.mjs restore
+}
+
+profile_checkpoint() {
+  [ -n "${MAPS_PROFILE_SNAPSHOT_BUCKET:-}" ] || return 0
+  node reference/oauth-gateway/profile-snapshot.mjs checkpoint --browser-stopped
+}
+
+cleanup_processes() {
+  [ "$cleanup_started" = "false" ] || return 0
+  cleanup_started="true"
   [ -z "$gateway_pid" ] || kill -TERM "$gateway_pid" 2>/dev/null || true
   [ -z "$core_pid" ] || kill -TERM "$core_pid" 2>/dev/null || true
   [ -z "$gateway_pid" ] || wait "$gateway_pid" 2>/dev/null || true
   [ -z "$core_pid" ] || wait "$core_pid" 2>/dev/null || true
 }
-trap shutdown INT TERM EXIT
+
+graceful_shutdown() {
+  trap - INT TERM EXIT
+  cleanup_processes
+  if ! profile_checkpoint; then
+    echo "[maps-profile] graceful shutdown checkpoint failed" >&2
+  fi
+  exit 0
+}
+
+trap graceful_shutdown INT TERM
+trap cleanup_processes EXIT
+
+profile_restore
 
 env \
   MCP_HTTP_HOST=127.0.0.1 \
