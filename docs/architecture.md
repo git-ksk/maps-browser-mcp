@@ -49,7 +49,7 @@ A caller may instead set `MAPS_CDP_PORT` to attach to an existing **local** CDP 
 
 When connecting to the dedicated browser, the runtime accepts zero or one Google Maps page target. If more than one Maps tab is open, it refuses to guess which tab to control. If a CDP target becomes stale, reconnects, or is reset by the watchdog, semantic state is invalidated rather than inherited.
 
-Normal Maps automation remains process-owned Chrome + CDP. For local/macOS credential-safe transports, including `thin_takeover` and `webrtc_takeover`, Agent CDP authority is detached and the automation Chrome process is stopped; the same dedicated profile is reopened in normal Chrome without Agent remote-debugging authority. For Linux/container `hosted_cdp`, the managed Chromium process remains alive but Agent CDP is detached/fenced; only the Handoff broker may reacquire CDP as the Human owner and expose bounded frame/input operations. Human completion/revocation always removes the Human transport/authority before a fresh Agent CDP attachment verifies readiness. The invariant is **exclusive authority, bounded Human control, and fresh post-Human verification**.
+Normal Maps automation remains process-owned Chrome + CDP. **Credential-safe Human control has one cross-platform browser-lifecycle invariant:** Agent CDP authority is detached, the automation browser process is stopped, and the same dedicated profile is reopened in a normal browser without remote-debugging or automation authority. Human transport may differ by OS, but it must control only that normal-browser surface. Human completion/revocation closes the Human surface before a fresh Agent browser/CDP attachment verifies readiness. The invariant is **normal browser for Human control, exclusive authority, bounded Human control, and fresh post-Human verification**. The legacy Linux/container `hosted_cdp` shape that kept managed Chromium alive is not an accepted credential/consent/challenge path and fails closed until a Linux normal-browser WebRTC host exists.
 
 No stealth plugins, fingerprint spoofing, proxy rotation, CAPTCHA solvers, hosted-browser provider API keys, or passkey bypasses are used. Steel is not a runtime dependency; it may be used externally only as a comparison/UX benchmark.
 
@@ -139,11 +139,12 @@ Credential-safe Human control uses the same `ExternalHumanSurfaceProvider` contr
 ```text
 Agent-owned automation CDP Chrome
   -> Human authority
-  -> local/macOS: close automation Chrome, reopen same profile in normal Chrome
-       external / optional Cua / Native `thin_takeover` / browser `webrtc_takeover`
-  -> Linux/container `hosted_cdp`: keep managed Chromium alive, detach Agent CDP,
-       expose only broker-bounded frame/input through Human-owned CDP
-  -> revoke Human transport/lease and remove Human CDP authority
+  -> stop automation Chrome on every supported OS
+  -> reopen the same dedicated profile in a normal browser with no remote-debugging/automation authority
+  -> Human transport controls only that exact normal-browser surface
+       macOS accepted: browser `webrtc_takeover`; external/Cua/Native remain optional siblings
+       Linux/container: requires a Linux normal-browser capture/input host before remote Human sign-in is enabled
+  -> revoke Human transport/lease and close the normal browser
   -> fresh Agent CDP attachment
   -> fresh readiness / semantic validation
   -> optional verified stopped-profile deployment checkpoint
@@ -151,7 +152,7 @@ Agent-owned automation CDP Chrome
 
 For `thin_takeover`, Handoff owns the Native ScreenCaptureKit/VideoToolbox/CoreGraphics data plane and short-lived Native locator. For `webrtc_takeover`, Handoff owns ScreenCaptureKit -> H.264 -> RTP/WebRTC video, direct-touch/keyboard DataChannels, generation-bound reconnect, and browser session teardown. Maps supplies only the PID of the normal Chrome process it just started as a bounded ownership hint; Handoff must resolve exactly one eligible on-screen window for that PID, crop capture to that window, map pointer input to the same bounds, and fail closed on missing/ambiguous windows. Maps never owns ScreenCaptureKit window discovery and never processes SDP, ICE, RTP, framebuffer bytes, or raw Human input. WebRTC-only locators cannot fall back to the legacy HTTP frame/input UI.
 
-Current deployment status keeps these transports as siblings rather than making Native a prerequisite. `webrtc_takeover` is the physically accepted built-in mobile path on macOS (same-LAN direct, cellular TURN relay, and real Google sign-in recovery); `thin_takeover` remains optional/experimental pending separate Native-app physical acceptance. `hosted_cdp` is the Linux/container path and reuses the generic authenticated HTTP broker; it requires its own real Cloud Run + mobile-browser acceptance before Issue #113/#20 closeout. The compatibility default remains `external`, so enabling a built-in takeover is always explicit.
+Current deployment status keeps transport implementations as siblings. `webrtc_takeover` is physically accepted on macOS (same-LAN direct, cellular TURN relay, and real Google sign-in recovery); `thin_takeover` remains optional/experimental. Linux/container work must reuse the same **normal-browser** authority boundary while providing a Linux-specific capture/input host behind Handoff-owned WebRTC. The earlier `hosted_cdp` experiment failed physical Cloud Run Google sign-in acceptance and is retained only as a compatibility value that fails closed for credential/consent/challenge Human control. The default remains `external`.
 
 The Safari/browser peer remains host-only (`iceServers: []`) and direct-first. Handoff's Node/werift peer uses explicit Cloudflare STUN rather than an implicit dependency-selected third-party default; optional Cloudflare Realtime TURN remains fallback-only under `iceTransportPolicy: all`. This network-metadata trust boundary and all ICE/STUN/TURN handling remain inside Handoff: Maps receives no raw candidates, addresses, SDP, credentials, or transport media/input. Human Done is teardown, not authentication proof; Maps always performs a fresh automation attach and coarse authenticated-readiness check afterwards.
 

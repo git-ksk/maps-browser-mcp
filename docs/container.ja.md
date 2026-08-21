@@ -80,24 +80,23 @@ HTTP port は次の順番で決まります。
 
 ## Container deploymentとcredential-safe takeover
 
-Container / Cloud RunはMCP control planeとprocess-owned Chromium automationをhostできますが、current built-in Native / WebRTC Human data planeは **macOS Handoff worker capability** であり、genericなCloud Run execution planeではありません。Linux Cloud Run instance自身がScreenCaptureKit / input injectionを提供できる前提で `thin_takeover` / `webrtc_takeover` を設定しないでください。
+Container / Cloud RunはMCP control planeとprocess-owned Chromium automationをhostできます。ただしcredential-safe Human controlの共通ルールは変わらず、**automation browserを停止し、same dedicated profileをremote-debugging / automation authorityなしのnormal browserで開く**必要があります。現在acceptance済みのWebRTC hostはScreenCaptureKit / CoreGraphicsを使うためmacOS専用で、Linuxには同じHandoff WebRTC protocolの背後で動くnormal-browser capture/input helperが必要です。
 
 Container deploymentではcredential-safe transportを明示します。
 
-- 同じprocess-owned Chromium sessionをcontainer内に維持し、authenticated Handoff brokerのbounded frame/input surfaceだけをHumanへ公開する場合は `hosted_cdp` を使う。
+- Linux normal-browser WebRTC hostが完成するまでは `external` または事前sign-in済みprofileを使う。legacy `hosted_cdp` はrollout互換のため残すが、Human credential / consent / challenge controlではfail closedし、normal-browser boundaryの代替には使わない。
 - Human surfaceをcontainer外で提供する場合は `external` を使う。
 - separate execution workerが必要な場合はHandoff control-plane / private-worker topologyを使う。
 
 ```bash
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=hosted_cdp
-MAPS_REMOTE_TAKEOVER=true
-MAPS_TAKEOVER_PUBLIC_BASE_URL=https://maps-mcp.example.com
+MAPS_CREDENTIAL_SAFE_TRANSPORT=external
+MAPS_CREDENTIAL_SAFE_OPERATOR_URL=https://human-browser.example.com
 MAPS_HEADLESS=true
 # authenticated HTTP principalと独立したtakeover-operator boundaryを別途設定
 ```
 
-`hosted_cdp` はDevTools endpointを外部公開しません。Human authority開始前にAgent CDPをdetach/fenceし、brokerはprincipal / epochへbindした1 Human clientにだけconsumer adapterのbounded frame / tap / scroll / text / key操作を許可します。`Done` はbroker generationをrevokeします。その後MCP ContinueでHuman-owned CDPをdetachし、fresh Agent CDPでauthenticated readinessを確認し、成功した場合だけstopped-profile checkpointを実行してからinterventionをresumableにできます。credential / cookie / DOM / network data / raw CDP / address barはtakeover pageへ返しません。
+以前の `hosted_cdp` experimentはAgent authorityをfenceしていましたが、Humanがmanaged automation ChromiumをHuman-owned CDP経由で操作する形でした。Cloud Run + iPhone Safariの物理acceptanceでは、Google sign-inが「安全でないbrowser/app」として拒否され、takeover UIもgeneric HTTP controlへdegradeすることを確認したため、credential / consent / challenge Human stepではこの経路を無効化します。Linux側はexact-window normal-browser capture/inputを実装し、HandoffのWebRTC session / generation / TURN / revoke / stale-client fencingを再利用します。
 
 Co-locatedな物理Macでは `webrtc_takeover` がrecommended built-in low-latency mobile pathで、物理iPhone Safariにてsame-LAN direct WebRTC / cellular TURN relay、およびreal V5 Google sign-in recoveryまでacceptance済みです。`thin_takeover` はNative appの別物理acceptanceが完了するまでoptional / experimental siblingとして残します。どちらもhosted-browser vendor API keyは不要です。
 
