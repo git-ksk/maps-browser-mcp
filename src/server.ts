@@ -172,6 +172,7 @@ const handoffStateCodec = createRequestStateCodec<MapsRequestState>({
 });
 
 const handoffOwners = new Map<string, HandoffOwner>();
+const explicitHumanSignInInterventions = new Set<string>();
 const actionApprovals = new ActionApprovalManager();
 
 const queryText = z.string().trim().min(1).max(500);
@@ -416,6 +417,193 @@ async function cancelIntervention(interventionId: string, owner: HandoffOwner): 
   handoffOwners.delete(interventionId);
   clearHandoffCheckpoint(owner);
   return jsonResult({ cancelled: true, reason: "human_intervention_cancelled" });
+}
+
+async function explicitHumanSignInRequired(
+  intervention: MapsIntervention,
+  candidateOwner: HandoffOwner
+): Promise<CallToolResult> {
+  const owner = handoffOwners.get(intervention.id);
+  if (!owner || !handoffOwnerMatches(owner, candidateOwner)) {
+    return errorResult(new BrowserRuntimeError(
+      "HUMAN_INTERVENTION_REQUIRED",
+      "The active human sign-in intervention belongs to another authenticated principal or no longer has a valid owner. Cancel the original flow before starting another Maps action."
+    ));
+  }
+
+  let active = runtime.getActiveIntervention();
+  if (!active || active.id !== intervention.id) {
+    handoffOwners.delete(intervention.id);
+    explicitHumanSignInInterventions.delete(intervention.id);
+    takeoverBroker.revokeForIntervention(intervention.id);
+    clearHandoffCheckpoint(owner);
+    return errorResult(new BrowserRuntimeError(
+      "UI_STATE_CHANGED",
+      "The human sign-in intervention is no longer active. Read authentication readiness again before requesting sign-in."
+    ));
+  }
+  if (active.status === "awaiting_human") active = runtime.claimHumanControl(active.id);
+  if (active.status !== "human_active") {
+    return errorResult(new BrowserRuntimeError(
+      "HUMAN_INTERVENTION_REQUIRED",
+      `The active human sign-in intervention is ${active.status}; finish or cancel that flow before continuing.`
+    ));
+  }
+
+  checkpointHumanHandoff(owner);
+  await prepareHandoffPrompt(active, owner);
+  const surface = credentialSafeSurface?.getActive();
+  if (!surface || surface.interventionId !== active.id || surface.principalBinding !== owner.principalBinding) {
+    return errorResult(new BrowserRuntimeError(
+      "UI_STATE_CHANGED",
+      "The credential-safe Human sign-in surface could not be established for the active principal."
+    ));
+  }
+
+  explicitHumanSignInInterventions.add(active.id);
+  return jsonResult({
+    humanActionRequired: true,
+    takeoverUrl: surface.locator,
+    providerKind: surface.providerKind,
+    nextTool: "maps_complete_human_sign_in",
+    cancelTool: "maps_cancel_human_sign_in"
+  });
+}
+
+async function beginExplicitHumanSignIn(): Promise<CallToolResult> {
+  const toolName = "maps_request_human_sign_in";
+  const args = {};
+  const owner = ownerFor(toolName, args, "require_fresh_semantic_action");
+  try {
+    policy.consumeAction();
+    const result = await operationQueue.run(async () => {
+      const interventionBefore = runtime.getActiveIntervention()?.id;
+      try {
+        policy.assertInteractiveAssistEnabled();
+        policy.consumeVisibleRead();
+        return await controller.requestHumanSignIn();
+      } finally {
+        const interventionAfter = runtime.getActiveIntervention();
+        if (interventionAfter && interventionAfter.id !== interventionBefore) {
+          const boundOwner = claimHandoffOwner(
+            handoffOwners,
+            interventionAfter.id,
+            interventionAfter.status,
+            owner
+          );
+          if (!boundOwner) {
+            takeoverBroker.revokeForIntervention(interventionAfter.id);
+            runtime.cancelHumanIntervention(interventionAfter.id);
+            throw new BrowserRuntimeError(
+              "UI_STATE_CHANGED",
+              "A newly-created human sign-in intervention could not be bound to the originating authenticated principal. The intervention was cancelled."
+            );
+          }
+        }
+      }
+    });
+    return jsonResult(result);
+  } catch (error) {
+    if (
+      error instanceof BrowserRuntimeError &&
+      error.code === "HUMAN_INTERVENTION_REQUIRED" &&
+      error.intervention
+    ) {
+      return explicitHumanSignInRequired(error.intervention, owner);
+    }
+    return errorResult(error);
+  }
+}
+
+async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
+  const active = runtime.getActiveIntervention();
+  if (!active || !explicitHumanSignInInterventions.has(active.id)) {
+    return errorResult(new BrowserRuntimeError(
+      "UI_STATE_CHANGED",
+      "No explicit Human sign-in flow is awaiting completion. Read authentication readiness before starting a new sign-in flow."
+    ));
+  }
+  const expectedOwner = ownerFor(
+    "maps_request_human_sign_in",
+    {},
+    "require_fresh_semantic_action"
+  );
+  const owner = handoffOwners.get(active.id);
+  if (!owner || !handoffOwnerMatches(owner, expectedOwner)) {
+    return errorResult(new BrowserRuntimeError(
+      "HUMAN_INTERVENTION_REQUIRED",
+      "The active human sign-in intervention belongs to another authenticated principal or no longer has a valid owner."
+    ));
+  }
+
+  try {
+    policy.consumeAction();
+    takeoverBroker.revokeForIntervention(active.id);
+    const currentSurface = credentialSafeSurface?.getActive();
+    const usedCredentialSafeSurface = currentSurface?.interventionId === active.id;
+    const usedHostedBrowserSurface = usedCredentialSafeSurface &&
+      currentSurface?.providerKind === "hosted-browser-takeover";
+    await revokeCredentialSafeSurface(active.id, owner);
+    runtime.markHumanControlComplete(active.id);
+    await operationQueue.run(() => usedCredentialSafeSurface
+      ? runtime.verifyCredentialSafeHumanIntervention(
+          active.id,
+          usedHostedBrowserSurface
+            ? {
+                beforeMarkVerified: async () => {
+                  await runtime.stopBrowserForProfileCheckpoint(active.id);
+                  await stoppedProfileCheckpoint({ reason: "credential_safe_sign_in" });
+                }
+              }
+            : undefined
+        )
+      : runtime.verifyHumanIntervention(active.id));
+  } catch (error) {
+    const stillActive = runtime.getActiveIntervention();
+    if (
+      error instanceof BrowserRuntimeError &&
+      error.code === "HUMAN_INTERVENTION_REQUIRED" &&
+      stillActive?.id === active.id &&
+      stillActive.status === "verifying"
+    ) {
+      const returned = runtime.claimHumanControl(active.id);
+      return explicitHumanSignInRequired(returned, owner);
+    }
+    if (stillActive?.id === active.id) runtime.cancelHumanIntervention(active.id);
+    handoffOwners.delete(active.id);
+    explicitHumanSignInInterventions.delete(active.id);
+    clearHandoffCheckpoint(owner);
+    return errorResult(error);
+  }
+
+  runtime.resumeAfterHumanIntervention(active.id);
+  takeoverBroker.revokeForIntervention(active.id);
+  handoffOwners.delete(active.id);
+  explicitHumanSignInInterventions.delete(active.id);
+  clearHandoffCheckpoint(owner);
+  return staleAfterInterventionResult("maps_request_human_sign_in");
+}
+
+async function cancelExplicitHumanSignIn(): Promise<CallToolResult> {
+  const active = runtime.getActiveIntervention();
+  if (!active || !explicitHumanSignInInterventions.has(active.id)) {
+    return jsonResult({ cancelled: false, reason: "no_explicit_human_sign_in" });
+  }
+  const expectedOwner = ownerFor(
+    "maps_request_human_sign_in",
+    {},
+    "require_fresh_semantic_action"
+  );
+  const owner = handoffOwners.get(active.id);
+  if (!owner || !handoffOwnerMatches(owner, expectedOwner)) {
+    return errorResult(new BrowserRuntimeError(
+      "HUMAN_INTERVENTION_REQUIRED",
+      "The active human sign-in intervention belongs to another authenticated principal or no longer has a valid owner."
+    ));
+  }
+  policy.consumeAction();
+  explicitHumanSignInInterventions.delete(active.id);
+  return cancelIntervention(active.id, owner);
 }
 
 async function executeToolTask<T>(
@@ -764,17 +952,39 @@ export function buildServer(): McpServer {
         inputSchema: z.object({}),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
       },
-      async (_args, ctx) => runToolWithHandoff({
-        toolName: "maps_request_human_sign_in",
-        args: {},
-        resumeStrategy: "require_fresh_semantic_action",
-        ctx,
-        task: async () => {
-          policy.assertInteractiveAssistEnabled();
-          policy.consumeVisibleRead();
-          return controller.requestHumanSignIn();
-        }
-      })
+      async (_args, ctx) => supportsFormElicitation(ctx)
+        ? runToolWithHandoff({
+            toolName: "maps_request_human_sign_in",
+            args: {},
+            resumeStrategy: "require_fresh_semantic_action",
+            ctx,
+            task: async () => {
+              policy.assertInteractiveAssistEnabled();
+              policy.consumeVisibleRead();
+              return controller.requestHumanSignIn();
+            }
+          })
+        : beginExplicitHumanSignIn()
+    );
+
+    server.registerTool(
+      "maps_complete_human_sign_in",
+      {
+        description: "Complete the explicit Human-only Google Maps sign-in fallback after the user has finished the credential-safe takeover surface. This revokes Human authority, verifies signed-in readiness from a fresh Agent CDP connection, checkpoints only the stopped dedicated Chrome profile when configured, and requires a fresh readiness read afterward.",
+        inputSchema: z.object({}),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+      },
+      async () => completeExplicitHumanSignIn()
+    );
+
+    server.registerTool(
+      "maps_cancel_human_sign_in",
+      {
+        description: "Cancel an explicit Human-only Google Maps sign-in fallback, revoke its credential-safe takeover surface, and return the dedicated browser runtime to a fresh state without checkpointing a signed-in profile.",
+        inputSchema: z.object({}),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
+      },
+      async () => cancelExplicitHumanSignIn()
     );
   }
 
