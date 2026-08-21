@@ -40,6 +40,11 @@ trap cleanup_processes EXIT
 
 profile_restore
 
+if [ -n "${MAPS_PROFILE_SNAPSHOT_BUCKET:-}" ] && [ -z "${MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE:-}" ]; then
+  MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE="$(pwd)/reference/oauth-gateway/profile-checkpoint-provider.mjs"
+  export MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE
+fi
+
 env \
   MCP_HTTP_HOST=127.0.0.1 \
   MCP_HTTP_PORT=8081 \

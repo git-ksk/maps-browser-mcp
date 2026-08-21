@@ -55,8 +55,13 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
   assert.match(nativeBoundary, /\{ processId: request\.targetProcessId \}/);
   assert.match(webRtcBoundary, /\{ processId: request\.targetProcessId \}/);
   assert.match(provider, /await this\.browser\.close\(\)/);
-  assert.match(server, /suspendAutomationForCredentialSafeHumanControl\(intervention\.id, intervention\.epoch\)/);
+  assert.match(server, /const preserveBrowserSession = config\.credentialSafeHandoff\.transport === "hosted_cdp"/);
+  assert.match(
+    server,
+    /suspendAutomationForCredentialSafeHumanControl\(\s*intervention\.id,\s*intervention\.epoch,\s*\{ preserveBrowserSession \}\s*\)/
+  );
   assert.doesNotMatch(server, /preserveBrowserSession:\s*config\.credentialSafeHandoff\.transport === "thin_takeover"/);
+  assert.doesNotMatch(server, /preserveBrowserSession:\s*config\.credentialSafeHandoff\.transport === "webrtc_takeover"/);
 });
 
 test("Native and WebRTC transports are siblings and neither instantiates CUA", () => {

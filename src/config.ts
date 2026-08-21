@@ -115,10 +115,10 @@ function externalHumanOperatorUrl(name: string): string | undefined {
   return url.toString();
 }
 
-function credentialSafeTransport(name: string): "external" | "cua_takeover" | "thin_takeover" | "webrtc_takeover" {
+function credentialSafeTransport(name: string): "external" | "cua_takeover" | "thin_takeover" | "webrtc_takeover" | "hosted_cdp" {
   const raw = process.env[name]?.trim().toLowerCase() || "external";
-  if (raw === "external" || raw === "cua_takeover" || raw === "thin_takeover" || raw === "webrtc_takeover") return raw;
-  throw new Error(`${name} must be one of: external, cua_takeover, thin_takeover, webrtc_takeover`);
+  if (raw === "external" || raw === "cua_takeover" || raw === "thin_takeover" || raw === "webrtc_takeover" || raw === "hosted_cdp") return raw;
+  throw new Error(`${name} must be one of: external, cua_takeover, thin_takeover, webrtc_takeover, hosted_cdp`);
 }
 
 function requiredAbsolutePath(name: string): string {
@@ -170,7 +170,7 @@ export interface AppConfig {
   };
   credentialSafeHandoff: {
     enabled: boolean;
-    transport: "external" | "cua_takeover" | "thin_takeover" | "webrtc_takeover";
+    transport: "external" | "cua_takeover" | "thin_takeover" | "webrtc_takeover" | "hosted_cdp";
     operatorUrl?: string;
     cuaCommand: string;
     webRtcRuntime?: {
@@ -189,6 +189,9 @@ export interface AppConfig {
       videoFeedbackPort: number;
       displayId?: number;
     };
+  };
+  browserProfileCheckpoint: {
+    module?: string;
   };
   mcpApps: {
     googleMapsEmbedApiKey?: string;
@@ -310,6 +313,10 @@ export function loadConfig(): AppConfig {
   const credentialSafeHandoff = envBool("MAPS_CREDENTIAL_SAFE_HANDOFF", false);
   const credentialSafeTransportMode = credentialSafeTransport("MAPS_CREDENTIAL_SAFE_TRANSPORT");
   const credentialSafeOperatorUrl = externalHumanOperatorUrl("MAPS_CREDENTIAL_SAFE_OPERATOR_URL");
+  const stoppedProfileCheckpointModuleRaw = process.env.MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE?.trim() || undefined;
+  if (stoppedProfileCheckpointModuleRaw && (stoppedProfileCheckpointModuleRaw.includes("\0") || !path.isAbsolute(stoppedProfileCheckpointModuleRaw))) {
+    throw new Error("MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE must be an absolute local module path without NUL characters");
+  }
   const cuaCommand = process.env.MAPS_CUA_DRIVER_COMMAND?.trim() || "cua-driver";
   let nativeRuntime: AppConfig["credentialSafeHandoff"]["nativeRuntime"];
   let webRtcRuntime: AppConfig["credentialSafeHandoff"]["webRtcRuntime"];
@@ -318,7 +325,15 @@ export function loadConfig(): AppConfig {
     throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
   }
   if (credentialSafeTransportMode !== "external" && !credentialSafeHandoff) {
-    throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when using cua_takeover, thin_takeover, or webrtc_takeover");
+    throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when using cua_takeover, thin_takeover, webrtc_takeover, or hosted_cdp");
+  }
+  if (credentialSafeTransportMode === "hosted_cdp") {
+    if (!remoteTakeover) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=hosted_cdp requires MAPS_REMOTE_TAKEOVER=true because the Handoff broker owns the hosted Human surface");
+    }
+    if (credentialSafeOperatorUrl) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=hosted_cdp because the Handoff broker issues the operator locator");
+    }
   }
   if (credentialSafeTransportMode === "cua_takeover") {
     if (!remoteTakeover) {
@@ -381,6 +396,9 @@ export function loadConfig(): AppConfig {
       videoFeedbackPort,
       displayId: envOptionalInt("MAPS_NATIVE_TAKEOVER_DISPLAY_ID", 1, 4_294_967_295)
     };
+  }
+  if (stoppedProfileCheckpointModuleRaw && !credentialSafeHandoff) {
+    throw new Error("MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
   }
   if (credentialSafeHandoff) {
     if (allowExternalCdp) {
@@ -448,6 +466,9 @@ export function loadConfig(): AppConfig {
       cuaCommand,
       nativeRuntime,
       webRtcRuntime
+    },
+    browserProfileCheckpoint: {
+      module: stoppedProfileCheckpointModuleRaw
     },
     mcpApps: {
       googleMapsEmbedApiKey: process.env.GOOGLE_MAPS_EMBED_API_KEY?.trim() || undefined

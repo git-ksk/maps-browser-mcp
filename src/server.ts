@@ -71,7 +71,8 @@ import { TRANSIT_TIME_MODES } from "./browser/transit-time.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { resolveFreshRouteSendTarget, type RouteSendActionInput } from "./browser/route-send.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
-import { InheritedFdNativeRuntimeProvider, SpawnedWebRtcRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
+import { createStoppedBrowserProfileCheckpointHook } from "./browser-profile-checkpoint.js";
+import { HostedBrowserTakeoverProvider, InheritedFdNativeRuntimeProvider, SpawnedWebRtcRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.3.3";
@@ -101,13 +102,19 @@ const webRtcTakeoverRuntime = config.credentialSafeHandoff.enabled &&
   ? new SpawnedWebRtcRuntimeProvider(config.credentialSafeHandoff.webRtcRuntime)
   : undefined;
 const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime, webRtcTakeoverRuntime);
+const hostedBrowserCredentialTakeover = config.credentialSafeHandoff.enabled &&
+  config.credentialSafeHandoff.transport === "hosted_cdp"
+  ? new HostedBrowserTakeoverProvider(takeoverBroker)
+  : undefined;
+const stoppedProfileCheckpoint = createStoppedBrowserProfileCheckpointHook(config.browserProfileCheckpoint.module);
 const nativeCredentialTakeover = nativeTakeoverRuntime
   ? new NativeCredentialTakeoverBoundary(takeoverBroker)
   : undefined;
 const webRtcCredentialTakeover = webRtcTakeoverRuntime
   ? new WebRtcCredentialTakeoverBoundary(takeoverBroker)
   : undefined;
-const credentialSafeBrowser = config.credentialSafeHandoff.enabled
+const credentialSafeBrowser = config.credentialSafeHandoff.enabled &&
+  config.credentialSafeHandoff.transport !== "hosted_cdp"
   ? new SystemBrowserCredentialSession({
       executable: config.browser.executable,
       profileDir: config.browser.profileDir,
@@ -116,7 +123,9 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled
   : undefined;
 const credentialSafeProvider = !config.credentialSafeHandoff.enabled
   ? undefined
-  : config.credentialSafeHandoff.transport === "thin_takeover"
+  : config.credentialSafeHandoff.transport === "hosted_cdp"
+    ? hostedBrowserCredentialTakeover
+    : config.credentialSafeHandoff.transport === "thin_takeover"
     ? nativeCredentialTakeover && credentialSafeBrowser
       ? new CredentialTakeoverHumanProvider("thin-takeover", credentialSafeBrowser, nativeCredentialTakeover)
       : undefined
@@ -290,11 +299,18 @@ function credentialSafePrompt(
     ? `Open the Native Takeover app and use this short-lived Native-only locator:\n${surface.locator}\n\nDo not use the locator as a Web takeover page; legacy Web bootstrap/frame/input are disabled for this Human session.`
     : surface.providerKind === "webrtc-takeover" && /^https?:\/\//i.test(surface.locator)
       ? `Open this short-lived WebRTC takeover locator in iPhone Safari:\n${surface.locator}\n\nControl only the dedicated Chrome window directly with tap/swipe and the iOS keyboard. Legacy button-driven frame/input takeover is disabled for this Human session.`
-      : /^https?:\/\//i.test(surface.locator)
-        ? `Open the configured Human access surface:\n${surface.locator}`
-        : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
-  const ownership = "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without agent-owned CDP/remote-debugging authority.";
-  const recovery = "Choose Continue after the browser-side step is complete. Human authority is revoked and the normal browser is closed before automation establishes a fresh Chrome process/CDP attachment and readiness check; stale pre-auth actions are not replayed.";
+      : surface.providerKind === "hosted-browser-takeover" && /^https?:\/\//i.test(surface.locator)
+        ? `Open this short-lived hosted browser takeover locator in Safari:\n${surface.locator}\n\nThe page exposes only the bounded browser frame/input surface for this intervention; it does not expose CDP, cookies, DOM, network data, or an address bar.`
+        : /^https?:\/\//i.test(surface.locator)
+          ? `Open the configured Human access surface:\n${surface.locator}`
+          : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
+  const hosted = surface.providerKind === "hosted-browser-takeover";
+  const ownership = hosted
+    ? "Agent CDP authority is detached and fenced while the same dedicated hosted Chromium session is controlled only through the Human-bound takeover adapter."
+    : "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without agent-owned CDP/remote-debugging authority.";
+  const recovery = hosted
+    ? "Choose Continue after the browser-side step is complete. The broker generation and Human CDP authority are revoked first; sign-in is then verified from a fresh Agent CDP connection. When a stopped-profile deployment checkpoint is configured, Chromium is cleanly stopped and the verified signed-in profile is persisted before the intervention becomes resumable. Stale pre-auth actions are not replayed."
+    : "Choose Continue after the browser-side step is complete. Human authority is revoked and the normal browser is closed before automation establishes a fresh Chrome process/CDP attachment and readiness check; stale pre-auth actions are not replayed.";
   return [
     base,
     ownership,
@@ -311,7 +327,12 @@ async function prepareHandoffPrompt(intervention: MapsIntervention, owner: Hando
     selectHumanSurface(intervention.reason, CREDENTIAL_SAFE_REASONS) === "credential_safe_external"
   ) {
     takeoverBroker.revokeForIntervention(intervention.id);
-    await runtime.suspendAutomationForCredentialSafeHumanControl(intervention.id, intervention.epoch);
+    const preserveBrowserSession = config.credentialSafeHandoff.transport === "hosted_cdp";
+    await runtime.suspendAutomationForCredentialSafeHumanControl(
+      intervention.id,
+      intervention.epoch,
+      { preserveBrowserSession }
+    );
     const surface = await credentialSafeSurface.begin(intervention, owner.principalBinding);
     return credentialSafePrompt(intervention, surface);
   }
@@ -326,6 +347,9 @@ async function revokeCredentialSafeSurface(interventionId: string, owner: Handof
     external.epoch,
     owner.principalBinding
   );
+  if (external.providerKind === "hosted-browser-takeover") {
+    await runtime.releaseHumanTakeoverConnection(external.interventionId, external.epoch);
+  }
   return external.providerKind;
 }
 
@@ -510,11 +534,23 @@ async function runToolWithHandoff<T>(input: {
   takeoverBroker.revokeForIntervention(state.interventionId);
   const activeCredentialSafeSurface = credentialSafeSurface?.getActive();
   const usedCredentialSafeSurface = activeCredentialSafeSurface?.interventionId === state.interventionId;
+  const usedHostedBrowserSurface = usedCredentialSafeSurface &&
+    activeCredentialSafeSurface?.providerKind === "hosted-browser-takeover";
   try {
     await revokeCredentialSafeSurface(state.interventionId, owner);
     runtime.markHumanControlComplete(state.interventionId);
     await operationQueue.run(() => usedCredentialSafeSurface
-      ? runtime.verifyCredentialSafeHumanIntervention(state.interventionId)
+      ? runtime.verifyCredentialSafeHumanIntervention(
+          state.interventionId,
+          usedHostedBrowserSurface
+            ? {
+                beforeMarkVerified: async () => {
+                  await runtime.stopBrowserForProfileCheckpoint(state.interventionId);
+                  await stoppedProfileCheckpoint({ reason: "credential_safe_sign_in" });
+                }
+              }
+            : undefined
+        )
       : runtime.verifyHumanIntervention(state.interventionId));
   } catch (error) {
     const stillActive = runtime.getActiveIntervention();
@@ -724,7 +760,7 @@ export function buildServer(): McpServer {
     server.registerTool(
       "maps_request_human_sign_in",
       {
-        description: "Request a Human-only Google Maps sign-in ceremony when the dedicated session is signed out. This tool never clicks Sign in, selects an account, enters credentials/MFA, reads account identity, or exports session material. With credential-safe handoff enabled it stops the managed CDP browser, opens the same dedicated profile in normal Chrome without remote-debugging, and requires a fresh readiness read after Human completion.",
+        description: "Request a Human-only Google Maps sign-in ceremony when the dedicated session is signed out. This tool never clicks Sign in, selects an account, enters credentials/MFA, reads account identity, or exports session material. With credential-safe handoff enabled it uses the configured Human-only surface. Hosted-CDP deployments fence Agent authority, use the bounded authenticated takeover broker, verify sign-in from a fresh Agent connection, and may checkpoint the stopped signed-in profile before requiring a fresh readiness read.",
         inputSchema: z.object({}),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
       },

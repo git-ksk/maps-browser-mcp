@@ -291,7 +291,10 @@ export class MapsBrowserRuntime {
     return this.handoff.markVerified(interventionId);
   }
 
-  async verifyCredentialSafeHumanIntervention(interventionId: string): Promise<MapsIntervention> {
+  async verifyCredentialSafeHumanIntervention(
+    interventionId: string,
+    options: { beforeMarkVerified?: () => Promise<void> } = {}
+  ): Promise<MapsIntervention> {
     const active = this.handoff.getActive();
     if (!active || active.id !== interventionId) {
       throw new ExecutionHandoffError("INTERVENTION_NOT_FOUND", "The intervention is no longer active");
@@ -324,7 +327,28 @@ export class MapsBrowserRuntime {
         "Google Maps authentication readiness could not be verified after the Human authentication step. Restart from a fresh Maps readiness check."
       );
     }
+    await options.beforeMarkVerified?.();
     return this.handoff.markVerified(interventionId);
+  }
+
+  async stopBrowserForProfileCheckpoint(interventionId: string): Promise<void> {
+    const active = this.handoff.getActive();
+    if (!active || active.id !== interventionId || active.status !== "verifying" || active.authority !== "none") {
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Browser profile checkpoint requires the same intervention to remain in verifying state with no Human or Agent authority"
+      );
+    }
+    if (this.client && this.clientOwner !== "automation") {
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Browser profile checkpoint cannot stop Chromium while Human-owned CDP authority remains attached"
+      );
+    }
+    await this.resetClient();
+    this.endpoint = undefined;
+    this.invalidateSemanticState(false);
+    await this.chrome.close();
   }
 
   resumeAfterHumanIntervention(interventionId: string): ResumeDecision<MapsAction> {

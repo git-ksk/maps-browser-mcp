@@ -82,21 +82,26 @@ HTTP port precedence is:
 
 A container or Cloud Run instance may host the MCP/control plane and its process-owned Chromium automation, but the current built-in Native and WebRTC Human data planes are **macOS Handoff-worker capabilities**, not a generic Cloud Run execution plane. Do not configure `thin_takeover` or `webrtc_takeover` as if a Linux Cloud Run instance could provide ScreenCaptureKit/input injection locally.
 
-For a container deployment today, keep the credential-safe transport explicit:
+For a container deployment, keep the credential-safe transport explicit:
 
+- use `hosted_cdp` when the same process-owned Chromium session should remain in the container and Human control is exposed only through the authenticated Handoff broker's bounded frame/input surface;
 - use `external` when the Human surface is provided outside the container; or
-- use a Handoff control-plane/private-worker topology once the separate execution worker is deployed. The generic hosted-worker topology is tracked in `mcp-execution-handoff` #12.
+- use a Handoff control-plane/private-worker topology when a separate execution worker is required.
 
 ```bash
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=external
+MAPS_CREDENTIAL_SAFE_TRANSPORT=hosted_cdp
+MAPS_REMOTE_TAKEOVER=true
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://maps-mcp.example.com
 MAPS_HEADLESS=true
-# configure the authenticated HTTP principal boundary and operator surface separately
+# configure the authenticated HTTP principal and independent takeover-operator boundary
 ```
 
-On a co-located physical Mac, `webrtc_takeover` is the recommended built-in mobile path and has passed physical iPhone Safari acceptance over same-LAN direct WebRTC and cellular TURN relay, including the real V5 Google sign-in recovery flow. `thin_takeover` remains an optional/experimental Native sibling pending its separate physical app acceptance. Neither path requires a hosted-browser vendor API key.
+`hosted_cdp` does **not** expose a DevTools endpoint. Agent CDP is detached and fenced before Human authority begins; the broker then lets one principal/epoch-bound Human client drive only the consumer adapter's bounded frame/tap/scroll/text/key operations. `Done` revokes the broker generation. A subsequent MCP Continue detaches Human-owned CDP, reconnects with fresh Agent CDP, verifies authenticated readiness, and only then may a stopped-profile checkpoint run before the intervention becomes resumable. Credentials, cookies, DOM/network data, raw CDP, and an address bar are never returned through the takeover page.
 
-Browser/Handoff authority remains process/worker-local. Instance termination or replacement must fail closed rather than pretending a takeover can resume on another worker. Durable browser/profile strategy, if needed, is separate from takeover authority and must not persist raw credentials through MCP/Handoff state.
+On a co-located physical Mac, `webrtc_takeover` remains the recommended built-in low-latency mobile path and has passed physical iPhone Safari acceptance over same-LAN direct WebRTC and cellular TURN relay, including the real V5 Google sign-in recovery flow. `thin_takeover` remains an optional/experimental Native sibling pending its separate physical app acceptance. Neither path requires a hosted-browser vendor API key.
+
+Browser/Handoff authority remains process/worker-local. Instance termination or replacement must fail closed rather than pretending a takeover can resume on another worker. Durable browser/profile state is separate from takeover authority: only a stopped dedicated profile may be snapshotted, never raw credentials or active Handoff authority.
 
 ## Browser profile
 
@@ -106,7 +111,7 @@ The image defaults to an ephemeral dedicated profile:
 /tmp/maps-browser-mcp/chrome-profile
 ```
 
-Override it with `MAPS_CHROME_PROFILE_DIR` only when you have a specific single-user persistence requirement. Never point the server at an everyday browser profile, and never share one profile across concurrent users or instances.
+Override it with `MAPS_CHROME_PROFILE_DIR` only when you have a specific single-user persistence requirement. Never point the server at an everyday browser profile, and never share one profile across concurrent users or instances. The reference OAuth gateway can restore/checkpoint this stopped profile through `MAPS_PROFILE_SNAPSHOT_BUCKET`; live Chromium still runs only against local ephemeral storage. When that snapshot layer is enabled, the entrypoint automatically wires the deployment-only `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` so a freshly verified `hosted_cdp` sign-in is checkpointed before Handoff becomes resumable.
 
 ## Health and readiness
 
