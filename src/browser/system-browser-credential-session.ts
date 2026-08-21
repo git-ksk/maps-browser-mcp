@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { buildBrowserProcessEnv, findChromeExecutable } from "./chrome-process.js";
 
 function sleep(ms: number): Promise<void> {
@@ -8,6 +9,22 @@ function sleep(ms: number): Promise<void> {
 }
 
 const PROFILE_LOCK_NAMES = ["SingletonLock", "SingletonCookie", "SingletonSocket"] as const;
+
+export function parseLocalLinuxSingletonLockPid(target: string, hostname = os.hostname()): number | undefined {
+  const match = target.match(/^(.*)-([1-9]\d*)$/);
+  if (!match || match[1] !== hostname) return undefined;
+  const pid = Number.parseInt(match[2] ?? "", 10);
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
 
 export interface SystemBrowserCredentialSessionOptions {
   executable?: string;
@@ -89,6 +106,7 @@ export class SystemBrowserCredentialSession {
   }
 
   async assertProfileUnlocked(): Promise<void> {
+    await this.clearStaleLinuxProfileLocks();
     const locked = await this.profileLockNames();
     if (locked.length > 0) {
       throw new Error("Dedicated Chrome profile is still owned by another browser process");
@@ -98,6 +116,7 @@ export class SystemBrowserCredentialSession {
   private async waitForProfileUnlock(): Promise<void> {
     const deadline = Date.now() + (this.options.profileUnlockTimeoutMs ?? 5_000);
     for (;;) {
+      await this.clearStaleLinuxProfileLocks();
       const locked = await this.profileLockNames();
       if (locked.length === 0) return;
       if (Date.now() >= deadline) {
@@ -105,6 +124,45 @@ export class SystemBrowserCredentialSession {
       }
       await sleep(100);
     }
+  }
+
+  private async clearStaleLinuxProfileLocks(): Promise<void> {
+    if (process.platform !== "linux") return;
+    const lockPath = path.join(this.options.profileDir, "SingletonLock");
+    let target: string;
+    try {
+      target = await fsp.readlink(lockPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "EINVAL") return;
+      throw error;
+    }
+    const ownerPid = parseLocalLinuxSingletonLockPid(target);
+    if (ownerPid === undefined || processExists(ownerPid)) return;
+
+    // Chromium may leave its singleton symlinks behind after an abrupt container-safe
+    // process shutdown. Only remove the known symlinks when the lock names this host
+    // and a PID that no longer exists; any ambiguous/live ownership remains fail-closed.
+    const removable: string[] = [];
+    for (const name of ["SingletonCookie", "SingletonSocket"] as const) {
+      const value = path.join(this.options.profileDir, name);
+      try {
+        const stat = await fsp.lstat(value);
+        if (!stat.isSymbolicLink()) return;
+        removable.push(value);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT") throw error;
+      }
+    }
+
+    const currentTarget = await fsp.readlink(lockPath).catch(() => undefined);
+    if (currentTarget !== target) return;
+    const lockStat = await fsp.lstat(lockPath).catch(() => undefined);
+    if (!lockStat?.isSymbolicLink()) return;
+    for (const value of removable) await fsp.unlink(value);
+    const finalTarget = await fsp.readlink(lockPath).catch(() => undefined);
+    if (finalTarget === target) await fsp.unlink(lockPath);
   }
 
   private async profileLockNames(): Promise<string[]> {
