@@ -144,6 +144,31 @@ function toolJson(response, name) {
   return JSON.parse(text);
 }
 
+function toolErrorCode(response) {
+  if (!response?.result?.isError) return undefined;
+  try {
+    const parsed = JSON.parse(response?.result?.content?.[0]?.text || "{}");
+    return typeof parsed?.error === "string" ? parsed.error : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readPlaceSummaryWithBoundedSettle(baseUrl, bearer) {
+  const deadline = Date.now() + 8_000;
+  let attempt = 0;
+  while (true) {
+    const response = await postMcp(baseUrl, bearer, `summary-${attempt}`, "maps_read_place_summary", {});
+    if (!response?.result?.isError) return toolJson(response, "maps_read_place_summary");
+    const code = toolErrorCode(response);
+    if ((code !== "UI_ELEMENT_NOT_FOUND" && code !== "UI_STATE_CHANGED") || Date.now() >= deadline) {
+      return toolJson(response, "maps_read_place_summary");
+    }
+    attempt += 1;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
 function takeoverLocatorFromInputRequired(response, expectedOrigin) {
   assert(response?.result?.resultType === "input_required", "Expected input_required from maps_request_human_sign_in");
   const request = response.result.inputRequests?.human_intervention;
@@ -409,10 +434,7 @@ try {
     "maps_search"
   );
   void postSearch;
-  const summary = toolJson(
-    await postMcp(coreBaseUrl, bearer, "summary-1", "maps_read_place_summary", {}),
-    "maps_read_place_summary"
-  );
+  const summary = await readPlaceSummaryWithBoundedSettle(coreBaseUrl, bearer);
   assert(Array.isArray(summary.items) && summary.items.length > 0, "No bounded place result available for V5-B read");
   const first = summary.items[0];
   assert(Number.isInteger(first?.index) && typeof first?.label === "string", "Invalid bounded place identity");

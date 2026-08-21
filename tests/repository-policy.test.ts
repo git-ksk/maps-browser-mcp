@@ -65,6 +65,15 @@ test("local Google sign-in acceptance proxy keeps the Handoff WebRTC diagnostic 
   assert.doesNotMatch(source, /takeover\\\/api\\\/(?:\.\*|\[\^\/\]\+)/);
 });
 
+test("local Google sign-in acceptance retries only transient read-only post-login settling", () => {
+  const source = read("scripts/live-google-sign-in-acceptance.mjs");
+  assert.match(source, /readPlaceSummaryWithBoundedSettle/);
+  assert.match(source, /Date\.now\(\) \+ 8_000/);
+  assert.match(source, /UI_ELEMENT_NOT_FOUND/);
+  assert.match(source, /UI_STATE_CHANGED/);
+  assert.doesNotMatch(source, /maps_select_result[^]*while \(true\)/);
+});
+
 test("GitHub Actions dependencies are pinned to immutable commit SHAs", () => {
   const workflows = [
     ".github/workflows/ci.yml",
