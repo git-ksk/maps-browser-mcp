@@ -13,7 +13,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
-- Pin `mcp-execution-handoff` to `46e2eea176697c05ad3f0aa59eef4aa7c75e997d`, which records the completed physical iPhone Safari acceptance for same-LAN direct WebRTC and cellular/4G TURN relay plus exact target-window re-activation, text/Backspace/scroll, Done/revoke, and stale-locator rejection.
+- Pin `mcp-execution-handoff` to `8a8a8db7c767bb0f1a9b1d9fda1c7991281c26a2`, which records the completed physical iPhone Safari acceptance for same-LAN direct WebRTC and cellular/4G TURN relay plus exact target-window re-activation, text/Backspace/scroll, Done/revoke, and stale-locator rejection.
 - Clarify that V5 itself does not require WebRTC, Cloudflare, TURN, or remote takeover. The simplest V5 deployment is a persistent dedicated Chrome profile that the Human signs into locally; credential-safe handoff is optional for later sign-in/re-authentication, consent, or challenge handling.
 - Reframe Native `thin_takeover` as an optional/experimental sibling rather than a prerequisite for the physically accepted WebRTC path, and keep `external` as the backward-compatible fail-closed transport default.
 - Correct container/Cloud Run guidance: current built-in Native/WebRTC capture/input execution is a macOS-worker capability; hosted control-plane/private-worker topology remains separate upstream work.

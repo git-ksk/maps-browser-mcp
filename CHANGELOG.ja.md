@@ -15,7 +15,7 @@
 
 ### 変更
 
-- `mcp-execution-handoff` を `46e2eea176697c05ad3f0aa59eef4aa7c75e997d` へpin。Same-LAN direct WebRTCとcellular/4G TURN relay、exact target-window再activation、text / Backspace / scroll、Done/revoke、stale locator拒否までの物理iPhone Safari acceptanceを正式記録した版です。
+- `mcp-execution-handoff` を `8a8a8db7c767bb0f1a9b1d9fda1c7991281c26a2` へpin。Same-LAN direct WebRTCとcellular/4G TURN relay、exact target-window再activation、text / Backspace / scroll、Done/revoke、stale locator拒否までの物理iPhone Safari acceptanceを正式記録した版です。
 - V5自体にWebRTC / Cloudflare / TURN / remote takeoverは必須でないことを明確化。最も単純なV5構成はHumanがローカルでログインしたpersistentなMaps専用Chrome profileで、credential-safe handoffは後からsign-in / re-authentication、consent、challenge対応が必要な場合だけ使うoptional機構です。
 - Native `thin_takeover` はphysically acceptedなWebRTC pathの前提ではなくoptional / experimental siblingへ整理し、`external` はbackward-compatibleなfail-closed transport defaultとして維持。
 - Container / Cloud Run説明を修正。現行built-in Native/WebRTC capture/input executionはmacOS worker capabilityで、hosted control-plane/private-worker topologyはupstreamの別作業として扱います。
