@@ -478,6 +478,10 @@ test("stopped browser profile checkpoint module is deployment-only and absolute"
 });
 
 test("WebRTC Takeover requires the authenticated broker and a Handoff-owned platform helper", async () => {
+  const platformDisplayEnv = process.platform === "linux"
+    ? { MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME: ":99" }
+    : { MAPS_WEBRTC_TAKEOVER_DISPLAY_ID: "7" };
+
   await withEnv({
     MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
     MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
@@ -495,12 +499,18 @@ test("WebRTC Takeover requires the authenticated broker and a Handoff-owned plat
     MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
     MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
     MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-webrtc-host",
-    MAPS_WEBRTC_TAKEOVER_DISPLAY_ID: "7"
+    ...platformDisplayEnv
   }, () => {
     const config = loadConfig();
     assert.equal(config.credentialSafeHandoff.transport, "webrtc_takeover");
     assert.equal(config.credentialSafeHandoff.webRtcRuntime?.hostExecutable, "/opt/thin/takeover-webrtc-host");
-    assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, 7);
+    if (process.platform === "linux") {
+      assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayName, ":99");
+      assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, undefined);
+    } else {
+      assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, 7);
+      assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayName, undefined);
+    }
     assert.equal(config.takeover.enabled, true);
   });
 
@@ -511,7 +521,8 @@ test("WebRTC Takeover requires the authenticated broker and a Handoff-owned plat
     MAPS_REMOTE_TAKEOVER: "true",
     MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
     MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
-    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "relative/takeover-webrtc-host"
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "relative/takeover-webrtc-host",
+    ...platformDisplayEnv
   }, () => {
     assert.throws(() => loadConfig(), /must be an absolute path/);
   });
