@@ -608,7 +608,7 @@ export class MapsBrowserRuntime {
       throw new BrowserRuntimeError("UI_STATE_CHANGED", "The place result list is no longer active. Run maps_search again.");
     }
     const label = await this.clickCandidate("place", index, expectedLabel);
-    const finalUrl = await this.waitForMapsPathKind("place", 3_000);
+    const finalUrl = await this.waitForMapsPathKind("place", 8_000);
     if (!finalUrl) {
       const observedUrl = await this.assertMapsSurface();
       const observedKind = mapsPathKind(observedUrl);
