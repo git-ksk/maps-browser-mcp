@@ -188,3 +188,40 @@ Target Google credentialを入力する前に:
 11. ここまで通ってから maps-browser-mcp #104 をdisposable dedicated `signed_out` profileで実行
 
 実際のtarget Google sign-inはHuman acceptanceであり、このgatewayでは自動化しません。
+
+## Cloud Runでsigned-in Chrome profileだけを永続化
+
+single-user本番構成では、永続化対象を**専用Chrome profileだけ**に限定します。Browser/action/Handoffの途中状態は保存せず、Cloud Run再起動後はfreshなMaps navigationとsemantic revalidationから冪等に再実行します。
+
+Chromiumのlive profile filesystemとしてCloud Storage FUSEやNFSは使いません。実行中は従来どおりlocal ephemeralな `MAPS_CHROME_PROFILE_DIR` を使用し、deployment layerがprivate core起動前に停止済みprofile archiveをrestoreし、Chromiumがprofile ownershipを手放した安全点だけでcheckpointします。
+
+Cloud Run service accountのApplication Default Credentialsで有効化します:
+
+```bash
+MAPS_PROFILE_SNAPSHOT_BUCKET=private-maps-profile-bucket
+MAPS_PROFILE_SNAPSHOT_PREFIX=maps-browser-mcp/profile
+MAPS_PROFILE_SNAPSHOT_KEEP=2
+MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
+```
+
+`MAPS_PROFILE_SNAPSHOT_REQUIRED=false` がdefaultです。初回起動でsnapshotが無い場合は空の専用profileでsigned-out起動します。snapshot欠落/破損時に起動自体を止めたい運用だけ `true` にします。
+
+snapshot helperは以下を保証します。
+
+- `maps-browser-mcp` 起動前にrestore
+- immutableなgeneration archiveと、previous generationも保持する小さな `current.json` pointer
+- 展開前にpath traversal、symbolic link、hard linkを拒否
+- 再生成可能cache、crash data、CDP runtime file、Chromium singleton fileを除外
+- cookie/token/account identifierを個別抽出・ログ出力しない
+- checkpointには `--browser-stopped` の明示が必要
+
+reference entrypointはCloud Runのgraceful `SIGTERM` 時も、private coreのbrowser shutdown完了後にcheckpointを試みます。core/gatewayのunexpected crashでは新snapshotを作りません。signed-in durabilityの主checkpointはLinux hosted Human Takeover実装後、`Done` でHuman authorityをrevokeしてChromium profileが安全になった直後へ結線します。これによりGoogleログイン直後のprofileを確実に保存できます。
+
+停止済みbrowser deployment container内でのmaintenance command:
+
+```bash
+node reference/oauth-gateway/profile-snapshot.mjs restore
+node reference/oauth-gateway/profile-snapshot.mjs checkpoint --browser-stopped
+```
+
+専用private bucket/prefixを使い、object accessはMaps Cloud Run runtime service accountだけに付与します。`concurrency=1` / `max-instances=1` は維持します。profileを永続化してもsingle browser runtimeをmulti-user化してはいけません。

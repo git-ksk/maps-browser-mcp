@@ -201,3 +201,40 @@ Before entering any real target Google credential:
 11. only then run maps-browser-mcp #104 with a disposable dedicated profile starting `signed_out`.
 
 The actual target Google sign-in remains a Human acceptance step and is intentionally not automated by this gateway.
+
+## Durable signed-in Chrome profile on Cloud Run
+
+For the single-user production shape, persist **only** the dedicated Chrome profile. Browser/action/Handoff state remains disposable and is rebuilt from fresh Maps navigation and semantic revalidation after a restart.
+
+Do not use Cloud Storage FUSE or NFS as Chromium's live profile filesystem. Chromium continues to use the local ephemeral `MAPS_CHROME_PROFILE_DIR`; the deployment layer restores a stopped-profile archive before the private core starts and checkpoints only after Chromium has relinquished the profile.
+
+Enable the snapshot layer with Application Default Credentials from the Cloud Run service account:
+
+```bash
+MAPS_PROFILE_SNAPSHOT_BUCKET=private-maps-profile-bucket
+MAPS_PROFILE_SNAPSHOT_PREFIX=maps-browser-mcp/profile
+MAPS_PROFILE_SNAPSHOT_KEEP=2
+MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
+```
+
+`MAPS_PROFILE_SNAPSHOT_REQUIRED=false` is the default. A first boot with no object therefore starts with an empty dedicated profile. Set it to `true` only when an operator intentionally wants a missing/invalid snapshot to prevent startup.
+
+The snapshot helper:
+
+- restores before `maps-browser-mcp` starts;
+- stores immutable generation archives plus a small `current.json` pointer retaining the previous good generation;
+- rejects path traversal and symbolic/hard-link archive entries before extraction;
+- excludes regenerable caches, crash data, CDP runtime files, and Chromium singleton files;
+- never extracts or logs individual cookies/tokens/account identifiers;
+- requires an explicit `--browser-stopped` acknowledgement for checkpoints.
+
+The reference entrypoint also attempts a checkpoint after a graceful container `SIGTERM`, after the private core has completed its browser shutdown. An unexpected core/gateway crash does **not** create a new snapshot. The primary signed-in durability checkpoint should be wired to the hosted Human-Takeover `Done` lifecycle once the Linux takeover transport is available, so the freshly authenticated profile is captured immediately at a known browser-authority boundary.
+
+Manual maintenance command inside a stopped-browser deployment container:
+
+```bash
+node reference/oauth-gateway/profile-snapshot.mjs restore
+node reference/oauth-gateway/profile-snapshot.mjs checkpoint --browser-stopped
+```
+
+Use a dedicated private bucket/prefix and grant object access only to the Maps Cloud Run runtime service account. Keep `concurrency=1` and `max-instances=1`; profile persistence does not turn one browser runtime into a multi-user service.

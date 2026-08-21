@@ -1,0 +1,82 @@
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import * as tar from "tar";
+import {
+  createProfileArchive,
+  isExcludedProfilePath,
+  loadProfileSnapshotConfig,
+  restoreProfileArchive
+} from "./profile-snapshot.mjs";
+
+test("profile snapshot config is disabled without a bucket", () => {
+  const config = loadProfileSnapshotConfig({ MAPS_CHROME_PROFILE_DIR: "/tmp/profile" });
+  assert.equal(config.enabled, false);
+  assert.equal(config.required, false);
+  assert.equal(config.keepSnapshots, 2);
+});
+
+test("profile snapshot config validates integer and prefix bounds", () => {
+  assert.throws(() => loadProfileSnapshotConfig({ MAPS_PROFILE_SNAPSHOT_PREFIX: "../bad" }), /dot segments/);
+  assert.throws(() => loadProfileSnapshotConfig({ MAPS_PROFILE_SNAPSHOT_KEEP: "1" }), /between 2 and 10/);
+});
+
+test("cache, crash, CDP and Singleton runtime files are excluded", () => {
+  assert.equal(isExcludedProfilePath("Default/Cache/data"), true);
+  assert.equal(isExcludedProfilePath("Default/Code Cache/js/index"), true);
+  assert.equal(isExcludedProfilePath("Crashpad/reports/x"), true);
+  assert.equal(isExcludedProfilePath("SingletonLock"), true);
+  assert.equal(isExcludedProfilePath("DevToolsActivePort"), true);
+  assert.equal(isExcludedProfilePath("Default/Cookies"), false);
+  assert.equal(isExcludedProfilePath("Default/Local Storage/leveldb/000003.log"), false);
+});
+
+test("archive round trip preserves durable profile data and drops caches", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-test-"));
+  try {
+    const source = path.join(root, "source");
+    const restored = path.join(root, "restored");
+    const archive = path.join(root, "profile.tar.gz");
+    await mkdir(path.join(source, "Default", "Local Storage"), { recursive: true });
+    await mkdir(path.join(source, "Default", "Cache"), { recursive: true });
+    await writeFile(path.join(source, "Default", "Cookies"), "cookie-db");
+    await writeFile(path.join(source, "Default", "Local Storage", "state"), "signed-in-state");
+    await writeFile(path.join(source, "Default", "Cache", "discard"), "cache");
+    await writeFile(path.join(source, "SingletonLock"), "runtime-only");
+
+    const result = await createProfileArchive(source, archive);
+    assert.ok(result.bytes > 0);
+    assert.match(result.sha256, /^[a-f0-9]{64}$/);
+
+    await restoreProfileArchive(archive, restored);
+    assert.equal(await readFile(path.join(restored, "Default", "Cookies"), "utf8"), "cookie-db");
+    assert.equal(await readFile(path.join(restored, "Default", "Local Storage", "state"), "utf8"), "signed-in-state");
+    await assert.rejects(readFile(path.join(restored, "Default", "Cache", "discard")), /ENOENT/);
+    await assert.rejects(readFile(path.join(restored, "SingletonLock")), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("restore rejects parent traversal and symlink entries", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-unsafe-test-"));
+  try {
+    const payload = path.join(root, "payload");
+    await mkdir(payload, { recursive: true });
+    await writeFile(path.join(payload, "safe"), "safe");
+    await writeFile(path.join(root, "outside"), "outside");
+    await symlinkCompat(path.join(root, "outside"), path.join(payload, "link"));
+    const archive = path.join(root, "unsafe.tar.gz");
+    await tar.c({ cwd: payload, file: archive, gzip: true }, ["."]);
+    await assert.rejects(restoreProfileArchive(archive, path.join(root, "restore")), /unsupported entry type/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function symlinkCompat(target, linkPath) {
+  const { symlink } = await import("node:fs/promises");
+  await symlink(target, linkPath);
+}
