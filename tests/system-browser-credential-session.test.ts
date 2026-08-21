@@ -12,4 +12,17 @@ test("credential-safe normal Chrome uses the dedicated profile without remote de
   assert.equal(args.some((value) => value.startsWith("--remote-debugging")), false);
   assert.equal(args.some((value) => /automation/i.test(value)), false);
   assert.equal(args.some((value) => value === "--headless" || value.startsWith("--headless=")), false);
+  assert.equal(args.includes("--no-sandbox"), false);
+});
+
+test("credential-safe normal Chrome adds --no-sandbox only for explicit Linux opt-in", { skip: process.platform !== "linux" }, () => {
+  const args = buildCredentialSafeChromeArgs({
+    profileDir: "/tmp/maps-dedicated-profile",
+    startUrl: "https://www.google.com/maps",
+    allowUnsandboxedChromium: true
+  });
+  assert.equal(args.includes("--no-sandbox"), true);
+  assert.equal(args.some((value) => value.startsWith("--remote-debugging")), false);
+  assert.equal(args.some((value) => /automation/i.test(value)), false);
+  assert.equal(args.some((value) => value === "--headless" || value.startsWith("--headless=")), false);
 });

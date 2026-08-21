@@ -129,7 +129,8 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled &&
   ? new SystemBrowserCredentialSession({
       executable: config.browser.executable,
       profileDir: config.browser.profileDir,
-      startUrl: "https://www.google.com/maps"
+      startUrl: "https://www.google.com/maps",
+      allowUnsandboxedChromium: config.browser.allowUnsandboxedChromium
     })
   : undefined;
 const credentialSafeProvider = !config.credentialSafeHandoff.enabled

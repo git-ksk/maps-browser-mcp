@@ -14,10 +14,11 @@ export interface SystemBrowserCredentialSessionOptions {
   profileDir: string;
   startUrl?: string;
   profileUnlockTimeoutMs?: number;
+  allowUnsandboxedChromium?: boolean;
 }
 
-export function buildCredentialSafeChromeArgs(options: Pick<SystemBrowserCredentialSessionOptions, "profileDir" | "startUrl">): string[] {
-  return [
+export function buildCredentialSafeChromeArgs(options: Pick<SystemBrowserCredentialSessionOptions, "profileDir" | "startUrl" | "allowUnsandboxedChromium">): string[] {
+  const args = [
     `--user-data-dir=${options.profileDir}`,
     "--no-first-run",
     "--no-default-browser-check",
@@ -25,10 +26,15 @@ export function buildCredentialSafeChromeArgs(options: Pick<SystemBrowserCredent
     "--new-window",
     options.startUrl ?? "https://www.google.com/maps"
   ];
+  if (process.platform === "linux" && options.allowUnsandboxedChromium) {
+    args.unshift("--no-sandbox");
+  }
+  return args;
 }
 
 export class SystemBrowserCredentialSession {
   private child?: ChildProcess;
+  private warnedUnsandboxed = false;
 
   constructor(private readonly options: SystemBrowserCredentialSessionOptions) {}
 
@@ -50,6 +56,12 @@ export class SystemBrowserCredentialSession {
     await this.waitForProfileUnlock();
 
     const executable = findChromeExecutable(this.options.executable);
+    if (process.platform === "linux" && this.options.allowUnsandboxedChromium && !this.warnedUnsandboxed) {
+      this.warnedUnsandboxed = true;
+      console.error(
+        "[maps-browser-mcp] WARNING: Credential-safe normal Chromium is running with --no-sandbox because MAPS_ALLOW_UNSANDBOXED_CHROMIUM=true. Use this only in a dedicated, isolated single-user runtime."
+      );
+    }
     const child = spawn(executable, buildCredentialSafeChromeArgs(this.options), { stdio: "ignore", env: buildBrowserProcessEnv() });
     this.child = child;
     let startupError: Error | undefined;
