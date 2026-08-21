@@ -351,7 +351,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MAPS_ALLOW_EXTERNAL_CDP` | `false` | 既存local CDP endpoint接続用明示Opt-in。credential-safe handoffとは併用不可 |
 | `MAPS_CDP_PORT` | unset | 上級者向け既存ローカルCDP endpoint |
 | `MAPS_HEADLESS` | `false` | headless mode |
-| `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linuxの制約runtime向け最終手段。明示時のみ `--no-sandbox` |
+| `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linuxの制約runtime向け最終手段。明示時のみAgent Chromiumとcredential-safe normal Chromiumへ `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなbounded V5 authenticated toolを有効化。Interactive Assistと専用single-user profile gateも必須 |
 | `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Google sign-in / consent / challenge向けHuman-only handoff |

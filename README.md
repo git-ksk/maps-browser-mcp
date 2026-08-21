@@ -349,7 +349,7 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Explicit opt-in before existing local CDP attachment; incompatible with credential-safe handoff |
 | `MAPS_CDP_PORT` | unset | Advanced: existing local CDP endpoint |
 | `MAPS_HEADLESS` | `false` | Headless Chrome |
-| `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
+| `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` to Agent Chromium and credential-safe normal Chromium |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable bounded visible-state reading and V4 semantic UI operations that require it |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | Enable the fail-closed bounded V5 authenticated tools; also requires Interactive Assist and the dedicated single-user profile gate |
 | `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Enable Human-only handoff for Google sign-in/consent/challenge surfaces |
