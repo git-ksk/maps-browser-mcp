@@ -8,7 +8,23 @@
 
 ## [Unreleased]
 
-- experimentalなSteel-backed hosted pathを廃止し、vendor key不要の `thin_takeover` を本命経路に変更。same process-owned Chromeを維持しつつAgent-owned CDP/input authorityをdetach + fenceし、Phase 1はCDP JPEGを `CaptureAdapter -> FramePipeline` でencodedのままpassthroughする。revoke時はactive streamをabortし、Human-owned CDP attachmentを閉じてからfresh automation reattachし、bounded latency metricsも記録する。raw-frame hardware encode / WebRTCは差し替え可能なPhase 2 adapterとした。Benign local 30-sample E2Eではbounded input dispatchから次push frameまでp50 40.8 ms / p95 77.4 ms、Maps trafficなし・vendor API keyなしを確認。
+### 追加
+
+- Single-user macOS向けにopt-inの `webrtc_takeover` credential-safe Human transportを追加。同じdedicated profileをnormal Chromeで開き、Handoffのcapture/inputをexact Chrome PID/windowへbindし、短命Safari locatorだけを公開します。WebRTC signaling / RTP / DataChannel、ICE/TURN、framebuffer、raw Human inputはMapsへ持ち込みません。
+- EN/JAのWebRTC Human Takeoverガイドを追加。Pin済みhelper build、macOS画面収録/アクセシビリティ権限、authenticated HTTPS operator origin、direct/relay挙動、Human sign-in flow、troubleshooting、将来のhosted control-plane/private-worker topologyまで記載します。
+
+### 変更
+
+- `mcp-execution-handoff` を `46e2eea176697c05ad3f0aa59eef4aa7c75e997d` へpin。Same-LAN direct WebRTCとcellular/4G TURN relay、exact target-window再activation、text / Backspace / scroll、Done/revoke、stale locator拒否までの物理iPhone Safari acceptanceを正式記録した版です。
+- V5自体にWebRTC / Cloudflare / TURN / remote takeoverは必須でないことを明確化。最も単純なV5構成はHumanがローカルでログインしたpersistentなMaps専用Chrome profileで、credential-safe handoffは後からsign-in / re-authentication、consent、challenge対応が必要な場合だけ使うoptional機構です。
+- Native `thin_takeover` はphysically acceptedなWebRTC pathの前提ではなくoptional / experimental siblingへ整理し、`external` はbackward-compatibleなfail-closed transport defaultとして維持。
+- Container / Cloud Run説明を修正。現行built-in Native/WebRTC capture/input executionはmacOS worker capabilityで、hosted control-plane/private-worker topologyはupstreamの別作業として扱います。
+
+### セキュリティ
+
+- Fresh `signed_out` → Human-only Google sign-in → Done/revoke + stale locator拒否 → fresh Agent attach → identity-free `signed_in` → bounded authenticated V5-B readまでreal V5 sign-in recovery acceptanceを完了。Account identityやcredential/session materialは露出しません。
+- Acceptance-only public proxyのoutbound destinationをloopback host/portへ固定し、incoming request pathからupstream destinationを選べない形へhardening。Accepted PR headでCodeQL zero findingsを確認しています。
+
 ## [v0.3.2] - 2026-08-19
 
 - credential-safe transportにopt-inの `cua_takeover` を追加。normal ChromeはCDP / remote-debuggingなしのまま、既存authenticated short-lived Takeover UIを再利用し、local Cua Driver MCP bridgeをexact dedicated Chrome PID + visible window 1件へbindする。Native capture/inputは固定7 tool allowlistだけ許可し、Human入力textをnorthbound Maps MCP / model context / process argv / repository logへ返さない。Benign local pageでframe、tap、scroll、text、Enter、outer Bearer coexistence、Done capability revoke、normal-Chrome teardownまでend-to-end live validation済み。

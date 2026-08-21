@@ -91,6 +91,8 @@ Recovery:
 
 The server intentionally invalidates stale semantic state around these transitions.
 
+If you use the built-in `webrtc_takeover` transport, follow [WebRTC Human Takeover](webrtc-human-takeover.md). The public Safari locator requires an authenticated HTTPS operator origin; the macOS helper also requires Screen Recording and Accessibility permission. Same-LAN direct and cellular TURN relay have both passed physical acceptance. Browser reload/mobile viewport polish remains upstream follow-up work, so do not weaken generation fencing to recover a stale page.
+
 ## `INTERACTIVE_ASSIST_DISABLED`
 
 V3 read tools are disabled by default.

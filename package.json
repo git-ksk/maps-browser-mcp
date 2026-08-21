@@ -1,6 +1,6 @@
 {
   "name": "maps-browser-mcp",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "A lightweight MCP server for interacting with Google Maps through a dedicated Chrome session.",
   "type": "module",
   "bin": {
@@ -43,7 +43,7 @@
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
     "chrome-remote-interface": "0.34.0",
-    "mcp-execution-handoff": "https://github.com/git-ksk/mcp-execution-handoff/archive/0d12bdff9354df5f2d924cfc4208b1124359d44e.tar.gz",
+    "mcp-execution-handoff": "https://github.com/git-ksk/mcp-execution-handoff/archive/46e2eea176697c05ad3f0aa59eef4aa7c75e997d.tar.gz",
     "zod": "4.4.3"
   },
   "devDependencies": {

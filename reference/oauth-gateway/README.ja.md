@@ -40,7 +40,7 @@ Reference imageではgatewayとcurrent checkoutのcoreを別processとして1つ
 - authorization responseの `iss`
 - OAuth responseは `no-store`
 - Firestore control-plane stateは `_mapsBrowserMcpRefOAuth...` prefix
-- `thin_takeover` 用のoptional remote/mobile `/takeover/*` proxy
+- credential-safe takeover用のoptional remote/mobile `/takeover/*` proxy
 - `/takeover` は別のshort-lived Human operator sessionで保護
 - operator cookieはHttpOnly / Secure / SameSite=Strict / Path=`/takeover` / account-bound / signed / short-lived
 - public/operator Authorization/Cookie headerはloopback coreへ渡さない
@@ -49,9 +49,9 @@ Reference imageではgatewayとcurrent checkoutのcoreを別processとして1つ
 
 DCR、multi-user profile共有、generic browser automation、raw Google credential、locator URLへのtakeover capability埋め込み、public OAuth token passthrough、CAPTCHA bypass、passkey/WebAuthn proxyは実装しません。
 
-## Remote / Mobile Thin Takeover
+## Remote / Mobile Credential-safe Takeover
 
-`MAPS_REMOTE_TAKEOVER=true` の場合、loopback brokerを直接public exposeせず、同じpublic gateway origin上でThin Takeover operator surfaceを提供できます。
+`MAPS_REMOTE_TAKEOVER=true` の場合、loopback brokerを直接public exposeせず、同じpublic gateway origin上でcredential-safe Handoff operator surfaceを提供できます。
 
 有効な `/takeover/<opaque-id>` を開いただけではbrowser controlは付与されません。Operator sessionが無ければsingle-user Firebase authorization pageを表示します。Email/passwordはbrowserからFirebase Identity Toolkitへ直接送り、password fieldをclearします。Gatewayはshort-lived Firebase ID Tokenだけを受け取り、configured allowed accountを検証した後、短命な `/takeover` operator cookieを発行します。
 
@@ -90,7 +90,7 @@ MAPS_TAKEOVER_PUBLIC_BASE_URL=https://your-new-gateway.example.com
 MCP_TAKEOVER_OPERATOR_SECRET=<independent 32+ byte secret>
 MCP_TAKEOVER_OPERATOR_SESSION_SECONDS=900
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover
+MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover
 ```
 
 `MCP_TAKEOVER_OPERATOR_SECRET` と `MCP_OAUTH_TRANSACTION_SECRET` は別secretにしてください。Core child processへHTTP authとして渡すのは `MCP_CORE_BEARER_TOKEN` だけです。

@@ -372,6 +372,8 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 
 `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` はbounded authenticated V5 semantics用の追加fail-closed Opt-inです。`INTERACTIVE_ASSIST_MODE=true` と組み合わせると、V5 baselineのidentity-free readiness、bounded selected-place save-state read、exact existing-list Save、bounded selected-route Send-to-phone target read、approval-gated single-device sendだけを公開します。`MAPS_CREDENTIAL_SAFE_HANDOFF=true` も有効な場合、`maps_request_human_sign_in` がGoogle sign-in用Human-only ceremonyを追加し、自然発生したconsent / CAPTCHA / access-challengeも同じHuman boundaryへ送ります。credential、MFA/OTP、passkey material、cookie、browser-session bearer material、provider API keyはMCP/model/logへ出さず、Passkey/WebAuthn ceremonyをbypassしません。
 
+V5自体にremote handoff transportは必須ではありません。すでにsign-in済みのpersistentな専用Chrome profileを使う構成が最も単純で、fresh readinessが `signed_in` ならCloudflare / WebRTCなしでbounded V5 toolを利用できます。Credential-safe handoffが必要なのは、Humanによるsign-in / re-authentication、consent、または自然発生したchallenge対応が必要な時だけです。
+
 credential-safe transportはすべてprofile-switch lifecycleを使います。managed CDP Chromeを停止し、same dedicated profileをremote-debugging/automation flagなしのnormal Chromeで開き、Human surface revoke後にfresh readinessを確認してautomationを再起動します。`external` はOS-level Human surface、`cua_takeover` はlocal fallback/reference、`thin_takeover` は低遅延Native runtime、`webrtc_takeover` はHandoff-ownedなSafari direct-touch surfaceです。Native/WebRTC credential takeoverでMapsが渡すcapture ownership情報は、自分が起動したnormal ChromeのPIDだけです。Handoffはeligible windowが厳密に1つであることを要求し、desktop全体ではなくそのwindowだけへcapture/inputをscopeします。ScreenCaptureKit / VideoToolbox / WebRTC signaling・RTP・DataChannel / reconnect fencing / input deliveryはMapsへ持ち込みません。Done/revokeはHuman authorityを停止してnormal Chromeを閉じますが、それ自体を認証成功とは扱いません。
 
 運用上、現在のmacOS single-user deploymentでは `webrtc_takeover` をbuilt-in mobile pathとして推奨します。物理iPhone Safariでsame-LAN direct WebRTCとcellular TURN relayの両方、およびreal Google sign-in recoveryまでacceptance済みです。`external` は既存deploymentを壊さないfail-closedな設定defaultとして維持します。`thin_takeover` はoptional / experimental siblingとして残し、Native app経路の物理acceptanceは `mcp-execution-handoff` #13で追跡します。
@@ -458,6 +460,7 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 | [Getting Started](docs/getting-started.ja.md) | install、初回起動、client形、Interactive Assist、cleanup |
 | [Container / headless Linux](docs/container.ja.md) | 標準Linux container、headless Chromium、port/profile/readiness/sandbox境界 |
 | [Troubleshooting](docs/troubleshooting.ja.md) | error code別の安全な復旧手順 |
+| [WebRTC Human Takeover](docs/webrtc-human-takeover.ja.md) | macOS + iPhone Safari設定、helper build、authenticated operator origin、direct/TURN動作 |
 | [ChatGPT](docs/chatgpt.ja.md) | ChatGPT/App接続境界とtool refresh |
 | [Architecture](docs/architecture.ja.md) | runtime、CDP、state、queue/watchdog、semantic UI operation model |
 | [Project positioning](docs/positioning.ja.md) | 競合category、Maps Web priority、公式interface重複、product direction |
@@ -479,7 +482,7 @@ Project scope内のcontributionは歓迎です。PR前に **[Contributing 日本
 
 ## Release Status
 
-v0.3.2 release baselineのrepository metadataは `0.3.2` です。V5-A〜V5-Dは実装済みですがauthenticated-workflow Opt-in配下でdefault無効を維持します。このreleaseでは `maps-browser-mcp` をnpm公開せず、GitHub source tag / Releaseを配布物とします。
+Repository metadataはv0.3.3 release candidateとして `0.3.3` へ更新済みです。v0.3.3のsequential V5 release gate完了とexact tested `main` commitへのtag作成までは、最新公開安定版は **v0.3.2** のままです。V5-A〜V5-Dはauthenticated-workflow Opt-in配下でdefault無効を維持し、`maps-browser-mcp` はnpm未公開のままです。
 
 Tag / publish前は **[Release Checklist 日本語版](docs/release.ja.md)** を参照してください。
 

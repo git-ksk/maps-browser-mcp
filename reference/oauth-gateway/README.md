@@ -48,9 +48,9 @@ This is intentionally narrow:
 
 It deliberately does **not** expose Dynamic Client Registration, multi-user browser/profile sharing, generic browser automation, raw Google credentials, takeover capabilities in the locator URL, public OAuth token passthrough, CAPTCHA bypass, or passkey/WebAuthn proxying.
 
-## Remote/mobile Thin Takeover
+## Remote/mobile credential-safe takeover
 
-When `MAPS_REMOTE_TAKEOVER=true`, the public gateway can now host the Thin Takeover operator surface safely instead of exposing the loopback broker directly.
+When `MAPS_REMOTE_TAKEOVER=true`, the public gateway can host the credential-safe Handoff operator surface safely instead of exposing the loopback broker directly.
 
 The initial visit to a valid `/takeover/<opaque-id>` locator does **not** grant browser control by itself. If the browser has no valid operator session, the gateway presents a single-user Firebase authorization page. Email/password is sent directly to Firebase Identity Toolkit; the password field is cleared; the gateway receives only the resulting Firebase ID token, verifies the configured allowed account, then issues the short-lived `/takeover` operator cookie.
 
@@ -93,7 +93,7 @@ MCP_CORE_URL=http://127.0.0.1:8081/mcp
 MCP_CORE_BEARER_TOKEN=<24+ character independent random secret>
 ```
 
-Remote/mobile Thin Takeover:
+Remote/mobile credential-safe takeover:
 
 ```text
 MAPS_REMOTE_TAKEOVER=true
@@ -101,7 +101,7 @@ MAPS_TAKEOVER_PUBLIC_BASE_URL=https://your-new-gateway.example.com
 MCP_TAKEOVER_OPERATOR_SECRET=<independent 32+ byte secret>
 MCP_TAKEOVER_OPERATOR_SESSION_SECONDS=900
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover
+MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover
 ```
 
 Use a different secret for `MCP_TAKEOVER_OPERATOR_SECRET` and `MCP_OAUTH_TRANSACTION_SECRET`. The core child process receives only `MCP_CORE_BEARER_TOKEN` as its private HTTP auth token.

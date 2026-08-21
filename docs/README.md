@@ -9,11 +9,12 @@ Documentation index for `maps-browser-mcp`.
 - [Getting Started](getting-started.md) — installation, first run, stdio / HTTP, V3 opt-in, Remote MCP shape, shutdown and cleanup
 - [Container / headless Linux](container.md) — standard Linux containers, headless Chromium, ports, profiles, readiness and sandbox boundaries
 - [Troubleshooting](troubleshooting.md) — error codes and safe recovery procedures
+- [WebRTC Human Takeover](webrtc-human-takeover.md) — macOS + iPhone Safari setup, Handoff helper build, authenticated operator origin, direct/TURN behavior, and recovery
 - [ChatGPT connection notes](chatgpt.md) — ChatGPT App / Remote MCP boundary, authentication and tool refresh
 - [OAuth gateway pattern](oauth-gateway.md) — external OAuth resource-server boundary for remote MCP clients while keeping identity/OAuth protocol concerns outside the browser runtime
 - [Usage modes and examples](use-cases.md) — when to use navigation-only vs. bounded interactive assist, with local and remote examples
 - [MCP Apps portability](mcp-apps.md) — host-neutral contract, fallback behavior, layout/lifecycle hardening, deployment security and compatibility evidence
-- [V5 authenticated workflows](v5-authenticated-workflows.md) — design-only account boundary, staged saved-state scope, approval gates and explicit authenticated non-goals
+- [V5 authenticated workflows](v5-authenticated-workflows.md) — implemented bounded account-backed workflows, Human-only sign-in boundary, approval gates and explicit authenticated non-goals
 - [Roadmap](roadmap.md) — completed V4 Google Maps Web baseline, MCP Apps portability status, and future direction
 - [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.md) — canonical unauthenticated Maps Web coverage table, priorities, implementation slices, login-required boundary, and explicit non-goals
 

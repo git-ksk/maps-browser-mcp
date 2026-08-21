@@ -9,11 +9,12 @@
 - [Getting Started 日本語版](getting-started.ja.md) — インストール、初回起動、stdio / HTTP、V3有効化、Remote MCP、終了・クリーンアップ
 - [Container / headless Linux 日本語版](container.ja.md) — 標準Linuxコンテナ、headless Chromium、port/profile/sandboxの安全な設定
 - [Troubleshooting 日本語版](troubleshooting.ja.md) — エラーコード別の原因と安全な復旧手順
+- [WebRTC Human Takeover 日本語版](webrtc-human-takeover.ja.md) — macOS + iPhone Safariセットアップ、Handoff helper build、authenticated operator origin、direct/TURN、復旧手順
 - [ChatGPT 接続ガイド 日本語版](chatgpt.ja.md) — ChatGPT App / Remote MCP接続、認証境界、Tool再スキャン
 - [OAuth Gateway パターン 日本語版](oauth-gateway.ja.md) — browser runtimeへOAuth protocol責務を持ち込まずRemote MCPをOAuth保護する構成
 - [利用モードとユースケース](use-cases.ja.md) — Navigation-only / Interactive Assistの使い分け、Local / Remoteでの実例
 - [MCP Apps portability](mcp-apps.ja.md) — host-neutral contract、fallback behavior、layout/lifecycle hardening、deployment security、compatibility evidence
-- [V5 authenticated workflows](v5-authenticated-workflows.ja.md) — design-only account boundary、staged saved-state scope、approval gate、authenticated non-goal
+- [V5 authenticated workflows](v5-authenticated-workflows.ja.md) — 実装済みbounded account-backed workflow、Human-only sign-in境界、approval gate、authenticated non-goal
 - [ロードマップ](roadmap.ja.md) — 完了済みV4 Google Maps Web baseline、MCP Apps portability status、future direction
 - [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md) — 未ログインMaps Webのcanonical coverage表、優先順位、V4 slice、login-required境界、明示的non-goal
 
@@ -35,7 +36,7 @@
 
 ## 現在の安定版
 
-v0.2.0 release baselineを安定版として扱います。安定版を固定して利用する場合は `main` ではなく `v0.2.0` tagを使用してください。
+最新公開安定版はv0.3.2です。安定版を固定して利用する場合は `main` ではなく `v0.3.2` tagを使用してください。`main` はv0.3.3 release candidateへ進む場合があります。
 
 現時点ではnpm packageは公開していません。詳細は [Release / Versioning ガイド](releases.ja.md) を参照してください。
 

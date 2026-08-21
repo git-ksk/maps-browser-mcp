@@ -222,9 +222,14 @@ MCP processは通常どおりterminalまたはprocess managerから停止しま�
 
 managed Chrome実行中にprofile directoryを削除・差し替えしないでください。
 
+## V5: まずsign-in済み専用profileを使う
+
+V5利用にWebRTCやpublic operator endpointは必須ではありません。Single-userで最も単純なのはMaps専用Chrome profileをpersistentに保ち、Humanがローカルで一度Googleへログインしておく構成です。Fresh authenticated readinessが `signed_in` なら、そのままbounded V5 toolを利用できます。別端末から後でHuman sign-in / re-authenticationやchallenge対応をしたい場合だけcredential-safe handoff transportを設定してください。
+
 ## 次に読む文書
 
 - [Troubleshooting 日本語版](troubleshooting.ja.md)
+- [WebRTC Human Takeover — macOS + iPhone Safari](webrtc-human-takeover.ja.md)
 - [ChatGPT接続ガイド 日本語版](chatgpt.ja.md)
 - [Architecture 日本語版](architecture.ja.md)
 - [Compliance / Safety 日本語版](compliance.ja.md)

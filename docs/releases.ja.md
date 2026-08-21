@@ -17,6 +17,12 @@ v0.3.2ではcredential-safe Cuaのfocus handlingとlive V5-C existing-list Save�
 
 詳細な変更履歴は [CHANGELOG 日本語版](../CHANGELOG.ja.md) を参照してください。
 
+## Current `main` / v0.3.3 release candidate
+
+Current release-candidate branchのrepository metadataは `0.3.3` です。First-class credential-safe WebRTC Human takeover、物理acceptance済みHandoff runtime/docs pin、macOS + iPhone Safari向け利用者Quick Startを追加します。Real `signed_out` -> Human-only Google sign-in -> revoke / stale-locator fence -> fresh `signed_in` -> bounded V5-B read acceptanceはPASS済みです。
+
+**v0.3.3はまだ公開Releaseではありません。** Exact tested `main` commitへtagを作る前に、release checklistのsequential V5-A〜V5-D gate（別途Human approvalが必要なV5-C Save / V5-D send mutationを含む）を完了する必要があります。
+
 ## 安定版を使う場合
 
 検証・公開されたsourceをそのまま使う場合はrelease tagをcheckoutしてください。

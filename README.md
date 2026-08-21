@@ -370,6 +370,8 @@ Invalid boolean/integer configuration fails fast instead of being silently coerc
 
 `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. When `MAPS_CREDENTIAL_SAFE_HANDOFF=true` is also enabled, `maps_request_human_sign_in` adds a Human-only ceremony for Google sign-in; naturally detected consent and CAPTCHA/access-challenge surfaces use the same Human boundary. Credentials, MFA/OTP values, passkey material, cookies, browser-session bearer material, and provider API keys never become MCP/model/log content, and passkey/WebAuthn ceremonies are not bypassed.
 
+V5 itself does not require a remote handoff transport. A persistent dedicated Chrome profile that is already signed in is the simplest deployment: fresh readiness can immediately return `signed_in` and the bounded V5 tools can run without Cloudflare/WebRTC. Credential-safe handoff is only needed when a Human must perform sign-in, re-authentication, consent, or another naturally occurring challenge.
+
 All credential-safe transports use the profile-switch lifecycle: managed CDP Chrome is stopped, the same dedicated profile is opened in normal Chrome without remote-debugging/automation flags, and automation relaunches only after the Human surface is revoked and fresh readiness is re-read. `external` uses an OS-level Human surface, `cua_takeover` is a local fallback/reference, `thin_takeover` uses the low-latency Native runtime, and `webrtc_takeover` exposes the Handoff-owned direct-touch Safari surface. For Native/WebRTC credential takeover, Maps passes only the PID of the normal Chrome process it starts; Handoff requires exactly one eligible window and scopes capture/input to that window rather than the desktop. ScreenCaptureKit, VideoToolbox, WebRTC signaling/RTP/DataChannel, reconnect fencing, and input delivery remain outside Maps. Done/revoke stops Human authority and closes normal Chrome; it is never treated as authentication proof.
 
 Operationally, `webrtc_takeover` is the recommended built-in mobile path for current macOS single-user deployments: physical iPhone Safari acceptance has passed on same-LAN direct WebRTC and cellular TURN relay, including the real Google sign-in recovery flow. `external` remains the configuration default for backward-compatible fail-closed opt-in behavior. `thin_takeover` remains an optional/experimental sibling until the Native app path receives its own physical acceptance in `mcp-execution-handoff` #13.
@@ -453,6 +455,7 @@ See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and err
 | [Getting Started](docs/getting-started.md) | Installation, first run, client shape, Interactive Assist opt-in, cleanup |
 | [Container / headless Linux](docs/container.md) | Standard Linux container, headless Chromium, ports, profiles, readiness, and sandbox boundaries |
 | [Troubleshooting](docs/troubleshooting.md) | Error codes and safe recovery procedures |
+| [WebRTC Human Takeover](docs/webrtc-human-takeover.md) | macOS + iPhone Safari setup, helper build, authenticated operator origin, direct/TURN behavior |
 | [ChatGPT](docs/chatgpt.md) | Remote ChatGPT/App connection boundary and tool refresh |
 | [Architecture](docs/architecture.md) | Runtime, CDP, state, queue/watchdog, semantic UI operation model |
 | [Project positioning](docs/positioning.md) | Competitive category, Maps Web priority, official-interface overlap, and product direction |
@@ -474,7 +477,7 @@ Contributions are welcome within the project's constrained scope. Read **[CONTRI
 
 ## Release status
 
-The repository metadata for the v0.3.2 release baseline is versioned as `0.3.2`. V5-A through V5-D are implemented but remain disabled by default behind the authenticated-workflow opt-in. `maps-browser-mcp` is not published to npm in this release; use the GitHub source tag/Release.
+Repository metadata is now `0.3.3` for the v0.3.3 release candidate. The latest published stable tag remains **v0.3.2** until the v0.3.3 sequential V5 release gate is completed and the exact tested `main` commit is tagged. V5-A through V5-D remain disabled by default behind the authenticated-workflow opt-in, and `maps-browser-mcp` remains unpublished on npm.
 
 See **[Release checklist](docs/release.md)** before tagging or publishing.
 
