@@ -162,7 +162,7 @@ Later pre-v1 releases remain intentionally open for evidence-driven semantic cap
 
 ## V5 / v0.3.0 — authenticated Google Maps Web workflows
 
-V5 is defined as **bounded authenticated Google Maps Web workflows, starting with read-oriented and low-consequence reversible account state**. V5-A through V5-D are implemented behind the existing fail-closed opt-in/Interactive Assist boundaries; V5-E has been evaluated as a privacy/browser-surface gate and intentionally adds no history tool.
+V5 is defined as **bounded authenticated Google Maps Web workflows, starting with read-oriented and low-consequence reversible account state**. V5-A through V5-D are implemented behind the existing fail-closed opt-in/Interactive Assist boundaries; V5-E has been evaluated as a privacy/browser-surface gate and intentionally adds no history tool. The physical V5 sign-in acceptance is complete through the Handoff-owned Safari WebRTC path (direct and cellular TURN): fresh `signed_out` -> Human-only Google sign-in -> revoke/stale-locator fencing -> fresh `signed_in` readiness -> bounded V5-B read. Remaining mobile viewport/reload polish is generic Handoff work tracked in `mcp-execution-handoff` #17, not a Maps semantic capability gap.
 
 Current ordering/status:
 

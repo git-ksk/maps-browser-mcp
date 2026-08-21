@@ -212,9 +212,14 @@ The dedicated browser profile is persistent. If you want to remove its cookies, 
 
 Never delete or repoint a profile directory while the managed Chrome process is running.
 
+## V5: start with an already signed-in dedicated profile
+
+V5 does not require WebRTC or a public operator endpoint. The simplest single-user setup is to keep the dedicated Maps Chrome profile persistent and let the Human sign into Google locally once. If fresh authenticated readiness is `signed_in`, use the bounded V5 tools directly. Configure a credential-safe handoff transport only if you need later Human sign-in/re-authentication or challenge handling from another device.
+
 ## Next documents
 
 - [Troubleshooting](troubleshooting.md)
+- [WebRTC Human Takeover — macOS + iPhone Safari](webrtc-human-takeover.md)
 - [ChatGPT connection notes](chatgpt.md)
 - [Architecture](architecture.md)
 - [Compliance boundaries](compliance.md)

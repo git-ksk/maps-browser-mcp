@@ -6,6 +6,23 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+### Added
+
+- Add the opt-in `webrtc_takeover` credential-safe Human transport for single-user macOS deployments. It opens the same dedicated profile in normal Chrome, binds Handoff capture/input to the exact Chrome PID/window, exposes a short-lived Safari locator, and keeps WebRTC signaling/RTP/DataChannel, ICE/TURN, framebuffer bytes, and raw Human input outside Maps.
+- Add an English/Japanese WebRTC Human Takeover guide covering the pinned helper build, macOS Screen Recording/Accessibility permissions, authenticated HTTPS operator origin, direct-vs-relay behavior, Human sign-in flow, troubleshooting, and the future hosted-control-plane/private-worker topology.
+
+### Changed
+
+- Pin `mcp-execution-handoff` to `8a8a8db7c767bb0f1a9b1d9fda1c7991281c26a2`, which records the completed physical iPhone Safari acceptance for same-LAN direct WebRTC and cellular/4G TURN relay plus exact target-window re-activation, text/Backspace/scroll, Done/revoke, and stale-locator rejection.
+- Clarify that V5 itself does not require WebRTC, Cloudflare, TURN, or remote takeover. The simplest V5 deployment is a persistent dedicated Chrome profile that the Human signs into locally; credential-safe handoff is optional for later sign-in/re-authentication, consent, or challenge handling.
+- Reframe Native `thin_takeover` as an optional/experimental sibling rather than a prerequisite for the physically accepted WebRTC path, and keep `external` as the backward-compatible fail-closed transport default.
+- Correct container/Cloud Run guidance: current built-in Native/WebRTC capture/input execution is a macOS-worker capability; hosted control-plane/private-worker topology remains separate upstream work.
+
+### Security
+
+- Complete the real V5 sign-in recovery acceptance from fresh `signed_out` through Human-only Google sign-in, Done/revoke and stale-locator rejection, fresh Agent attachment, identity-free `signed_in`, and a bounded authenticated V5-B read without exposing account identity or credential/session material.
+- Keep the acceptance-only public proxy destination pinned to loopback host/port so incoming request paths cannot select an outbound upstream destination; CodeQL returns zero findings on the accepted PR head.
+
 ## [v0.3.2] - 2026-08-19
 
 - Add an opt-in `cua_takeover` credential-safe transport that reuses the existing authenticated short-lived Takeover UI while normal Chrome remains free of CDP/remote-debugging. A local Cua Driver MCP bridge is bound to the exact dedicated Chrome PID and single visible window, accepts only a fixed seven-tool native capture/input allowlist, keeps Human-entered text out of northbound Maps MCP/model context/process argv/repository logs, and was live-validated end to end on a benign local page for frame delivery, tap, scroll, text, Enter, outer Bearer coexistence, Done capability revocation, and normal-Chrome teardown.

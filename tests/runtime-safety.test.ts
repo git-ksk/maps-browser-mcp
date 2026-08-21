@@ -207,6 +207,92 @@ test("credential-safe browser suspension keeps Human authority active while stop
   );
 });
 
+
+test("Thin Takeover suspension detaches automation while preserving the same browser session", async () => {
+  let suspended = 0;
+  let closed = 0;
+  const hosted = {
+    async start() { return { kind: "browser_websocket" as const, websocketUrl: "wss://example.invalid/session" }; },
+    async suspendForHuman() { suspended += 1; },
+    async close() { closed += 1; }
+  };
+  const policy = {
+    isAllowedMapsUrl(value: string) {
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname === "www.google.com" &&
+          (url.pathname === "/maps" || url.pathname.startsWith("/maps/"));
+      } catch { return false; }
+    }
+  } as PolicyEngine;
+  const runtime = new MapsBrowserRuntime(hosted, policy);
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+
+  await runtime.suspendAutomationForCredentialSafeHumanControl(human.id, human.epoch, { preserveBrowserSession: true });
+
+  assert.equal(suspended, 0);
+  assert.equal(closed, 0);
+  assert.equal(runtime.getActiveIntervention()?.authority, "human");
+});
+
+
+
+test("Thin Takeover revoke closes Human-owned CDP before automation can reconnect", async () => {
+  const runtime = makeRuntime();
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+
+  let closed = 0;
+  const mutable = runtime as unknown as {
+    client?: { close(): Promise<void> };
+    clientOwner?: "automation" | "human";
+    endpoint?: unknown;
+  };
+  mutable.client = { async close() { closed += 1; } };
+  mutable.clientOwner = "human";
+  mutable.endpoint = { kind: "local_port", port: 9222 };
+
+  await runtime.releaseHumanTakeoverConnection(human.id, human.epoch);
+
+  assert.equal(closed, 1);
+  assert.equal(mutable.client, undefined);
+  assert.equal(mutable.clientOwner, undefined);
+  assert.equal(mutable.endpoint, undefined);
+});
+
+test("Thin Takeover release fails closed if Agent-owned CDP authority appears during Human control", async () => {
+  const runtime = makeRuntime();
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+  const mutable = runtime as unknown as { client?: { close(): Promise<void> }; clientOwner?: "automation" | "human" };
+  mutable.client = { async close() {} };
+  mutable.clientOwner = "automation";
+
+  await assert.rejects(
+    runtime.releaseHumanTakeoverConnection(human.id, human.epoch),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "UI_STATE_CHANGED"
+  );
+});
+
 test("selected route identity is bounded semantic state and is cleared by later semantic mutation", () => {
   const runtime = makeRuntime();
   const mutable = runtime as unknown as {
@@ -220,4 +306,87 @@ test("selected route identity is bounded semantic state and is cleared by later 
   assert.deepEqual(runtime.getSelectedRoute(), { index: 2, label: "15 min via Example" });
   runtime.markSemanticMutationWithoutReplayAction();
   assert.equal(runtime.getSelectedRoute(), undefined);
+});
+
+test("Human takeover frame stream uses CDP screencast push with bounded latest-frame delivery", async () => {
+  const runtime = makeRuntime();
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+
+  let frameHandler: ((frame: { data: string; sessionId: number }) => void) | undefined;
+  let navigationHandler: ((event: { frame: { url: string; parentId?: string } }) => void) | undefined;
+  let acked = 0;
+  let stopped = 0;
+  let startOptions: Record<string, unknown> | undefined;
+  const fakeClient = {
+    Runtime: {
+      async evaluate(input: { expression: string }) {
+        if (input.expression === "location.href") {
+          return { result: { value: "https://accounts.google.com/ServiceLogin" } };
+        }
+        if (input.expression.includes("innerWidth")) {
+          return { result: { value: { width: 900, height: 700 } } };
+        }
+        return { result: { value: 1 } };
+      }
+    },
+    Page: {
+      screencastFrame(handler: typeof frameHandler) {
+        frameHandler = handler;
+        return () => { frameHandler = undefined; };
+      },
+      frameNavigated(handler: typeof navigationHandler) {
+        navigationHandler = handler;
+        return () => { navigationHandler = undefined; };
+      },
+      async startScreencast(options: Record<string, unknown>) {
+        startOptions = options;
+        queueMicrotask(() => frameHandler?.({
+          data: Buffer.from("jpeg-frame").toString("base64"),
+          sessionId: 11
+        }));
+      },
+      async screencastFrameAck(input: { sessionId: number }) {
+        assert.equal(input.sessionId, 11);
+        acked += 1;
+      },
+      async stopScreencast() { stopped += 1; }
+    }
+  };
+  const mutableRuntime = runtime as unknown as { client: unknown; clientOwner?: "automation" | "human" };
+  mutableRuntime.client = fakeClient;
+  mutableRuntime.clientOwner = "human";
+
+  const controller = new AbortController();
+  const stream = runtime.streamHumanTakeoverFrames(human.id, human.epoch, controller.signal);
+  const iterator = stream[Symbol.asyncIterator]();
+  const first = await iterator.next();
+  assert.equal(first.done, false);
+  assert.deepEqual(first.value, {
+    data: Buffer.from("jpeg-frame").toString("base64"),
+    width: 900,
+    height: 700,
+    hostname: "accounts.google.com",
+    mimeType: "image/jpeg"
+  });
+  assert.deepEqual(startOptions, {
+    format: "jpeg",
+    quality: 75,
+    maxWidth: 900,
+    maxHeight: 700,
+    everyNthFrame: 1
+  });
+  assert.equal(acked, 1);
+
+  controller.abort();
+  await iterator.return?.();
+  assert.equal(stopped, 1);
+  assert.equal(frameHandler, undefined);
+  assert.equal(navigationHandler, undefined);
 });

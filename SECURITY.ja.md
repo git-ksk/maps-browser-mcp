@@ -44,6 +44,8 @@ Managed profileではChromeの `DevToolsActivePort` recordについて、数値p
 
 専用profile内にGoogle Maps page targetが複数ある曖昧な状態では、先頭tabを勝手に選ばず起動を拒否します。
 
+本命の `thin_takeover` はhosted-browser provider API keyを必要としません。すべてのCDP endpoint/attachmentをbrowser-control authorityとして扱い、Human takeover前にAgent-owned automation CDP/input authorityをdetach + fenceします。その後だけintervention/epoch-boundなHuman CDP attachmentがencoded frame captureとbounded Human inputを行えます。revoke時はactive frame streamをabortし、Human attachmentを閉じた後でfresh automation attachmentを許可します。public Human locatorにtakeover capabilityは含めず、capabilityは認証済みrequest header内に維持します。credential、MFA/OTP、passkey material、cookie、browser-session bearer material、raw Human input valueはMCP/model/logへ返しません。CAPTCHA、MFA、consent、Passkey/WebAuthnはHuman controlのままでbypassしません。
+
 ## Runtime Failure Containment
 
 1 processが1 semantic browser stateを管理するため、browser operationは直列化します。`MAPS_MAX_PENDING_ACTIONS` がqueue上限です。
@@ -74,6 +76,8 @@ Bug Report、log、commit、screenshotへ以下を含めないでください。
 - Tunnel credential
 - Bearer token
 - Authorization header
+- hosted-browser API key / CDP WebSocket URL
+- MFA/OTP value、passkey material、challenge answer
 - private location history
 - 個人email address
 - その他accountを特定できる情報

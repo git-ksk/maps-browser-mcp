@@ -95,6 +95,8 @@ Google Maps以外へ遷移した、または同意、ログイン、CAPTCHA、ac
 
 これらの遷移では古いsemantic stateを無効化します。
 
+Built-in `webrtc_takeover` を使う場合は [WebRTC Human Takeover](webrtc-human-takeover.ja.md) を参照してください。Public Safari locatorにはauthenticated HTTPS operator originが必要で、macOS helperには画面収録とアクセシビリティ権限も必要です。Same-LAN directとcellular TURN relayはいずれも物理acceptance済みです。Browser reload / mobile viewport UXはupstream follow-upのため、stale page復旧目的でgeneration fencingを弱めないでください。
+
 ## `INTERACTIVE_ASSIST_DISABLED`
 
 V3 read toolはデフォルトOFFです。

@@ -15,6 +15,12 @@ v0.3.2 hardens credential-safe Cua focus handling and the live V5-C existing-lis
 
 For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Current `main` / v0.3.3 release candidate
+
+Repository metadata on the current release-candidate branch is `0.3.3`. This candidate adds the first-class credential-safe WebRTC Human takeover path, pins the physically accepted Handoff runtime/documentation, and adds an end-user macOS + iPhone Safari setup guide. The real `signed_out` -> Human-only Google sign-in -> revoke/stale-locator fence -> fresh `signed_in` -> bounded V5-B read acceptance has passed. WebRTC remains optional for V5: an already signed-in persistent dedicated profile can use the bounded authenticated tools without remote takeover.
+
+**v0.3.3 is not a published release yet.** The release checklist still requires the sequential V5-A through V5-D gate, including separately approved V5-C Save and V5-D send mutations, before tagging the exact tested `main` commit.
+
 ## Stable checkout
 
 If you want the exact source that was validated and released, check out the release tag:

@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -14,6 +15,16 @@ function envInt(name: string, fallback: number, min: number, max: number): numbe
   const raw = process.env[name];
   if (raw === undefined) return fallback;
   const parsed = Number(raw.trim());
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+  return parsed;
+}
+
+function envOptionalInt(name: string, min: number, max: number): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
     throw new Error(`${name} must be an integer between ${min} and ${max}`);
   }
@@ -104,10 +115,31 @@ function externalHumanOperatorUrl(name: string): string | undefined {
   return url.toString();
 }
 
-function credentialSafeTransport(name: string): "external" | "cua_takeover" {
+function credentialSafeTransport(name: string): "external" | "cua_takeover" | "thin_takeover" | "webrtc_takeover" {
   const raw = process.env[name]?.trim().toLowerCase() || "external";
-  if (raw === "external" || raw === "cua_takeover") return raw;
-  throw new Error(`${name} must be one of: external, cua_takeover`);
+  if (raw === "external" || raw === "cua_takeover" || raw === "thin_takeover" || raw === "webrtc_takeover") return raw;
+  throw new Error(`${name} must be one of: external, cua_takeover, thin_takeover, webrtc_takeover`);
+}
+
+function requiredAbsolutePath(name: string): string {
+  const raw = process.env[name]?.trim();
+  if (!raw) throw new Error(`${name} is required`);
+  if (raw.includes("\0") || !path.isAbsolute(raw)) {
+    throw new Error(`${name} must be an absolute path without NUL characters`);
+  }
+  return raw;
+}
+
+function nativeIp(name: string, fallback?: string): string {
+  const value = process.env[name]?.trim() || fallback;
+  if (!value || isIP(value) === 0) throw new Error(`${name} must be an IP literal`);
+  return value;
+}
+
+function rejectWildcardBind(name: string, value: string): void {
+  if (value === "0.0.0.0" || value === "::") {
+    throw new Error(`${name} must bind an explicit interface address, not a wildcard address`);
+  }
 }
 
 export interface AppConfig {
@@ -138,9 +170,25 @@ export interface AppConfig {
   };
   credentialSafeHandoff: {
     enabled: boolean;
-    transport: "external" | "cua_takeover";
+    transport: "external" | "cua_takeover" | "thin_takeover" | "webrtc_takeover";
     operatorUrl?: string;
     cuaCommand: string;
+    webRtcRuntime?: {
+      hostExecutable: string;
+      displayId?: number;
+    };
+    nativeRuntime?: {
+      hostExecutable: string;
+      revokeExecutable: string;
+      advertisedHost: string;
+      inputBindHost: string;
+      feedbackBindHost: string;
+      controlBindHost: string;
+      inputPort: number;
+      controlPort: number;
+      videoFeedbackPort: number;
+      displayId?: number;
+    };
   };
   mcpApps: {
     googleMapsEmbedApiKey?: string;
@@ -166,6 +214,15 @@ export interface AppConfig {
 }
 
 export function loadConfig(): AppConfig {
+  const legacyBrowserBackend = process.env.MAPS_BROWSER_BACKEND?.trim().toLowerCase();
+  if (legacyBrowserBackend && legacyBrowserBackend !== "local") {
+    throw new Error("MAPS_BROWSER_BACKEND=steel was removed; use the keyless process-owned local Chrome runtime and an explicitly configured credential-safe transport when Human handoff is needed");
+  }
+  for (const name of ["STEEL_API_KEY", "STEEL_BASE_URL", "MAPS_STEEL_PROFILE_ID", "MAPS_STEEL_SESSION_TIMEOUT_SECONDS"] as const) {
+    if (process.env[name]?.trim()) {
+      throw new Error(`${name} is no longer used; the local Chrome and Handoff takeover paths are vendor-key-free`);
+    }
+  }
   const allowExternalCdp = envBool("MAPS_ALLOW_EXTERNAL_CDP", false);
   const externalPortRaw = process.env.MAPS_CDP_PORT;
   const externalCdpPort = externalPortRaw
@@ -254,11 +311,14 @@ export function loadConfig(): AppConfig {
   const credentialSafeTransportMode = credentialSafeTransport("MAPS_CREDENTIAL_SAFE_TRANSPORT");
   const credentialSafeOperatorUrl = externalHumanOperatorUrl("MAPS_CREDENTIAL_SAFE_OPERATOR_URL");
   const cuaCommand = process.env.MAPS_CUA_DRIVER_COMMAND?.trim() || "cua-driver";
+  let nativeRuntime: AppConfig["credentialSafeHandoff"]["nativeRuntime"];
+  let webRtcRuntime: AppConfig["credentialSafeHandoff"]["webRtcRuntime"];
+
   if (credentialSafeOperatorUrl && !credentialSafeHandoff) {
     throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
   }
   if (credentialSafeTransportMode !== "external" && !credentialSafeHandoff) {
-    throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when set to cua_takeover");
+    throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when using cua_takeover, thin_takeover, or webrtc_takeover");
   }
   if (credentialSafeTransportMode === "cua_takeover") {
     if (!remoteTakeover) {
@@ -271,9 +331,60 @@ export function loadConfig(): AppConfig {
       throw new Error("MAPS_CUA_DRIVER_COMMAND must name one executable without NUL characters");
     }
   }
+  if (credentialSafeTransportMode === "webrtc_takeover") {
+    if (!remoteTakeover) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover requires MAPS_REMOTE_TAKEOVER=true because the Handoff broker owns the WebRTC operator surface");
+    }
+    if (credentialSafeOperatorUrl) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover because the Handoff broker issues the operator locator");
+    }
+    webRtcRuntime = {
+      hostExecutable: requiredAbsolutePath("MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE"),
+      displayId: envOptionalInt("MAPS_WEBRTC_TAKEOVER_DISPLAY_ID", 1, 4_294_967_295)
+    };
+  }
+  if (credentialSafeTransportMode === "thin_takeover") {
+    if (!remoteTakeover) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover requires MAPS_REMOTE_TAKEOVER=true because the Handoff broker owns the Thin Takeover operator surface");
+    }
+    if (credentialSafeOperatorUrl) {
+      throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover because the Handoff broker issues the operator locator");
+    }
+
+    const advertisedHost = nativeIp("MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST");
+    const inputBindHost = nativeIp("MAPS_NATIVE_TAKEOVER_INPUT_BIND_HOST", advertisedHost);
+    const feedbackBindHost = nativeIp("MAPS_NATIVE_TAKEOVER_FEEDBACK_BIND_HOST", advertisedHost);
+    const controlBindHost = nativeIp("MAPS_NATIVE_TAKEOVER_CONTROL_BIND_HOST", "127.0.0.1");
+    rejectWildcardBind("MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST", advertisedHost);
+    rejectWildcardBind("MAPS_NATIVE_TAKEOVER_INPUT_BIND_HOST", inputBindHost);
+    rejectWildcardBind("MAPS_NATIVE_TAKEOVER_FEEDBACK_BIND_HOST", feedbackBindHost);
+    if (!isLoopbackBind(controlBindHost)) {
+      throw new Error("MAPS_NATIVE_TAKEOVER_CONTROL_BIND_HOST must remain loopback; revoke control is local-only");
+    }
+
+    const inputPort = envInt("MAPS_NATIVE_TAKEOVER_INPUT_PORT", 45_556, 1, 65_535);
+    const controlPort = envInt("MAPS_NATIVE_TAKEOVER_CONTROL_PORT", 45_557, 1, 65_535);
+    const videoFeedbackPort = envInt("MAPS_NATIVE_TAKEOVER_VIDEO_FEEDBACK_PORT", 45_558, 1, 65_535);
+    if (new Set([inputPort, controlPort, videoFeedbackPort]).size !== 3) {
+      throw new Error("MAPS_NATIVE_TAKEOVER_INPUT_PORT, CONTROL_PORT, and VIDEO_FEEDBACK_PORT must be distinct");
+    }
+
+    nativeRuntime = {
+      hostExecutable: requiredAbsolutePath("MAPS_NATIVE_TAKEOVER_HOST_EXECUTABLE"),
+      revokeExecutable: requiredAbsolutePath("MAPS_NATIVE_TAKEOVER_REVOKE_EXECUTABLE"),
+      advertisedHost,
+      inputBindHost,
+      feedbackBindHost,
+      controlBindHost,
+      inputPort,
+      controlPort,
+      videoFeedbackPort,
+      displayId: envOptionalInt("MAPS_NATIVE_TAKEOVER_DISPLAY_ID", 1, 4_294_967_295)
+    };
+  }
   if (credentialSafeHandoff) {
     if (allowExternalCdp) {
-      throw new Error("MAPS_CREDENTIAL_SAFE_HANDOFF=true cannot be combined with MAPS_ALLOW_EXTERNAL_CDP=true because the server must stop and relaunch its dedicated browser profile");
+      throw new Error("MAPS_CREDENTIAL_SAFE_HANDOFF=true cannot be combined with MAPS_ALLOW_EXTERNAL_CDP=true because credential-safe handoff requires a server-owned dedicated browser session");
     }
     if (!path.isAbsolute(profileDir)) {
       throw new Error("MAPS_CREDENTIAL_SAFE_HANDOFF=true requires MAPS_CHROME_PROFILE_DIR to resolve to an absolute dedicated profile path");
@@ -334,7 +445,9 @@ export function loadConfig(): AppConfig {
       enabled: credentialSafeHandoff,
       transport: credentialSafeTransportMode,
       operatorUrl: credentialSafeOperatorUrl,
-      cuaCommand
+      cuaCommand,
+      nativeRuntime,
+      webRtcRuntime
     },
     mcpApps: {
       googleMapsEmbedApiKey: process.env.GOOGLE_MAPS_EMBED_API_KEY?.trim() || undefined

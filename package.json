@@ -1,7 +1,7 @@
 {
   "name": "maps-browser-mcp",
-  "version": "0.3.2",
-  "description": "A lightweight MCP server for interacting with Google Maps through a dedicated browser session.",
+  "version": "0.3.3",
+  "description": "A lightweight MCP server for interacting with Google Maps through a dedicated Chrome session.",
   "type": "module",
   "bin": {
     "maps-browser-mcp": "./dist/index.js"
@@ -26,22 +26,24 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "dev:http": "tsx src/index.ts --http",
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "start:http": "node dist/index.js --http",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "check": "npm run typecheck && npm test",
+    "check": "npm run typecheck && npm test && npm run check:acceptance-harness",
+    "check:acceptance-harness": "node --check scripts/live-google-sign-in-acceptance.mjs",
     "smoke:stdio": "node scripts/smoke-stdio.mjs",
     "smoke:http": "node scripts/smoke-http.mjs",
     "smoke:browser": "node scripts/smoke-browser.mjs",
     "e2e:live:maps": "node scripts/live-maps-e2e.mjs",
+    "acceptance:local:google-sign-in": "node scripts/live-google-sign-in-acceptance.mjs",
     "prepack": "npm run check && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
     "chrome-remote-interface": "0.34.0",
-    "mcp-execution-handoff": "https://github.com/git-ksk/mcp-execution-handoff/archive/0fdb22e632384b0f02c9bb141c3aab9ddea98042.tar.gz",
+    "mcp-execution-handoff": "https://github.com/git-ksk/mcp-execution-handoff/archive/8a8a8db7c767bb0f1a9b1d9fda1c7991281c26a2.tar.gz",
     "zod": "4.4.3"
   },
   "devDependencies": {

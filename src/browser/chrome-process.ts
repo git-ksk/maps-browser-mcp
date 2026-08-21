@@ -20,6 +20,17 @@ export interface ChromeProcessOptions {
   allowUnsandboxedChromium?: boolean;
 }
 
+const SENSITIVE_BROWSER_ENV_SEGMENT = /(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASSKEY|COOKIE|CREDENTIALS?|BEARER|AUTHORIZATION|KEY)(?:_|$)/i;
+
+export function buildBrowserProcessEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const sanitized: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined || SENSITIVE_BROWSER_ENV_SEGMENT.test(name)) continue;
+    sanitized[name] = value;
+  }
+  return sanitized;
+}
+
 export function parseDevToolsActivePort(value: string): ActiveDevToolsEndpoint | undefined {
   const [portLine, browserPathLine] = value.split(/\r?\n/);
   const port = Number.parseInt(portLine ?? "", 10);
@@ -160,7 +171,7 @@ export class ChromeProcess {
       );
     }
 
-    this.child = spawn(executable, args, { stdio: "ignore" });
+    this.child = spawn(executable, args, { stdio: "ignore", env: buildBrowserProcessEnv() });
     let startupError: Error | undefined;
     this.child.once("error", (error) => {
       startupError = error;

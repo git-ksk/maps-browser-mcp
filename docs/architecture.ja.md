@@ -43,25 +43,17 @@ Google Maps Web
 
 ## Browser Lifecycle
 
-デフォルトではrepository外の次の専用profileでChrome / Chromiumを起動または再利用します。
+1 processがrepository外の `~/.maps-browser-mcp/chrome-profile` にある専用Chrome / Chromium process/profileを所有します。browser lifecycleはconsumer側が所有し、`mcp-execution-handoff` はgenericなHuman authority/session boundaryだけを担ってChrome自体は所有しません。
 
-```text
-~/.maps-browser-mcp/chrome-profile
-```
+Chromeは別 `--user-data-dir`、`--remote-debugging-address=127.0.0.1`、`--remote-debugging-port=0` で起動します。Project-managed endpointは `DevToolsActivePort` の数値portとbrowser WebSocket identityの両方がlive `/json/version` と一致する場合だけ再利用します。Unix系では専用profile directoryを現在userだけがアクセスできる権限へ制限します。
 
-Chromeは別 `--user-data-dir`、`--remote-debugging-address=127.0.0.1`、`--remote-debugging-port=0` で起動します。
+`MAPS_CDP_PORT` で既存**local** CDP endpointへattachする場合は `MAPS_ALLOW_EXTERNAL_CDP=true` が必要です。このadvanced escape hatchは専用profile isolationを弱め、credential-safe Human handoffとは意図的に併用不可です。Public reachable endpointや普段使いbrowserへ接続しないでください。
 
-Project-managed endpointはChromeの `DevToolsActivePort` から取得し、**数値portとbrowser WebSocket identityの両方**がlive `/json/version` endpointと一致する場合だけ再利用します。古いprofile fileのport番号が後から無関係なChromeに再利用されても誤接続しないためです。
+専用browserではGoogle Maps page targetを0または1枚だけ受け入れ、複数Maps tabがあれば推測せず拒否します。CDP targetがstale/reconnect/watchdog resetされた場合もsemantic stateを引き継ぎません。
 
-Unix系OSでは専用profile directoryを現在userだけがアクセスできる権限へ制限します。
+通常Maps automationはprocess-owned Chrome + CDPを維持します。credential ceremonyでは `thin_takeover` Native経路を含め、Agent CDP authorityをdetachしautomation Chrome processを停止します。その後same dedicated profileをremote-debugging/automation flagなしのnormal Chromeで開きます。Human完了/revoke後はHuman surfaceとnormal Chromeを終了し、fresh automation Chrome process/CDP attachmentからreadinessを再検証します。invariantは **exclusive authorityとprovider-supported normal-browser credential ceremony** です。
 
-`MAPS_CDP_PORT` を指定して既存**local** CDP endpointへattachすることもできますが、`MAPS_ALLOW_EXTERNAL_CDP=true` が必要です。これはadvanced escape hatchであり、専用profile isolation保証を弱めます。Public reachable endpointや普段使いbrowserへ接続しないでください。
-
-専用browserへ接続するとき、Google Maps page targetは0または1枚だけ受け入れます。複数Maps tabがある場合はどれを操作するか推測せずerrorにします。これで1 process / 1 semantic session invariantを維持します。
-
-CDP targetがstale、再接続、watchdog resetされた場合、以前のsearch / directions状態を新しいpageへ引き継がずsemantic stateを無効化します。
-
-Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solverは使いません。
+Stealth plugin、fingerprint spoof、proxy rotation、CAPTCHA solver、hosted-browser provider API key、passkey bypassは使いません。Steelはruntime dependencyではなく、必要なら外部比較/UX benchmarkの参考に限定します。
 
 ## Navigation Fast Path
 
@@ -135,12 +127,34 @@ Action / read counterはprocess-local safety guardであり、再起動でreset�
 
 自然発生したconsent / sign-in / CAPTCHA / access challengeは既存Execution Handoffでagent authorityを停止します。
 
-- MCPはaccount credentialを受け取らない
-- challengeをsolve / bypassしない
+- MCPはaccount credential、MFA/OTP、passkey material、cookie、browser-session bearer material、provider API keyを受け取らない
+- challengeをsolve / bypassせず、Passkey/WebAuthn ceremonyはHuman/provider controlのまま
 - Human control完了をpending actionや別actionのapprovalとみなさない
 - state-changing / state-dependent semantic operationはfresh reissue / revalidationを要求
 - reconnect / restart後に旧semantic operationを自動replayしない
 - V4 cleanupはintervention stateを確認し、handoff activeならUI inputを送らない
+
+Credential-safe Human controlは同じ `ExternalHumanSurfaceProvider` contractの背後で1つのprofile-switch lifecycleを使い、Human transportだけを差し替えます。
+
+```text
+Agent-owned automation CDP Chrome
+  -> Human authority
+  -> automation Chrome終了
+  -> same dedicated profileをAgent CDP authorityなしnormal Chromeで開く
+  -> Handoff transport
+       external / optional Cua
+       Native `thin_takeover`
+       browser `webrtc_takeover`
+  -> Human transport revoke + normal Chrome終了
+  -> fresh automation Chrome + fresh CDP attachment
+  -> fresh readiness / semantic validation
+```
+
+`thin_takeover` ではNative ScreenCaptureKit / VideoToolbox / CoreGraphics data planeと短命Native locatorをHandoffが所有します。`webrtc_takeover` ではScreenCaptureKit -> H.264 -> RTP/WebRTC video、direct-touch / keyboard DataChannel、generation-bound reconnect、browser session teardownをHandoffが所有します。MapsがHandoffへ渡すのは、自分が直前に起動したnormal ChromeのPIDというbounded ownership hintだけです。HandoffはそのPIDからeligibleなon-screen windowを厳密に1つだけ解決し、そのwindowだけへcaptureをcropしてpointer inputも同じboundsへmapし、missing/ambiguousならfail closedします。MapsはScreenCaptureKitのwindow探索を所有せず、SDP / ICE / RTP / framebuffer bytes / raw Human inputも扱いません。WebRTC-only locatorから旧HTTP frame/input UIへのfallbackも不可です。
+
+Current deploymentではNativeを前提条件にせず、各transportをsiblingとして扱います。`webrtc_takeover` はmacOS上で物理acceptance済みのbuilt-in mobile path（same-LAN direct、cellular TURN relay、real Google sign-in recovery）です。`thin_takeover` はNative app経路の別物理acceptanceが完了するまでoptional / experimentalとします。互換性defaultは `external` のままなので、built-in takeoverの有効化は常に明示的です。
+
+Safari/browser peerはhost-only（`iceServers: []`）かつdirect-firstを維持します。HandoffのNode/werift peerはdependency内部で選ばれる暗黙third-party STUN defaultを使わずCloudflare STUNを明示し、optionalなCloudflare Realtime TURNも `iceTransportPolicy: all` のfallback-onlyです。このnetwork-metadata trust boundaryとICE/STUN/TURN処理はすべてHandoff内に留まり、Mapsはraw candidate / address / SDP / credential / transport media / Human inputを受け取りません。Human Doneはteardownであり認証成功証明ではないため、その後Mapsはfresh automation attachとcoarse authenticated-readiness確認を必ず行います。
 
 ## MCP Apps Render Boundary
 

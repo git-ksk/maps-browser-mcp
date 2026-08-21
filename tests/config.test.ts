@@ -12,6 +12,7 @@ const KEYS = [
   "MCP_AUTH_PROVIDER_MODULE",
   "MCP_ALLOWED_HOSTS",
   "MCP_ALLOWED_ORIGINS",
+  "MAPS_BROWSER_BACKEND",
   "MAPS_CDP_PORT",
   "MAPS_ALLOW_EXTERNAL_CDP",
   "MAPS_ALLOW_UNSANDBOXED_CHROMIUM",
@@ -24,6 +25,22 @@ const KEYS = [
   "MAPS_CREDENTIAL_SAFE_TRANSPORT",
   "MAPS_CREDENTIAL_SAFE_OPERATOR_URL",
   "MAPS_CUA_DRIVER_COMMAND",
+  "MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST",
+  "MAPS_NATIVE_TAKEOVER_INPUT_BIND_HOST",
+  "MAPS_NATIVE_TAKEOVER_FEEDBACK_BIND_HOST",
+  "MAPS_NATIVE_TAKEOVER_CONTROL_BIND_HOST",
+  "MAPS_NATIVE_TAKEOVER_INPUT_PORT",
+  "MAPS_NATIVE_TAKEOVER_CONTROL_PORT",
+  "MAPS_NATIVE_TAKEOVER_VIDEO_FEEDBACK_PORT",
+  "MAPS_NATIVE_TAKEOVER_DISPLAY_ID",
+  "MAPS_NATIVE_TAKEOVER_HOST_EXECUTABLE",
+  "MAPS_NATIVE_TAKEOVER_REVOKE_EXECUTABLE",
+  "MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE",
+  "MAPS_WEBRTC_TAKEOVER_DISPLAY_ID",
+  "STEEL_API_KEY",
+  "STEEL_BASE_URL",
+  "MAPS_STEEL_PROFILE_ID",
+  "MAPS_STEEL_SESSION_TIMEOUT_SECONDS",
   "MAPS_HANDOFF_CHECKPOINT_FILE",
   "MAPS_HANDOFF_CHECKPOINT_KEY",
   "MAPS_HANDOFF_CHECKPOINT_TTL_SECONDS",
@@ -396,7 +413,93 @@ test("credential-safe Cua takeover is explicit and reuses the authenticated take
   });
 
   await withEnv({ MAPS_CREDENTIAL_SAFE_TRANSPORT: "unknown" }, () => {
-    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover/);
+    assert.throws(() => loadConfig(), /must be one of: external, cua_takeover, thin_takeover, webrtc_takeover/);
+  });
+});
+
+
+test("WebRTC Takeover requires the authenticated broker and a Handoff-owned macOS helper", async () => {
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-webrtc-host"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-webrtc-host",
+    MAPS_WEBRTC_TAKEOVER_DISPLAY_ID: "7"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.credentialSafeHandoff.transport, "webrtc_takeover");
+    assert.equal(config.credentialSafeHandoff.webRtcRuntime?.hostExecutable, "/opt/thin/takeover-webrtc-host");
+    assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, 7);
+    assert.equal(config.takeover.enabled, true);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "relative/takeover-webrtc-host"
+  }, () => {
+    assert.throws(() => loadConfig(), /must be an absolute path/);
+  });
+});
+
+test("keyless Thin Takeover requires the authenticated broker and rejects Steel provider settings", async () => {
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "thin_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_REMOTE_TAKEOVER=true/);
+  });
+
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "thin_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_NATIVE_TAKEOVER_ADVERTISED_HOST: "192.0.2.10",
+    MAPS_NATIVE_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-macos-host",
+    MAPS_NATIVE_TAKEOVER_REVOKE_EXECUTABLE: "/opt/thin/takeover-control-send"
+  }, () => {
+    const config = loadConfig();
+    assert.equal(config.credentialSafeHandoff.transport, "thin_takeover");
+    assert.equal(config.takeover.enabled, true);
+    assert.equal(config.credentialSafeHandoff.nativeRuntime?.advertisedHost, "192.0.2.10");
+    assert.equal(config.credentialSafeHandoff.nativeRuntime?.controlBindHost, "127.0.0.1");
+    assert.equal(config.credentialSafeHandoff.nativeRuntime?.hostExecutable, "/opt/thin/takeover-macos-host");
+  });
+
+  await withEnv({
+    MAPS_BROWSER_BACKEND: "steel",
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "thin_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn"
+  }, () => {
+    assert.throws(() => loadConfig(), /MAPS_BROWSER_BACKEND=steel was removed/);
+  });
+
+  await withEnv({ STEEL_API_KEY: "unused-provider-key" }, () => {
+    assert.throws(() => loadConfig(), /STEEL_API_KEY is no longer used/);
   });
 });
 

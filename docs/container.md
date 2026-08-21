@@ -78,6 +78,26 @@ HTTP port precedence is:
 
 `PORT` exists only as a generic runtime fallback. `MCP_HTTP_PORT` remains the project-specific configuration and takes precedence whenever both are present.
 
+## Credential-safe takeover with container deployments
+
+A container or Cloud Run instance may host the MCP/control plane and its process-owned Chromium automation, but the current built-in Native and WebRTC Human data planes are **macOS Handoff-worker capabilities**, not a generic Cloud Run execution plane. Do not configure `thin_takeover` or `webrtc_takeover` as if a Linux Cloud Run instance could provide ScreenCaptureKit/input injection locally.
+
+For a container deployment today, keep the credential-safe transport explicit:
+
+- use `external` when the Human surface is provided outside the container; or
+- use a Handoff control-plane/private-worker topology once the separate execution worker is deployed. The generic hosted-worker topology is tracked in `mcp-execution-handoff` #12.
+
+```bash
+MAPS_CREDENTIAL_SAFE_HANDOFF=true
+MAPS_CREDENTIAL_SAFE_TRANSPORT=external
+MAPS_HEADLESS=true
+# configure the authenticated HTTP principal boundary and operator surface separately
+```
+
+On a co-located physical Mac, `webrtc_takeover` is the recommended built-in mobile path and has passed physical iPhone Safari acceptance over same-LAN direct WebRTC and cellular TURN relay, including the real V5 Google sign-in recovery flow. `thin_takeover` remains an optional/experimental Native sibling pending its separate physical app acceptance. Neither path requires a hosted-browser vendor API key.
+
+Browser/Handoff authority remains process/worker-local. Instance termination or replacement must fail closed rather than pretending a takeover can resume on another worker. Durable browser/profile strategy, if needed, is separate from takeover authority and must not persist raw credentials through MCP/Handoff state.
+
 ## Browser profile
 
 The image defaults to an ephemeral dedicated profile:

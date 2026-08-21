@@ -78,6 +78,26 @@ HTTP port は次の順番で決まります。
 
 `PORT` は一般的な runtime 向け fallback にすぎません。`MCP_HTTP_PORT` が指定されている場合は、必ずそちらが優先されます。
 
+## Container deploymentとcredential-safe takeover
+
+Container / Cloud RunはMCP control planeとprocess-owned Chromium automationをhostできますが、current built-in Native / WebRTC Human data planeは **macOS Handoff worker capability** であり、genericなCloud Run execution planeではありません。Linux Cloud Run instance自身がScreenCaptureKit / input injectionを提供できる前提で `thin_takeover` / `webrtc_takeover` を設定しないでください。
+
+現行container deploymentではcredential-safe transportを明示します。
+
+- Human surfaceをcontainer外で提供する場合は `external` を使う。
+- separate execution workerを配置する場合はHandoff control-plane / private-worker topologyを使う。generic hosted-worker topologyは `mcp-execution-handoff` #12で追跡します。
+
+```bash
+MAPS_CREDENTIAL_SAFE_HANDOFF=true
+MAPS_CREDENTIAL_SAFE_TRANSPORT=external
+MAPS_HEADLESS=true
+# authenticated HTTP principal boundaryとoperator surfaceは別途設定
+```
+
+Co-locatedな物理Macでは `webrtc_takeover` がrecommended built-in mobile pathで、物理iPhone Safariにてsame-LAN direct WebRTC / cellular TURN relay、およびreal V5 Google sign-in recoveryまでacceptance済みです。`thin_takeover` はNative appの別物理acceptanceが完了するまでoptional / experimental siblingとして残します。どちらもhosted-browser vendor API keyは不要です。
+
+browser / Handoff authorityはprocess / worker-localのままです。instance終了・replacement時に別workerへresumeしたふりをせずfail closedします。durable browser/profile strategyが必要でもtakeover authorityとは分離し、raw credentialをMCP/Handoff stateへ永続化しません。
+
 ## Browser profile
 
 イメージでは、次の一時専用 profile をデフォルトで使用します。

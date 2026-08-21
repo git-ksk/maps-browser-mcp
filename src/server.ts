@@ -60,6 +60,9 @@ import { CredentialAwareTakeoverAdapter } from "./browser/credential-aware-takeo
 import { CuaTakeoverHumanProvider } from "./browser/cua-takeover-human-provider.js";
 import { SystemBrowserCredentialSession } from "./browser/system-browser-credential-session.js";
 import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provider.js";
+import { CredentialTakeoverHumanProvider } from "./browser/credential-takeover-human-provider.js";
+import { NativeCredentialTakeoverBoundary } from "./browser/native-credential-takeover-boundary.js";
+import { WebRtcCredentialTakeoverBoundary } from "./browser/webrtc-credential-takeover-boundary.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
@@ -68,10 +71,10 @@ import { TRANSIT_TIME_MODES } from "./browser/transit-time.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { resolveFreshRouteSendTarget, type RouteSendActionInput } from "./browser/route-send.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
-import { TakeoverBroker } from "mcp-execution-handoff/browser-takeover";
+import { InheritedFdNativeRuntimeProvider, SpawnedWebRtcRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
-const SERVER_VERSION = "0.3.2";
+const SERVER_VERSION = "0.3.3";
 const config = loadConfig();
 const compiler = new MapsUrlCompiler();
 const policy = new PolicyEngine({
@@ -79,13 +82,31 @@ const policy = new PolicyEngine({
   maxActionsPerMinute: config.policy.maxActionsPerMinute,
   maxVisibleReadsPerHour: config.policy.maxVisibleReadsPerHour
 });
-const chrome = new ChromeProcess(config.browser);
-const runtime = new MapsBrowserRuntime(chrome, policy);
-const credentialSafeCuaAdapter = new CuaHumanTakeoverAdapter(
-  () => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand)
-);
-const takeoverAdapter = new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter);
-const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover);
+const localChrome = new ChromeProcess(config.browser);
+const runtime = new MapsBrowserRuntime(localChrome, policy);
+const credentialSafeCuaAdapter = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport === "cua_takeover"
+  ? new CuaHumanTakeoverAdapter(() => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand))
+  : undefined;
+const takeoverAdapter: TakeoverBrowserAdapter = credentialSafeCuaAdapter
+  ? new CredentialAwareTakeoverAdapter(runtime, credentialSafeCuaAdapter)
+  : runtime;
+const nativeTakeoverRuntime = config.credentialSafeHandoff.enabled &&
+  config.credentialSafeHandoff.transport === "thin_takeover" &&
+  config.credentialSafeHandoff.nativeRuntime
+  ? new InheritedFdNativeRuntimeProvider(config.credentialSafeHandoff.nativeRuntime)
+  : undefined;
+const webRtcTakeoverRuntime = config.credentialSafeHandoff.enabled &&
+  config.credentialSafeHandoff.transport === "webrtc_takeover" &&
+  config.credentialSafeHandoff.webRtcRuntime
+  ? new SpawnedWebRtcRuntimeProvider(config.credentialSafeHandoff.webRtcRuntime)
+  : undefined;
+const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime, webRtcTakeoverRuntime);
+const nativeCredentialTakeover = nativeTakeoverRuntime
+  ? new NativeCredentialTakeoverBoundary(takeoverBroker)
+  : undefined;
+const webRtcCredentialTakeover = webRtcTakeoverRuntime
+  ? new WebRtcCredentialTakeoverBoundary(takeoverBroker)
+  : undefined;
 const credentialSafeBrowser = config.credentialSafeHandoff.enabled
   ? new SystemBrowserCredentialSession({
       executable: config.browser.executable,
@@ -93,14 +114,24 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled
       startUrl: "https://www.google.com/maps"
     })
   : undefined;
-const credentialSafeProvider = credentialSafeBrowser
-  ? config.credentialSafeHandoff.transport === "cua_takeover"
-    ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
-    : new SystemBrowserHumanProvider(
-        credentialSafeBrowser,
-        config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
-      )
-  : undefined;
+const credentialSafeProvider = !config.credentialSafeHandoff.enabled
+  ? undefined
+  : config.credentialSafeHandoff.transport === "thin_takeover"
+    ? nativeCredentialTakeover && credentialSafeBrowser
+      ? new CredentialTakeoverHumanProvider("thin-takeover", credentialSafeBrowser, nativeCredentialTakeover)
+      : undefined
+    : config.credentialSafeHandoff.transport === "webrtc_takeover"
+      ? webRtcCredentialTakeover && credentialSafeBrowser
+        ? new CredentialTakeoverHumanProvider("webrtc-takeover", credentialSafeBrowser, webRtcCredentialTakeover)
+        : undefined
+    : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover" && credentialSafeCuaAdapter
+      ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
+      : credentialSafeBrowser
+        ? new SystemBrowserHumanProvider(
+            credentialSafeBrowser,
+            config.credentialSafeHandoff.operatorUrl ?? "local://dedicated-maps-browser"
+          )
+        : undefined;
 const credentialSafeSurface = credentialSafeProvider
   ? new CredentialSafeHumanSurfaceRuntime(credentialSafeProvider)
   : undefined;
@@ -250,17 +281,27 @@ function handoffPrompt(intervention: MapsIntervention, owner: HandoffOwner): str
   return `${base}\n\nRemote human takeover is available through the configured authenticated HTTPS gateway:\n${takeoverUrl}\n\nOpen that URL on your phone, complete the manual browser interaction, close remote control with Done, then return here and choose Continue. The capability is short-lived, bound to this intervention and resource epoch, and must not be forwarded.`;
 }
 
-function credentialSafePrompt(intervention: MapsIntervention, locator: string): string {
+function credentialSafePrompt(
+  intervention: MapsIntervention,
+  surface: { providerKind: string; locator: string }
+): string {
   const base = mapsInterventionPrompt(intervention.reason);
-  const remote = /^https?:\/\//i.test(locator)
-    ? `Open the configured external Human access surface:\n${locator}`
-    : "Use the local or separately configured OS-level remote-access surface to control the dedicated browser.";
+  const remote = surface.providerKind === "thin-takeover" && /^https?:\/\//i.test(surface.locator)
+    ? `Open the Native Takeover app and use this short-lived Native-only locator:\n${surface.locator}\n\nDo not use the locator as a Web takeover page; legacy Web bootstrap/frame/input are disabled for this Human session.`
+    : surface.providerKind === "webrtc-takeover" && /^https?:\/\//i.test(surface.locator)
+      ? `Open this short-lived WebRTC takeover locator in iPhone Safari:\n${surface.locator}\n\nControl only the dedicated Chrome window directly with tap/swipe and the iOS keyboard. Legacy button-driven frame/input takeover is disabled for this Human session.`
+      : /^https?:\/\//i.test(surface.locator)
+        ? `Open the configured Human access surface:\n${surface.locator}`
+        : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
+  const ownership = "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without agent-owned CDP/remote-debugging authority.";
+  const recovery = "Choose Continue after the browser-side step is complete. Human authority is revoked and the normal browser is closed before automation establishes a fresh Chrome process/CDP attachment and readiness check; stale pre-auth actions are not replayed.";
   return [
     base,
-    "Automation control has been fully detached and the same dedicated profile is now open in normal Chrome without CDP/remote-debugging attachment.",
+    ownership,
     remote,
-    "Complete only the authentication/consent step as a Human. Do not send credentials, MFA values, cookies, tokens, or account identifiers through MCP.",
-    "Choose Continue after the browser-side step is complete. The normal browser will be closed before fresh automation state is re-established; stale pre-auth actions are not replayed."
+    "Complete only the authentication/consent/challenge step as a Human. Do not send credentials, MFA values, cookies, tokens, account identifiers, or passkey material through MCP.",
+    "Passkey/WebAuthn ceremonies remain provider-controlled Human interactions and are never bypassed or synthesized by this handoff.",
+    recovery
   ].join("\n\n");
 }
 
@@ -272,19 +313,20 @@ async function prepareHandoffPrompt(intervention: MapsIntervention, owner: Hando
     takeoverBroker.revokeForIntervention(intervention.id);
     await runtime.suspendAutomationForCredentialSafeHumanControl(intervention.id, intervention.epoch);
     const surface = await credentialSafeSurface.begin(intervention, owner.principalBinding);
-    return credentialSafePrompt(intervention, surface.locator);
+    return credentialSafePrompt(intervention, surface);
   }
   return handoffPrompt(intervention, owner);
 }
 
-async function revokeCredentialSafeSurface(interventionId: string, owner: HandoffOwner): Promise<void> {
+async function revokeCredentialSafeSurface(interventionId: string, owner: HandoffOwner): Promise<string | undefined> {
   const external = credentialSafeSurface?.getActive();
-  if (!external || external.interventionId !== interventionId) return;
+  if (!external || external.interventionId !== interventionId) return undefined;
   await credentialSafeSurface!.revoke(
     external.interventionId,
     external.epoch,
     owner.principalBinding
   );
+  return external.providerKind;
 }
 
 async function humanInputRequired(
@@ -466,7 +508,8 @@ async function runToolWithHandoff<T>(input: {
   }
 
   takeoverBroker.revokeForIntervention(state.interventionId);
-  const usedCredentialSafeSurface = credentialSafeSurface?.getActive()?.interventionId === state.interventionId;
+  const activeCredentialSafeSurface = credentialSafeSurface?.getActive();
+  const usedCredentialSafeSurface = activeCredentialSafeSurface?.interventionId === state.interventionId;
   try {
     await revokeCredentialSafeSurface(state.interventionId, owner);
     runtime.markHumanControlComplete(state.interventionId);
@@ -1426,7 +1469,7 @@ export async function shutdownRuntime(): Promise<void> {
   const active = runtime.getActiveIntervention();
   if (active) takeoverBroker.revokeForIntervention(active.id);
   await operationQueue.drain();
-  await credentialSafeCuaAdapter.close().catch(() => undefined);
+  await credentialSafeCuaAdapter?.close().catch(() => undefined);
   await credentialSafeBrowser?.close().catch(() => undefined);
   await runtime.close();
 }

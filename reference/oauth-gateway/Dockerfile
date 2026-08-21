@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci --ignore-scripts
 COPY src ./src
+COPY scripts/clean-dist.mjs ./scripts/clean-dist.mjs
 RUN npm run build
 
 WORKDIR /app/reference/oauth-gateway

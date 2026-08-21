@@ -1,12 +1,21 @@
 import http from "node:http";
 import { Readable } from "node:stream";
 import { createOAuthBoundary } from "./oauth.mjs";
-import { assertPrivateBearer, proxyMcpRequest, safeCoreUrl } from "./proxy.mjs";
+import { createTakeoverOperatorBoundary } from "./operator-auth.mjs";
+import { assertPrivateBearer, proxyMcpRequest, proxyTakeoverRequest, safeCoreUrl } from "./proxy.mjs";
 
 function env(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
+}
+
+function envBool(name, fallback = false) {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  throw new Error(`${name} must be a boolean`);
 }
 
 function port() {
@@ -39,9 +48,21 @@ async function writeNodeResponse(res, response) {
   Readable.fromWeb(response.body).pipe(res);
 }
 
+function json(status, error) {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+  });
+}
+
+function headResponse(response) {
+  return new Response(null, { status: response.status, headers: response.headers });
+}
+
 const coreUrl = safeCoreUrl(env("MCP_CORE_URL"));
 const privateBearer = assertPrivateBearer(env("MCP_CORE_BEARER_TOKEN"));
 const oauth = await createOAuthBoundary();
+const takeoverOperator = envBool("MAPS_REMOTE_TAKEOVER") ? createTakeoverOperatorBoundary() : undefined;
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -74,11 +95,41 @@ const server = http.createServer(async (req, res) => {
       return await writeNodeResponse(res, await proxyMcpRequest(request, { coreUrl, privateBearer }));
     }
 
-    // Remote browser takeover is intentionally not proxied by this initial reference gateway.
-    return await writeNodeResponse(res, new Response(JSON.stringify({ error: "not_found" }), {
-      status: 404,
-      headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
-    }));
+    if (path === "/takeover/operator/session") {
+      if (!takeoverOperator) return await writeNodeResponse(res, json(404, "not_found"));
+      return await writeNodeResponse(res, await takeoverOperator.createSession(request));
+    }
+
+    if (path === takeoverOperator?.nativeAuthPath) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return await writeNodeResponse(res, json(405, "method_not_allowed"));
+      }
+      const response = takeoverOperator.isAuthorized(request)
+        ? takeoverOperator.nativeAuthorizedPage()
+        : takeoverOperator.nativeLoginPage();
+      return await writeNodeResponse(res, request.method === "HEAD" ? headResponse(response) : response);
+    }
+
+    if (path.startsWith("/takeover/")) {
+      if (!takeoverOperator) return await writeNodeResponse(res, json(404, "not_found"));
+      if (!takeoverOperator.isAuthorized(request)) {
+        const page = /^\/takeover\/[A-Za-z0-9-]{8,100}$/.test(path);
+        if (page && (request.method === "GET" || request.method === "HEAD")) {
+          const probe = await proxyTakeoverRequest(new Request(request.url, {
+            method: "HEAD",
+            headers: request.headers,
+            signal: request.signal
+          }), { coreUrl, privateBearer });
+          if (probe.status !== 200) return await writeNodeResponse(res, probe);
+          const response = takeoverOperator.loginPage();
+          return await writeNodeResponse(res, request.method === "HEAD" ? headResponse(response) : response);
+        }
+        return await writeNodeResponse(res, json(401, "operator_auth_required"));
+      }
+      return await writeNodeResponse(res, await proxyTakeoverRequest(request, { coreUrl, privateBearer }));
+    }
+
+    return await writeNodeResponse(res, json(404, "not_found"));
   } catch (error) {
     console.error("[maps-oauth-gateway] request failed", error instanceof Error ? error.message : "unknown error");
     res.statusCode = 500;

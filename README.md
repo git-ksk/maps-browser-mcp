@@ -342,18 +342,20 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MCP_ALLOW_NONLOOPBACK` | `false` | Explicit opt-in before non-loopback bind |
 | `MCP_BEARER_TOKEN` | empty | Optional guard; mandatory for non-loopback bind; minimum 24 chars |
 | `MCP_MAX_BODY_BYTES` | `262144` | Maximum MCP request body size |
-| `MAPS_CHROME_EXECUTABLE` | auto-detect | Chrome/Chromium executable |
-| `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | Dedicated profile directory |
-| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Explicit opt-in before existing-CDP attachment |
+| `MAPS_CHROME_EXECUTABLE` | auto-detect | Dedicated Chrome/Chromium executable used by the process-owned browser session |
+| `MAPS_CHROME_PROFILE_DIR` | `~/.maps-browser-mcp/chrome-profile` | Dedicated process-owned Chrome profile directory |
+| `MAPS_ALLOW_EXTERNAL_CDP` | `false` | Explicit opt-in before existing local CDP attachment; incompatible with credential-safe handoff |
 | `MAPS_CDP_PORT` | unset | Advanced: existing local CDP endpoint |
 | `MAPS_HEADLESS` | `false` | Headless Chrome |
 | `MAPS_ALLOW_UNSANDBOXED_CHROMIUM` | `false` | Linux-only last-resort opt-in for restricted isolated runtimes; adds `--no-sandbox` |
 | `INTERACTIVE_ASSIST_MODE` | `false` | Enable bounded visible-state reading and V4 semantic UI operations that require it |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | Enable the fail-closed bounded V5 authenticated tools; also requires Interactive Assist and the dedicated single-user profile gate |
-| `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Enable normal-browser Human authentication handoff for sign-in/consent; managed CDP Chrome is stopped before credential entry |
-| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` uses an existing OS-level remote-access surface; `cua_takeover` reuses the authenticated Takeover UI with local Cua Driver native capture/input |
-| `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | Optional fixed HTTPS locator for `external` transport only; credentials/query/fragment are rejected |
+| `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Enable Human-only handoff for Google sign-in/consent/challenge surfaces |
+| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` uses an OS-level local surface; `cua_takeover` uses local Cua; `thin_takeover` uses the Native Thin Takeover runtime; `webrtc_takeover` uses install-free iPhone Safari WebRTC takeover |
+| `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | Optional fixed HTTPS locator for local `external` transport only; credentials/query/fragment are rejected |
 | `MAPS_CUA_DRIVER_COMMAND` | `cua-driver` | Cua Driver executable used only by `cua_takeover`; the integration invokes only a fixed seven-tool Human transport allowlist |
+| `MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE` | unset | Absolute path to Handoff `takeover-webrtc-host`, required by `webrtc_takeover` |
+| `MAPS_WEBRTC_TAKEOVER_DISPLAY_ID` | unset | Optional explicit macOS display ID for WebRTC capture |
 | `GOOGLE_MAPS_EMBED_API_KEY` | unset | Optional restricted Maps Embed API key for the MCP Apps directions view; the text/structured render tool remains available without it |
 | `MAPS_MAX_ACTIONS_PER_MINUTE` | `30` | Process-local action guard |
 | `MAPS_MAX_VISIBLE_READS_PER_HOUR` | `30` | Independent bounded visible-state/UI read budget |
@@ -366,7 +368,17 @@ Invalid boolean/integer configuration fails fast instead of being silently coerc
 
 ### V5 authenticated-workflow opt-in
 
-`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. When `MAPS_CREDENTIAL_SAFE_HANDOFF=true` is also enabled, `maps_request_human_sign_in` adds a Human-only authentication ceremony: the managed CDP browser is fully stopped, the same dedicated profile is opened in normal Chrome without remote-debugging/automation attachment, and automation resumes only after the normal browser is closed and fresh readiness is re-read. `MAPS_CREDENTIAL_SAFE_TRANSPORT=external` points at an existing OS-level remote-access product. `cua_takeover` instead reuses the authenticated short-lived Takeover UI and a local Cua Driver bridge bound to the exact dedicated Chrome PID/window and limited to frame capture plus tap/scroll/text/key primitives. Human-entered text stays out of the northbound Maps MCP, model context, process argv, and repository logs while being transiently delivered over local Cua MCP stdin. `cua_takeover` requires Remote Takeover to be enabled. The setting rejects existing-CDP attachment, rejects `MCP_AUTH_PROVIDER=module` until per-principal profile isolation exists, and requires an absolute dedicated profile path when overridden. The send mutation additionally requires a modern MCP 2026-07-28 client with form elicitation support.
+`MAPS_V5_AUTHENTICATED_WORKFLOWS=true` is an additional fail-closed opt-in for bounded authenticated V5 semantics. With Interactive Assist enabled it exposes only the staged identity-free readiness, bounded selected-place save-state read, exact existing-list Save, bounded selected-route Send-to-phone target read, and approval-gated single-device send documented in the V5 baseline. When `MAPS_CREDENTIAL_SAFE_HANDOFF=true` is also enabled, `maps_request_human_sign_in` adds a Human-only ceremony for Google sign-in; naturally detected consent and CAPTCHA/access-challenge surfaces use the same Human boundary. Credentials, MFA/OTP values, passkey material, cookies, browser-session bearer material, and provider API keys never become MCP/model/log content, and passkey/WebAuthn ceremonies are not bypassed.
+
+V5 itself does not require a remote handoff transport. A persistent dedicated Chrome profile that is already signed in is the simplest deployment: fresh readiness can immediately return `signed_in` and the bounded V5 tools can run without Cloudflare/WebRTC. Credential-safe handoff is only needed when a Human must perform sign-in, re-authentication, consent, or another naturally occurring challenge.
+
+All credential-safe transports use the profile-switch lifecycle: managed CDP Chrome is stopped, the same dedicated profile is opened in normal Chrome without remote-debugging/automation flags, and automation relaunches only after the Human surface is revoked and fresh readiness is re-read. `external` uses an OS-level Human surface, `cua_takeover` is a local fallback/reference, `thin_takeover` uses the low-latency Native runtime, and `webrtc_takeover` exposes the Handoff-owned direct-touch Safari surface. For Native/WebRTC credential takeover, Maps passes only the PID of the normal Chrome process it starts; Handoff requires exactly one eligible window and scopes capture/input to that window rather than the desktop. ScreenCaptureKit, VideoToolbox, WebRTC signaling/RTP/DataChannel, reconnect fencing, and input delivery remain outside Maps. Done/revoke stops Human authority and closes normal Chrome; it is never treated as authentication proof.
+
+Operationally, `webrtc_takeover` is the recommended built-in mobile path for current macOS single-user deployments: physical iPhone Safari acceptance has passed on same-LAN direct WebRTC and cellular TURN relay, including the real Google sign-in recovery flow. `external` remains the configuration default for backward-compatible fail-closed opt-in behavior. `thin_takeover` remains an optional/experimental sibling until the Native app path receives its own physical acceptance in `mcp-execution-handoff` #13.
+
+The WebRTC path is direct-first and remains Handoff-owned. The Safari/browser peer stays host-only (`iceServers: []`), while the Node/werift peer uses explicit Cloudflare STUN to avoid an implicit dependency-selected third-party STUN default. When Cloudflare Realtime TURN is configured, short-lived peer-specific TURN credentials are added with `iceTransportPolicy: all`, so same-LAN/direct ICE remains preferred and WAN/CGNAT can fall back to relay. The long-lived TURN token stays server-side and is never forwarded to Maps, Chrome, the browser client, or the helper. Maps does not process ICE/STUN/TURN details, candidate/address data, SDP, RTP, framebuffer bytes, or raw Human input. No vendor browser API key or hosted-browser backend is required. Steel may be used only as an external comparison/UX benchmark, not as a runtime dependency.
+
+Both lifecycle shapes reject stale automatic replay after Human handoff. Existing-CDP attachment remains incompatible with credential-safe ownership, `MCP_AUTH_PROVIDER=module` remains rejected for V5 until per-principal isolation exists, and the send mutation still requires a modern MCP 2026-07-28 client with form elicitation support.
 
 For the current remote single-user design, authenticate the public MCP client at an external gateway and use the private `static-bearer` hop to this core server. Do not forward a caller's public OAuth access token into the browser runtime. The versioned [reference OAuth gateway](reference/oauth-gateway/README.md) implements this shape as an isolated dogfood package; it is not included in the published root npm package. See [V5 authenticated workflows](docs/v5-authenticated-workflows.md) and [OAuth gateway pattern](docs/oauth-gateway.md).
 
@@ -443,6 +455,7 @@ See **[Troubleshooting](docs/troubleshooting.md)** for recovery guidance and err
 | [Getting Started](docs/getting-started.md) | Installation, first run, client shape, Interactive Assist opt-in, cleanup |
 | [Container / headless Linux](docs/container.md) | Standard Linux container, headless Chromium, ports, profiles, readiness, and sandbox boundaries |
 | [Troubleshooting](docs/troubleshooting.md) | Error codes and safe recovery procedures |
+| [WebRTC Human Takeover](docs/webrtc-human-takeover.md) | macOS + iPhone Safari setup, helper build, authenticated operator origin, direct/TURN behavior |
 | [ChatGPT](docs/chatgpt.md) | Remote ChatGPT/App connection boundary and tool refresh |
 | [Architecture](docs/architecture.md) | Runtime, CDP, state, queue/watchdog, semantic UI operation model |
 | [Project positioning](docs/positioning.md) | Competitive category, Maps Web priority, official-interface overlap, and product direction |
@@ -464,7 +477,7 @@ Contributions are welcome within the project's constrained scope. Read **[CONTRI
 
 ## Release status
 
-The repository metadata for the v0.3.2 release baseline is versioned as `0.3.2`. V5-A through V5-D are implemented but remain disabled by default behind the authenticated-workflow opt-in. `maps-browser-mcp` is not published to npm in this release; use the GitHub source tag/Release.
+Repository metadata is now `0.3.3` for the v0.3.3 release candidate. The latest published stable tag remains **v0.3.2** until the v0.3.3 sequential V5 release gate is completed and the exact tested `main` commit is tagged. V5-A through V5-D remain disabled by default behind the authenticated-workflow opt-in, and `maps-browser-mcp` remains unpublished on npm.
 
 See **[Release checklist](docs/release.md)** before tagging or publishing.
 

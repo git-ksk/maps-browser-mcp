@@ -41,17 +41,17 @@ The design is for a single local user/browser session. Multi-user hosting would 
 
 ## Browser lifecycle
 
-By default, the runtime starts or reuses a dedicated Chrome/Chromium process/profile outside the repository at `~/.maps-browser-mcp/chrome-profile`.
+One process owns one dedicated Chrome/Chromium process/profile outside the repository at `~/.maps-browser-mcp/chrome-profile`. Browser lifecycle remains consumer-owned; `mcp-execution-handoff` owns the generic Human-authority/session boundary but does not own Chrome.
 
 Chrome is launched with a separate `--user-data-dir`, `--remote-debugging-address=127.0.0.1`, and `--remote-debugging-port=0`. The project-managed endpoint is read from Chrome's `DevToolsActivePort` record and is reused only when **both** the numeric port and browser WebSocket identity match the live `/json/version` endpoint. This avoids trusting a stale profile file if an unrelated Chrome process later reuses the same numeric port. On Unix-like systems, the dedicated profile directory is restricted to the current user.
 
-A caller may instead set `MAPS_CDP_PORT` to attach to an existing **local** CDP endpoint, but only when `MAPS_ALLOW_EXTERNAL_CDP=true` is also set. This is an advanced escape hatch and weakens the dedicated-profile isolation guarantee. It should never point to a publicly reachable or everyday personal browser instance.
+A caller may instead set `MAPS_CDP_PORT` to attach to an existing **local** CDP endpoint, but only when `MAPS_ALLOW_EXTERNAL_CDP=true` is also set. This advanced escape hatch weakens dedicated-profile isolation and is deliberately incompatible with credential-safe Human handoff. It should never point to a publicly reachable or everyday personal browser instance.
 
-When connecting to the dedicated browser, the runtime accepts zero or one Google Maps page target. If more than one Maps tab is open, it refuses to guess which tab to control and returns an error. This preserves the one-process/one-semantic-session invariant.
+When connecting to the dedicated browser, the runtime accepts zero or one Google Maps page target. If more than one Maps tab is open, it refuses to guess which tab to control. If a CDP target becomes stale, reconnects, or is reset by the watchdog, semantic state is invalidated rather than inherited.
 
-If the CDP target becomes stale, reconnects, or is reset by the watchdog, semantic state is invalidated rather than assuming that the newly attached page still represents the previous search/directions operation.
+Normal Maps automation remains process-owned Chrome + CDP. For a credential ceremony, including the `thin_takeover` Native path, Agent CDP authority is detached and the automation Chrome process is stopped. The same dedicated profile is then reopened in normal Chrome without remote-debugging/automation flags. Human completion/revocation stops the Human surface and closes normal Chrome before a fresh automation Chrome process/CDP attachment may verify readiness. The invariant is **exclusive authority plus a provider-supported normal-browser credential ceremony**.
 
-No stealth plugins, fingerprint spoofing, proxy rotation, or CAPTCHA solvers are used.
+No stealth plugins, fingerprint spoofing, proxy rotation, CAPTCHA solvers, hosted-browser provider API keys, or passkey bypasses are used. Steel is not a runtime dependency; it may be used externally only as a comparison/UX benchmark.
 
 ## Navigation fast path
 
@@ -127,12 +127,34 @@ Naturally occurring consent, sign-in, CAPTCHA, and access-challenge surfaces sus
 
 The boundary is deliberately separate from semantic action approval:
 
-- MCP never receives account credentials,
-- challenges are not solved or bypassed,
+- MCP never receives account credentials, MFA/OTP values, passkey material, cookies, browser-session bearer material, or provider API keys,
+- challenges are not solved or bypassed, and Passkey/WebAuthn ceremonies remain Human/provider controlled,
 - completing human control does not approve the pending or a different action,
 - state-changing/state-dependent semantic operations require fresh reissue and revalidation,
 - reconnect/restart never automatically replays an older semantic operation,
 - V4 operation cleanup must test intervention state before sending any best-effort UI input.
+
+Credential-safe Human control uses one profile-switch lifecycle behind the same `ExternalHumanSurfaceProvider` contract, with interchangeable Human transports:
+
+```text
+Agent-owned automation CDP Chrome
+  -> Human authority
+  -> close automation Chrome
+  -> open the same dedicated profile in normal Chrome without Agent CDP authority
+  -> Handoff transport
+       external / optional Cua
+       Native `thin_takeover`
+       browser `webrtc_takeover`
+  -> revoke Human transport + close normal Chrome
+  -> fresh automation Chrome + fresh CDP attachment
+  -> fresh readiness / semantic validation
+```
+
+For `thin_takeover`, Handoff owns the Native ScreenCaptureKit/VideoToolbox/CoreGraphics data plane and short-lived Native locator. For `webrtc_takeover`, Handoff owns ScreenCaptureKit -> H.264 -> RTP/WebRTC video, direct-touch/keyboard DataChannels, generation-bound reconnect, and browser session teardown. Maps supplies only the PID of the normal Chrome process it just started as a bounded ownership hint; Handoff must resolve exactly one eligible on-screen window for that PID, crop capture to that window, map pointer input to the same bounds, and fail closed on missing/ambiguous windows. Maps never owns ScreenCaptureKit window discovery and never processes SDP, ICE, RTP, framebuffer bytes, or raw Human input. WebRTC-only locators cannot fall back to the legacy HTTP frame/input UI.
+
+Current deployment status keeps these transports as siblings rather than making Native a prerequisite. `webrtc_takeover` is the physically accepted built-in mobile path on macOS (same-LAN direct, cellular TURN relay, and real Google sign-in recovery); `thin_takeover` remains optional/experimental pending separate Native-app physical acceptance. The compatibility default remains `external`, so enabling a built-in takeover is always explicit.
+
+The Safari/browser peer remains host-only (`iceServers: []`) and direct-first. Handoff's Node/werift peer uses explicit Cloudflare STUN rather than an implicit dependency-selected third-party default; optional Cloudflare Realtime TURN remains fallback-only under `iceTransportPolicy: all`. This network-metadata trust boundary and all ICE/STUN/TURN handling remain inside Handoff: Maps receives no raw candidates, addresses, SDP, credentials, or transport media/input. Human Done is teardown, not authentication proof; Maps always performs a fresh automation attach and coarse authenticated-readiness check afterwards.
 
 ## MCP Apps render boundary
 

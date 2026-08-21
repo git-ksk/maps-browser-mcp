@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { findChromeExecutable } from "./chrome-process.js";
+import { buildBrowserProcessEnv, findChromeExecutable } from "./chrome-process.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,7 +50,7 @@ export class SystemBrowserCredentialSession {
     await this.waitForProfileUnlock();
 
     const executable = findChromeExecutable(this.options.executable);
-    const child = spawn(executable, buildCredentialSafeChromeArgs(this.options), { stdio: "ignore" });
+    const child = spawn(executable, buildCredentialSafeChromeArgs(this.options), { stdio: "ignore", env: buildBrowserProcessEnv() });
     this.child = child;
     let startupError: Error | undefined;
     child.once("error", (error) => { startupError = error; });

@@ -33,6 +33,8 @@ For project-managed profiles, Chrome's `DevToolsActivePort` record is validated 
 
 The runtime also refuses ambiguous startup when multiple Google Maps page targets are open in the dedicated profile instead of silently taking control of the first target.
 
+The primary `thin_takeover` path requires no hosted-browser provider API key. Treat every CDP endpoint/attachment as browser-control authority: before Human takeover, Agent-owned automation CDP/input authority is detached and fenced; only an intervention/epoch-bound Human CDP attachment may capture encoded frames or inject bounded Human input. Revocation aborts active frame streams and closes the Human attachment before a fresh automation attachment is permitted. The public Human locator contains no takeover capability; the capability remains in authenticated request headers. Credentials, MFA/OTP values, passkey material, cookies, browser-session bearer material, and raw Human input values are never returned through MCP/model/logs. CAPTCHA, MFA, consent, and Passkey/WebAuthn remain Human-controlled and are never bypassed.
+
 ## Runtime failure containment
 
 One process controls one semantic browser state, so browser operations are serialized. `MAPS_MAX_PENDING_ACTIONS` bounds the queue. `MAPS_OPERATION_TIMEOUT_MS` bounds each active operation; on timeout the runtime resets the browser/CDP session before the queue proceeds, invalidating stale semantic state.
@@ -57,6 +59,8 @@ Do not include any of the following in bug reports, logs, commits, or screenshot
 - tunnel credentials,
 - bearer tokens,
 - authentication headers,
+- hosted-browser API keys or CDP WebSocket URLs,
+- MFA/OTP values, passkey material, or challenge answers,
 - private location history,
 - personal email addresses or other identifying account data.
 

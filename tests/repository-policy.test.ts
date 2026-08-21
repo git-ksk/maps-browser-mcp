@@ -55,8 +55,27 @@ test("execution handoff upstream source release is pinned to an immutable commit
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(
     pkg.dependencies?.["mcp-execution-handoff"],
-    "https://github.com/git-ksk/mcp-execution-handoff/archive/0fdb22e632384b0f02c9bb141c3aab9ddea98042.tar.gz"
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/8a8a8db7c767bb0f1a9b1d9fda1c7991281c26a2.tar.gz"
   );
+});
+
+test("local Google sign-in acceptance proxy keeps the Handoff WebRTC route and upstream destination explicitly bounded", () => {
+  const source = read("scripts/live-google-sign-in-acceptance.mjs");
+  assert.match(source, /webrtc-connect\|webrtc-diagnostics\|webrtc-metrics\|webrtc-suspend/);
+  assert.doesNotMatch(source, /takeover\\\/api\\\/(?:\.\*|\[\^\/\]\+)/);
+  assert.match(source, /hostname: "127\.0\.0\.1"/);
+  assert.match(source, /port: corePort/);
+  assert.match(source, /path: requestUrl\.pathname/);
+  assert.doesNotMatch(source, /new URL\(requestUrl\.pathname, coreBaseUrl\)/);
+});
+
+test("local Google sign-in acceptance retries only transient read-only post-login settling", () => {
+  const source = read("scripts/live-google-sign-in-acceptance.mjs");
+  assert.match(source, /readPlaceSummaryWithBoundedSettle/);
+  assert.match(source, /Date\.now\(\) \+ 8_000/);
+  assert.match(source, /UI_ELEMENT_NOT_FOUND/);
+  assert.match(source, /UI_STATE_CHANGED/);
+  assert.doesNotMatch(source, /maps_select_result[^]*while \(true\)/);
 });
 
 test("GitHub Actions dependencies are pinned to immutable commit SHAs", () => {
