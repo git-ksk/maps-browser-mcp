@@ -59,10 +59,14 @@ test("execution handoff upstream source release is pinned to an immutable commit
   );
 });
 
-test("local Google sign-in acceptance proxy keeps the Handoff WebRTC diagnostic route explicitly bounded", () => {
+test("local Google sign-in acceptance proxy keeps the Handoff WebRTC route and upstream destination explicitly bounded", () => {
   const source = read("scripts/live-google-sign-in-acceptance.mjs");
   assert.match(source, /webrtc-connect\|webrtc-diagnostics\|webrtc-metrics\|webrtc-suspend/);
   assert.doesNotMatch(source, /takeover\\\/api\\\/(?:\.\*|\[\^\/\]\+)/);
+  assert.match(source, /hostname: "127\.0\.0\.1"/);
+  assert.match(source, /port: corePort/);
+  assert.match(source, /path: requestUrl\.pathname/);
+  assert.doesNotMatch(source, /new URL\(requestUrl\.pathname, coreBaseUrl\)/);
 });
 
 test("local Google sign-in acceptance retries only transient read-only post-login settling", () => {

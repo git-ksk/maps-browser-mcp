@@ -187,7 +187,7 @@ function takeoverLocatorFromInputRequired(response, expectedOrigin) {
   };
 }
 
-function startLoopbackTakeoverGateway(port, coreBaseUrl, bearer) {
+function startLoopbackTakeoverGateway(port, corePort, bearer) {
   const server = createServer((req, res) => {
     let requestUrl;
     try {
@@ -226,7 +226,6 @@ function startLoopbackTakeoverGateway(port, coreBaseUrl, bearer) {
       return;
     }
 
-    const upstream = new URL(requestUrl.pathname, coreBaseUrl);
     const headers = {};
     for (const [name, value] of Object.entries(req.headers)) {
       if (TAKEOVER_REQUEST_HEADERS.has(name.toLowerCase()) && value !== undefined) {
@@ -238,7 +237,11 @@ function startLoopbackTakeoverGateway(port, coreBaseUrl, bearer) {
     const diagnostic = process.env.MAPS_ACCEPT_TAKEOVER_DIAGNOSTICS === "YES";
     if (diagnostic) console.error(`[takeover-gateway] -> ${req.method || "?"} ${requestUrl.pathname}`);
 
-    const proxy = httpRequest(upstream, {
+    const proxy = httpRequest({
+      protocol: "http:",
+      hostname: "127.0.0.1",
+      port: corePort,
+      path: requestUrl.pathname,
       method: req.method,
       headers
     }, (upstreamRes) => {
@@ -348,7 +351,7 @@ let child;
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
 try {
-  gateway = await startLoopbackTakeoverGateway(gatewayPort, coreBaseUrl, bearer);
+  gateway = await startLoopbackTakeoverGateway(gatewayPort, corePort, bearer);
   child = spawn(process.execPath, ["dist/index.js", "--http"], {
     env: {
       ...process.env,
