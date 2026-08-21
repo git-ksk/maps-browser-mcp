@@ -78,26 +78,25 @@ HTTP port precedence is:
 
 `PORT` exists only as a generic runtime fallback. `MCP_HTTP_PORT` remains the project-specific configuration and takes precedence whenever both are present.
 
-## Keyless Thin Takeover for Cloud Run
+## Credential-safe takeover with container deployments
 
-Cloud/container deployments use the same process-owned Chromium + Thin Takeover lifecycle as Mac. No hosted-browser provider or vendor API key is required. A reference credential-safe configuration is:
+A container or Cloud Run instance may host the MCP/control plane and its process-owned Chromium automation, but the current built-in Native and WebRTC Human data planes are **macOS Handoff-worker capabilities**, not a generic Cloud Run execution plane. Do not configure `thin_takeover` or `webrtc_takeover` as if a Linux Cloud Run instance could provide ScreenCaptureKit/input injection locally.
+
+For a container deployment today, keep the credential-safe transport explicit:
+
+- use `external` when the Human surface is provided outside the container; or
+- use a Handoff control-plane/private-worker topology once the separate execution worker is deployed. The generic hosted-worker topology is tracked in `mcp-execution-handoff` #12.
 
 ```bash
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover
-MAPS_REMOTE_TAKEOVER=true
-MAPS_TAKEOVER_PUBLIC_BASE_URL=https://<authenticated-takeover-origin>
+MAPS_CREDENTIAL_SAFE_TRANSPORT=external
 MAPS_HEADLESS=true
-# configure the existing authenticated HTTP principal boundary as documented above
+# configure the authenticated HTTP principal boundary and operator surface separately
 ```
 
-During Human authority the Chromium process/session remains alive inside the same service instance. Agent-owned automation CDP/input authority is detached and fenced; the Thin Takeover Runtime opens an intervention/epoch-bound Human CDP attachment for Phase 1 JPEG screencast capture and bounded Human input. Revocation aborts active frame streams and closes that Human attachment before automation creates a fresh CDP attachment and revalidates Maps readiness.
+On a co-located physical Mac, `webrtc_takeover` is the recommended built-in mobile path and has passed physical iPhone Safari acceptance over same-LAN direct WebRTC and cellular TURN relay, including the real V5 Google sign-in recovery flow. `thin_takeover` remains an optional/experimental Native sibling pending its separate physical app acceptance. Neither path requires a hosted-browser vendor API key.
 
-Phase 1 is intentionally CPU/simple-transport friendly: `Page.startScreencast` JPEG is passed through `FramePipeline` without decode/re-encode and pushed over the authenticated broker stream. A later Phase 2 may replace capture/transport with raw compositor/native frames, optional hardware encoding, WebRTC video, and DataChannel input without changing the Handoff authority contract.
-
-Because the browser session is process/instance-local, instance termination or replacement loses the in-memory browser/Handoff session and must fail closed rather than pretending a takeover can resume elsewhere. Keep the current single-browser deployment boundary (`concurrency=1`, `max-instances=1`) and treat a restart during Human control as a fresh workflow. Durable browser/profile strategy, if needed, is separate from takeover authority and must not persist raw credentials through MCP/Handoff state.
-
-The pending live Google sign-in acceptance test remains separate and manual; this runtime path does not by itself mark that acceptance as passed.
+Browser/Handoff authority remains process/worker-local. Instance termination or replacement must fail closed rather than pretending a takeover can resume on another worker. Durable browser/profile strategy, if needed, is separate from takeover authority and must not persist raw credentials through MCP/Handoff state.
 
 ## Browser profile
 

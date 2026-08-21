@@ -152,6 +152,8 @@ Agent-owned automation CDP Chrome
 
 `thin_takeover` ではNative ScreenCaptureKit / VideoToolbox / CoreGraphics data planeと短命Native locatorをHandoffが所有します。`webrtc_takeover` ではScreenCaptureKit -> H.264 -> RTP/WebRTC video、direct-touch / keyboard DataChannel、generation-bound reconnect、browser session teardownをHandoffが所有します。MapsがHandoffへ渡すのは、自分が直前に起動したnormal ChromeのPIDというbounded ownership hintだけです。HandoffはそのPIDからeligibleなon-screen windowを厳密に1つだけ解決し、そのwindowだけへcaptureをcropしてpointer inputも同じboundsへmapし、missing/ambiguousならfail closedします。MapsはScreenCaptureKitのwindow探索を所有せず、SDP / ICE / RTP / framebuffer bytes / raw Human inputも扱いません。WebRTC-only locatorから旧HTTP frame/input UIへのfallbackも不可です。
 
+Current deploymentではNativeを前提条件にせず、各transportをsiblingとして扱います。`webrtc_takeover` はmacOS上で物理acceptance済みのbuilt-in mobile path（same-LAN direct、cellular TURN relay、real Google sign-in recovery）です。`thin_takeover` はNative app経路の別物理acceptanceが完了するまでoptional / experimentalとします。互換性defaultは `external` のままなので、built-in takeoverの有効化は常に明示的です。
+
 Safari/browser peerはhost-only（`iceServers: []`）かつdirect-firstを維持します。HandoffのNode/werift peerはdependency内部で選ばれる暗黙third-party STUN defaultを使わずCloudflare STUNを明示し、optionalなCloudflare Realtime TURNも `iceTransportPolicy: all` のfallback-onlyです。このnetwork-metadata trust boundaryとICE/STUN/TURN処理はすべてHandoff内に留まり、Mapsはraw candidate / address / SDP / credential / transport media / Human inputを受け取りません。Human Doneはteardownであり認証成功証明ではないため、その後Mapsはfresh automation attachとcoarse authenticated-readiness確認を必ず行います。
 
 ## MCP Apps Render Boundary

@@ -216,11 +216,11 @@ export interface AppConfig {
 export function loadConfig(): AppConfig {
   const legacyBrowserBackend = process.env.MAPS_BROWSER_BACKEND?.trim().toLowerCase();
   if (legacyBrowserBackend && legacyBrowserBackend !== "local") {
-    throw new Error("MAPS_BROWSER_BACKEND=steel was removed from the primary path; use the keyless local Chrome owner with MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover");
+    throw new Error("MAPS_BROWSER_BACKEND=steel was removed; use the keyless process-owned local Chrome runtime and an explicitly configured credential-safe transport when Human handoff is needed");
   }
   for (const name of ["STEEL_API_KEY", "STEEL_BASE_URL", "MAPS_STEEL_PROFILE_ID", "MAPS_STEEL_SESSION_TIMEOUT_SECONDS"] as const) {
     if (process.env[name]?.trim()) {
-      throw new Error(`${name} is no longer used; Thin Takeover is vendor-key-free`);
+      throw new Error(`${name} is no longer used; the local Chrome and Handoff takeover paths are vendor-key-free`);
     }
   }
   const allowExternalCdp = envBool("MAPS_ALLOW_EXTERNAL_CDP", false);

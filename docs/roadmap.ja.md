@@ -164,7 +164,7 @@ Canonical contract / security rule / evidence / completion criteriaは [MCP Apps
 
 ## V5 / v0.3.0 — Authenticated Google Maps Web Workflows
 
-V5は **bounded authenticated Google Maps Web workflow。最初はread-orientedかつlow-consequenceなreversible account stateを優先** と定義します。V5-A〜V5-Dは既存のfail-closed Opt-in / Interactive Assist boundary配下で実装済み、V5-Eはprivacy/browser-surface gateとして評価完了しhistory toolは意図的に追加していません。
+V5は **bounded authenticated Google Maps Web workflow。最初はread-orientedかつlow-consequenceなreversible account stateを優先** と定義します。V5-A〜V5-Dは既存のfail-closed Opt-in / Interactive Assist boundary配下で実装済み、V5-Eはprivacy/browser-surface gateとして評価完了しhistory toolは意図的に追加していません。物理V5 sign-in acceptanceもHandoff-owned Safari WebRTC経路（direct / cellular TURN）で、fresh `signed_out` → Human-only Google sign-in → revoke / stale-locator fencing → fresh `signed_in` readiness → bounded V5-B readまで完了済みです。残るmobile viewport / reload polishはMaps semantic capability gapではなくgeneric Handoff workとして `mcp-execution-handoff` #17で追跡します。
 
 Current ordering / status:
 

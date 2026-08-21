@@ -78,26 +78,25 @@ HTTP port は次の順番で決まります。
 
 `PORT` は一般的な runtime 向け fallback にすぎません。`MCP_HTTP_PORT` が指定されている場合は、必ずそちらが優先されます。
 
-## Cloud Run向けKeyless Thin Takeover
+## Container deploymentとcredential-safe takeover
 
-Cloud/containerでもMacと同じprocess-owned Chromium + Thin Takeover lifecycleを使います。hosted-browser providerやvendor API keyは不要です。credential-safeなreference構成は次です。
+Container / Cloud RunはMCP control planeとprocess-owned Chromium automationをhostできますが、current built-in Native / WebRTC Human data planeは **macOS Handoff worker capability** であり、genericなCloud Run execution planeではありません。Linux Cloud Run instance自身がScreenCaptureKit / input injectionを提供できる前提で `thin_takeover` / `webrtc_takeover` を設定しないでください。
+
+現行container deploymentではcredential-safe transportを明示します。
+
+- Human surfaceをcontainer外で提供する場合は `external` を使う。
+- separate execution workerを配置する場合はHandoff control-plane / private-worker topologyを使う。generic hosted-worker topologyは `mcp-execution-handoff` #12で追跡します。
 
 ```bash
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=thin_takeover
-MAPS_REMOTE_TAKEOVER=true
-MAPS_TAKEOVER_PUBLIC_BASE_URL=https://<authenticated-takeover-origin>
+MAPS_CREDENTIAL_SAFE_TRANSPORT=external
 MAPS_HEADLESS=true
-# 上記で説明したauthenticated HTTP principal boundaryも設定
+# authenticated HTTP principal boundaryとoperator surfaceは別途設定
 ```
 
-Human authority中もsame service instance内のChromium process/sessionは維持します。Agent-owned automation CDP/input authorityをdetach + fenceし、Thin Takeover Runtimeがintervention/epoch-boundなHuman CDP attachmentをPhase 1 JPEG screencast captureとbounded Human input専用で開きます。revoke時はactive frame streamをabortし、Human attachmentを閉じた後でfresh automation CDP attachmentとMaps readiness revalidationへ戻します。
+Co-locatedな物理Macでは `webrtc_takeover` がrecommended built-in mobile pathで、物理iPhone Safariにてsame-LAN direct WebRTC / cellular TURN relay、およびreal V5 Google sign-in recoveryまでacceptance済みです。`thin_takeover` はNative appの別物理acceptanceが完了するまでoptional / experimental siblingとして残します。どちらもhosted-browser vendor API keyは不要です。
 
-Phase 1はCPU/simple transportをbaselineにし、`Page.startScreencast` JPEGをdecode/re-encodeせず `FramePipeline` でpassthroughしてauthenticated broker streamへpushします。Phase 2ではHandoff authority contractを変えず、raw compositor/native frame、optional hardware encode、WebRTC video、DataChannel inputへ差し替え可能です。
-
-browser sessionはprocess/instance-localなので、instance終了・replacement時にはin-memory browser/Handoff sessionを失い、別instanceでresumeしたふりをせずfail closedします。現行single-browser deployment boundary（`concurrency=1`、`max-instances=1`）を維持し、Human control中のrestartはfresh workflowとして扱います。durable browser/profile strategyが必要でもtakeover authorityとは分離し、raw credentialをMCP/Handoff stateへ永続化しません。
-
-未実施のGoogle sign-in live acceptanceは別manual testのままで、このruntime実装だけでpass扱いにはしません。
+browser / Handoff authorityはprocess / worker-localのままです。instance終了・replacement時に別workerへresumeしたふりをせずfail closedします。durable browser/profile strategyが必要でもtakeover authorityとは分離し、raw credentialをMCP/Handoff stateへ永続化しません。
 
 ## Browser profile
 
