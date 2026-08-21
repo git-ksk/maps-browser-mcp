@@ -475,8 +475,7 @@ export class MapsBrowserRuntime {
 
   async suspendAutomationForCredentialSafeHumanControl(
     interventionId: string,
-    epoch: number,
-    options: { preserveBrowserSession?: boolean } = {}
+    epoch: number
   ): Promise<void> {
     const active = this.handoff.getActive();
     if (
@@ -494,10 +493,7 @@ export class MapsBrowserRuntime {
     await this.resetClient();
     this.endpoint = undefined;
     this.invalidateSemanticState(false);
-    if (!options.preserveBrowserSession) {
-      if (this.chrome.suspendForHuman) await this.chrome.suspendForHuman();
-      else await this.chrome.close();
-    }
+    await this.chrome.close();
   }
 
   async releaseHumanTakeoverConnection(interventionId: string, epoch: number): Promise<void> {

@@ -52,3 +52,20 @@ test("explicit cancellation cannot create a profile checkpoint", () => {
   assert.match(source, /cancelIntervention\(active\.id, owner\)/);
   assert.doesNotMatch(source, /stoppedProfileCheckpoint/);
 });
+
+
+test("credential-safe Human control has no hosted-CDP automation-browser exception", () => {
+  const start = server.indexOf("async function prepareHandoffPrompt");
+  const end = server.indexOf("async function revokeCredentialSafeSurface", start);
+  assert.ok(start >= 0 && end > start);
+  const source = server.slice(start, end);
+  assert.match(source, /credentialSafeHandoff\.transport === "hosted_cdp"/);
+  assert.match(source, /runtime\.cancelHumanIntervention/);
+  assert.match(source, /legacy hosted_cdp Human path is disabled/);
+  assert.doesNotMatch(source, /preserveBrowserSession/);
+  assert.match(source, /suspendAutomationForCredentialSafeHumanControl\(\s*intervention\.id,\s*intervention\.epoch\s*\)/);
+});
+
+test("access challenges use the same credential-safe Human boundary as sign-in and consent", () => {
+  assert.match(server, /CREDENTIAL_SAFE_REASONS[^\n]*"sign_in"[^\n]*"consent"[^\n]*"access_challenge"/);
+});

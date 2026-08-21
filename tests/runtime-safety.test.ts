@@ -208,12 +208,10 @@ test("credential-safe browser suspension keeps Human authority active while stop
 });
 
 
-test("Thin Takeover suspension detaches automation while preserving the same browser session", async () => {
-  let suspended = 0;
+test("credential-safe suspension always closes the automation browser before Human control", async () => {
   let closed = 0;
   const hosted = {
     async start() { return { kind: "browser_websocket" as const, websocketUrl: "wss://example.invalid/session" }; },
-    async suspendForHuman() { suspended += 1; },
     async close() { closed += 1; }
   };
   const policy = {
@@ -235,10 +233,9 @@ test("Thin Takeover suspension detaches automation while preserving the same bro
   assert.ok(awaiting);
   const human = runtime.claimHumanControl(awaiting.id);
 
-  await runtime.suspendAutomationForCredentialSafeHumanControl(human.id, human.epoch, { preserveBrowserSession: true });
+  await runtime.suspendAutomationForCredentialSafeHumanControl(human.id, human.epoch);
 
-  assert.equal(suspended, 0);
-  assert.equal(closed, 0);
+  assert.equal(closed, 1);
   assert.equal(runtime.getActiveIntervention()?.authority, "human");
 });
 

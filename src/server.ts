@@ -182,7 +182,7 @@ const expectedListLabelText = z.string().trim().min(1).max(160);
 const expectedDeviceLabelText = z.string().trim().min(1).max(160);
 const handoffDecisionSchema = z.object({ decision: z.enum(["continue", "cancel"]) });
 const actionApprovalDecisionSchema = z.object({ decision: z.enum(["approve", "cancel"]) });
-const CREDENTIAL_SAFE_REASONS = new Set<MapsIntervention["reason"]>(["sign_in", "consent"]);
+const CREDENTIAL_SAFE_REASONS = new Set<MapsIntervention["reason"]>(["sign_in", "consent", "access_challenge"]);
 
 function jsonResult(value: unknown): CallToolResult {
   return {
@@ -300,18 +300,11 @@ function credentialSafePrompt(
     ? `Open the Native Takeover app and use this short-lived Native-only locator:\n${surface.locator}\n\nDo not use the locator as a Web takeover page; legacy Web bootstrap/frame/input are disabled for this Human session.`
     : surface.providerKind === "webrtc-takeover" && /^https?:\/\//i.test(surface.locator)
       ? `Open this short-lived WebRTC takeover locator in iPhone Safari:\n${surface.locator}\n\nControl only the dedicated Chrome window directly with tap/swipe and the iOS keyboard. Legacy button-driven frame/input takeover is disabled for this Human session.`
-      : surface.providerKind === "hosted-browser-takeover" && /^https?:\/\//i.test(surface.locator)
-        ? `Open this short-lived hosted browser takeover locator in Safari:\n${surface.locator}\n\nThe page exposes only the bounded browser frame/input surface for this intervention; it does not expose CDP, cookies, DOM, network data, or an address bar.`
-        : /^https?:\/\//i.test(surface.locator)
+      : /^https?:\/\//i.test(surface.locator)
           ? `Open the configured Human access surface:\n${surface.locator}`
           : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
-  const hosted = surface.providerKind === "hosted-browser-takeover";
-  const ownership = hosted
-    ? "Agent CDP authority is detached and fenced while the same dedicated hosted Chromium session is controlled only through the Human-bound takeover adapter."
-    : "Automation control is fully detached and the same dedicated local profile is open in normal Chrome without agent-owned CDP/remote-debugging authority.";
-  const recovery = hosted
-    ? "Choose Continue after the browser-side step is complete. The broker generation and Human CDP authority are revoked first; sign-in is then verified from a fresh Agent CDP connection. When a stopped-profile deployment checkpoint is configured, Chromium is cleanly stopped and the verified signed-in profile is persisted before the intervention becomes resumable. Stale pre-auth actions are not replayed."
-    : "Choose Continue after the browser-side step is complete. Human authority is revoked and the normal browser is closed before automation establishes a fresh Chrome process/CDP attachment and readiness check; stale pre-auth actions are not replayed.";
+  const ownership = "Automation control is fully detached, the automation browser process is stopped, and the same dedicated profile is opened in a normal browser without agent-owned CDP/remote-debugging/automation authority.";
+  const recovery = "Choose Continue after the browser-side step is complete. Human authority is revoked and the normal browser is closed before automation establishes a fresh Chrome process/CDP attachment and readiness check; stale pre-auth actions are not replayed.";
   return [
     base,
     ownership,
@@ -323,16 +316,25 @@ function credentialSafePrompt(
 }
 
 async function prepareHandoffPrompt(intervention: MapsIntervention, owner: HandoffOwner): Promise<string> {
+  if (config.credentialSafeHandoff.transport === "hosted_cdp") {
+    takeoverBroker.revokeForIntervention(intervention.id);
+    const active = runtime.getActiveIntervention();
+    if (active?.id === intervention.id) runtime.cancelHumanIntervention(intervention.id);
+    handoffOwners.delete(intervention.id);
+    clearHandoffCheckpoint(owner);
+    throw new BrowserRuntimeError(
+      "BROWSER_UNAVAILABLE",
+      "Human browser control requires the automation browser to stop and the same dedicated profile to open in a normal browser without remote-debugging or automation authority. The legacy hosted_cdp Human path is disabled until the Linux normal-browser WebRTC runtime is available."
+    );
+  }
   if (
     credentialSafeSurface &&
     selectHumanSurface(intervention.reason, CREDENTIAL_SAFE_REASONS) === "credential_safe_external"
   ) {
     takeoverBroker.revokeForIntervention(intervention.id);
-    const preserveBrowserSession = config.credentialSafeHandoff.transport === "hosted_cdp";
     await runtime.suspendAutomationForCredentialSafeHumanControl(
       intervention.id,
-      intervention.epoch,
-      { preserveBrowserSession }
+      intervention.epoch
     );
     const surface = await credentialSafeSurface.begin(intervention, owner.principalBinding);
     return credentialSafePrompt(intervention, surface);
@@ -348,9 +350,6 @@ async function revokeCredentialSafeSurface(interventionId: string, owner: Handof
     external.epoch,
     owner.principalBinding
   );
-  if (external.providerKind === "hosted-browser-takeover") {
-    await runtime.releaseHumanTakeoverConnection(external.interventionId, external.epoch);
-  }
   return external.providerKind;
 }
 
@@ -948,7 +947,7 @@ export function buildServer(): McpServer {
     server.registerTool(
       "maps_request_human_sign_in",
       {
-        description: "Request a Human-only Google Maps sign-in ceremony when the dedicated session is signed out. This tool never clicks Sign in, selects an account, enters credentials/MFA, reads account identity, or exports session material. With credential-safe handoff enabled it uses the configured Human-only surface. Hosted-CDP deployments fence Agent authority, use the bounded authenticated takeover broker, verify sign-in from a fresh Agent connection, and may checkpoint the stopped signed-in profile before requiring a fresh readiness read.",
+        description: "Request a Human-only Google Maps sign-in ceremony when the dedicated session is signed out. This tool never clicks Sign in, selects an account, enters credentials/MFA, reads account identity, or exports session material. With credential-safe handoff enabled, supported Human transports stop the automation browser and open the same dedicated profile in a normal browser without agent-owned remote-debugging/automation authority before Human control begins. The legacy hosted_cdp Human path fails closed until the Linux normal-browser WebRTC runtime is available.",
         inputSchema: z.object({}),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
       },

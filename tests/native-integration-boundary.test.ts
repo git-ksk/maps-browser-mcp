@@ -55,11 +55,13 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
   assert.match(nativeBoundary, /\{ processId: request\.targetProcessId \}/);
   assert.match(webRtcBoundary, /\{ processId: request\.targetProcessId \}/);
   assert.match(provider, /await this\.browser\.close\(\)/);
-  assert.match(server, /const preserveBrowserSession = config\.credentialSafeHandoff\.transport === "hosted_cdp"/);
+  assert.doesNotMatch(server, /preserveBrowserSession/);
   assert.match(
     server,
-    /suspendAutomationForCredentialSafeHumanControl\(\s*intervention\.id,\s*intervention\.epoch,\s*\{ preserveBrowserSession \}\s*\)/
+    /suspendAutomationForCredentialSafeHumanControl\(\s*intervention\.id,\s*intervention\.epoch\s*\)/
   );
+  assert.match(server, /legacy hosted_cdp Human path is disabled/);
+  assert.match(server, /automation browser process is stopped/);
   assert.doesNotMatch(server, /preserveBrowserSession:\s*config\.credentialSafeHandoff\.transport === "thin_takeover"/);
   assert.doesNotMatch(server, /preserveBrowserSession:\s*config\.credentialSafeHandoff\.transport === "webrtc_takeover"/);
 });

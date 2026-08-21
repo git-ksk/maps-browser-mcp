@@ -5,7 +5,6 @@ export type BrowserAutomationEndpoint =
 export interface BrowserSessionOwner {
   readonly kind?: string;
   start(): Promise<number | BrowserAutomationEndpoint>;
-  suspendForHuman?(): Promise<void>;
   close(): Promise<void>;
 }
 
