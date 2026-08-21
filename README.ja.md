@@ -482,7 +482,7 @@ Project scope内のcontributionは歓迎です。PR前に **[Contributing 日本
 
 ## Release Status
 
-Repository metadataはv0.3.3 release candidateとして `0.3.3` へ更新済みです。v0.3.3のsequential V5 release gate完了とexact tested `main` commitへのtag作成までは、最新公開安定版は **v0.3.2** のままです。V5-A〜V5-Dはauthenticated-workflow Opt-in配下でdefault無効を維持し、`maps-browser-mcp` はnpm未公開のままです。
+現在のrelease baselineは **v0.3.3**、repository metadataは `0.3.3` です。V5-A〜V5-Dはauthenticated-workflow Opt-in配下でdefault無効、WebRTC Human takeoverもoptionalのままです。`maps-browser-mcp` はnpm未公開のため、安定版sourceはGitHub tag / Releaseを使用してください。
 
 Tag / publish前は **[Release Checklist 日本語版](docs/release.ja.md)** を参照してください。
 

@@ -6,6 +6,10 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [v0.3.3] - 2026-08-21
+
 ### Added
 
 - Add the opt-in `webrtc_takeover` credential-safe Human transport for single-user macOS deployments. It opens the same dedicated profile in normal Chrome, binds Handoff capture/input to the exact Chrome PID/window, exposes a short-lived Safari locator, and keeps WebRTC signaling/RTP/DataChannel, ICE/TURN, framebuffer bytes, and raw Human input outside Maps.

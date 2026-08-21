@@ -4,29 +4,25 @@ This page explains how to choose between a stable release and the current `main`
 
 ## Latest stable release
 
-The release baseline documented here is **v0.3.2**. The GitHub tag/Release is the authoritative record for the exact tested release commit.
+The latest stable release is **v0.3.3**. The GitHub tag/Release is the authoritative record for the exact tested release commit.
 
-- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.2
+- Release: https://github.com/git-ksk/maps-browser-mcp/releases/tag/v0.3.3
 - Draft: no
 - Prerelease: no
 - npm: **not published**
 
-v0.3.2 hardens credential-safe Cua focus handling and the live V5-C existing-list Save activation/postcondition path, then re-runs the sequential V5-A through V5-D release gate on the dedicated signed-in profile. The approved Send-to-phone path issued one MCP-side device activation with no retry and the Human confirmed iPhone arrival; three identical downstream iOS notifications were observed from that single activation and are recorded as an external delivery-duplication observation. v0.3.0 introduced the bounded V5 authenticated-workflow slices (A–D) behind the existing fail-closed opt-in, while v0.3.1 synchronized the top-level README tool inventory. V5 remains disabled by default, account-backed automation remains single-user/dedicated-profile only, and npm remains unpublished.
+v0.3.3 adds the opt-in credential-safe WebRTC Human takeover path for single-user macOS deployments, pins the physically accepted Handoff runtime, and adds an end-user macOS + iPhone Safari setup guide. WebRTC remains optional for V5: an already signed-in persistent dedicated profile can use the bounded authenticated tools without remote takeover.
+
+The changed handoff boundary was physically accepted from fresh `signed_out` through Human-only Google sign-in, Done/revoke + stale-locator rejection, fresh automation attach, identity-free `signed_in`, and a bounded V5-B read. V5-C/V5-D mutation and action-approval implementation files are unchanged from the v0.3.2 live evidence, so v0.3.3 reuses that exact C/D evidence under the impact-based release gate rather than issuing another account mutation or device send.
 
 For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
-
-## Current `main` / v0.3.3 release candidate
-
-Repository metadata on the current release-candidate branch is `0.3.3`. This candidate adds the first-class credential-safe WebRTC Human takeover path, pins the physically accepted Handoff runtime/documentation, and adds an end-user macOS + iPhone Safari setup guide. The real `signed_out` -> Human-only Google sign-in -> revoke/stale-locator fence -> fresh `signed_in` -> bounded V5-B read acceptance has passed. WebRTC remains optional for V5: an already signed-in persistent dedicated profile can use the bounded authenticated tools without remote takeover.
-
-**v0.3.3 is not a published release yet.** The release checklist still requires the sequential V5-A through V5-D gate, including separately approved V5-C Save and V5-D send mutations, before tagging the exact tested `main` commit.
 
 ## Stable checkout
 
 If you want the exact source that was validated and released, check out the release tag:
 
 ```bash
-git clone --branch v0.3.2 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
+git clone --branch v0.3.3 --depth 1 https://github.com/git-ksk/maps-browser-mcp.git
 cd maps-browser-mcp
 npm ci --ignore-scripts
 npm run build

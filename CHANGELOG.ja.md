@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [v0.3.3] - 2026-08-21
+
 ### 追加
 
 - Single-user macOS向けにopt-inの `webrtc_takeover` credential-safe Human transportを追加。同じdedicated profileをnormal Chromeで開き、Handoffのcapture/inputをexact Chrome PID/windowへbindし、短命Safari locatorだけを公開します。WebRTC signaling / RTP / DataChannel、ICE/TURN、framebuffer、raw Human inputはMapsへ持ち込みません。

@@ -114,15 +114,29 @@ Do not deliberately trigger or attempt to bypass CAPTCHA, consent, sign-in, or a
 
 For documentation-only or obviously non-runtime changes, a new live Maps run is normally unnecessary unless the live compatibility baseline is already in doubt.
 
-## 6.1. Sequential V5 release gate for v0.3.2+
+## 6.1. Impact-based V5 live release gate for v0.3.2+
 
-For releases that change V5 authenticated workflows, credential-safe handoff, existing-list Save, or Send to phone, run these live checks sequentially against the same dedicated profile before version/tag work is considered release-complete:
+Use the live V5 gate according to the release impact. Do not repeat an account mutation or device send merely because an unrelated credential-handoff transport changed.
+
+The canonical slices remain:
 
 1. **V5-A readiness:** fresh Maps surface, identity-free `signed_in` only. Never record account identity.
 2. **V5-B save-state read:** one public place, bounded existing-list membership read, no private list labels in public logs.
 3. **V5-C existing-list Save:** require one exact safe target. A clearly test-purpose list is preferred; a Human may explicitly authorize one existing list instead. Perform exactly one save activation, never create/delete/unsave, and require a fresh read confirming the same hidden target as `saved=true`.
 4. **V5-D Cancel:** fresh simple route + bounded device read, request explicit approval, Cancel once, and verify no send action.
 5. **V5-D approved send:** reacquire route/device state from scratch, obtain a new exact Human approval, activate the exact device once, never automatically retry after ambiguous postcondition, and ask the Human to confirm physical arrival.
+
+Run the **full A -> D sequence** when the release changes V5-C/V5-D mutation code, action-approval semantics, save-list/route/device extraction or postconditions, mutation dispatch, or shared runtime/state logic that can change those actions.
+
+For a **credential-safe handoff-only or pre-auth transport change**, rerun the live path through fresh automation recovery and at least V5-A + V5-B. Prior V5-C/V5-D evidence may be reused only when all of the following are recorded in `docs/manual-e2e.md` for the release:
+
+- the exact prior release/evidence being reused;
+- the V5-C/V5-D and action-approval implementation files are unchanged from that evidence baseline;
+- any shared runtime changes are reviewed as non-mutation mechanics and the deterministic C/D tests still pass;
+- the changed handoff path reaches fresh `signed_in` and a bounded V5-B read after revoke/re-attach;
+- no release claim implies that a skipped mutation/send was newly re-executed.
+
+This reuse rule deliberately minimizes unnecessary account mutations and device sends while keeping live coverage on the changed boundary. If impact is ambiguous, use the full sequence.
 
 If one approved MCP activation results in duplicated downstream platform notifications, record the observation separately. The release gate must distinguish agent/MCP replay from downstream delivery duplication and must not issue an investigative re-send without a new Human approval.
 
