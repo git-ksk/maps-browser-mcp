@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isLoopbackBind, loadConfig } from "../src/config.js";
+import { isLoopbackBind, loadConfig, validateWebRtcPlatformDisplay } from "../src/config.js";
 
 const KEYS = [
   "MCP_HTTP_HOST",
@@ -38,6 +38,7 @@ const KEYS = [
   "MAPS_NATIVE_TAKEOVER_REVOKE_EXECUTABLE",
   "MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE",
   "MAPS_WEBRTC_TAKEOVER_DISPLAY_ID",
+  "MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME",
   "STEEL_API_KEY",
   "STEEL_BASE_URL",
   "MAPS_STEEL_PROFILE_ID",
@@ -476,7 +477,11 @@ test("stopped browser profile checkpoint module is deployment-only and absolute"
   });
 });
 
-test("WebRTC Takeover requires the authenticated broker and a Handoff-owned macOS helper", async () => {
+test("WebRTC Takeover requires the authenticated broker and a Handoff-owned platform helper", async () => {
+  const platformDisplayEnv = process.platform === "linux"
+    ? { MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME: ":99" }
+    : { MAPS_WEBRTC_TAKEOVER_DISPLAY_ID: "7" };
+
   await withEnv({
     MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
     MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
@@ -494,12 +499,18 @@ test("WebRTC Takeover requires the authenticated broker and a Handoff-owned macO
     MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
     MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
     MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-webrtc-host",
-    MAPS_WEBRTC_TAKEOVER_DISPLAY_ID: "7"
+    ...platformDisplayEnv
   }, () => {
     const config = loadConfig();
     assert.equal(config.credentialSafeHandoff.transport, "webrtc_takeover");
     assert.equal(config.credentialSafeHandoff.webRtcRuntime?.hostExecutable, "/opt/thin/takeover-webrtc-host");
-    assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, 7);
+    if (process.platform === "linux") {
+      assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayName, ":99");
+      assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, undefined);
+    } else {
+      assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, 7);
+      assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayName, undefined);
+    }
     assert.equal(config.takeover.enabled, true);
   });
 
@@ -510,10 +521,23 @@ test("WebRTC Takeover requires the authenticated broker and a Handoff-owned macO
     MAPS_REMOTE_TAKEOVER: "true",
     MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
     MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
-    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "relative/takeover-webrtc-host"
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "relative/takeover-webrtc-host",
+    ...platformDisplayEnv
   }, () => {
     assert.throws(() => loadConfig(), /must be an absolute path/);
   });
+});
+
+
+test("WebRTC platform display config supports macOS display ids and Linux X11 display names only", () => {
+  assert.deepEqual(validateWebRtcPlatformDisplay("darwin", 7, undefined), { displayId: 7 });
+  assert.deepEqual(validateWebRtcPlatformDisplay("linux", undefined, ":99"), { displayName: ":99" });
+  assert.deepEqual(validateWebRtcPlatformDisplay("linux", undefined, ":99.0"), { displayName: ":99.0" });
+  assert.throws(() => validateWebRtcPlatformDisplay("linux", undefined, undefined), /DISPLAY_NAME is required/);
+  assert.throws(() => validateWebRtcPlatformDisplay("linux", 7, ":99"), /DISPLAY_ID is macOS-only/);
+  assert.throws(() => validateWebRtcPlatformDisplay("darwin", undefined, ":99"), /DISPLAY_NAME is Linux-only/);
+  assert.throws(() => validateWebRtcPlatformDisplay("linux", undefined, "tcp:99"), /local X11 display/);
+  assert.throws(() => validateWebRtcPlatformDisplay("win32", undefined, undefined), /only on macOS or Linux/);
 });
 
 test("keyless Thin Takeover requires the authenticated broker and rejects Steel provider settings", async () => {

@@ -37,11 +37,26 @@ test("explicit completion revokes Human authority before fresh verification and 
   const surfaceRevoke = source.indexOf("revokeCredentialSafeSurface");
   const markComplete = source.indexOf("runtime.markHumanControlComplete");
   const verify = source.indexOf("runtime.verifyCredentialSafeHumanIntervention");
-  const stop = source.indexOf("runtime.stopBrowserForProfileCheckpoint");
-  const checkpoint = source.indexOf("stoppedProfileCheckpoint");
+  const options = source.indexOf("credentialSafeVerificationOptions(active.id)");
   assert.ok(brokerRevoke >= 0 && surfaceRevoke > brokerRevoke);
-  assert.ok(markComplete > surfaceRevoke && verify > markComplete);
-  assert.ok(stop > verify && checkpoint > stop);
+  assert.ok(markComplete > surfaceRevoke && verify > markComplete && options > verify);
+
+  const helperStart = server.indexOf("function credentialSafeVerificationOptions");
+  const helperEnd = server.indexOf("const nativeCredentialTakeover", helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const helper = server.slice(helperStart, helperEnd);
+  const stop = helper.indexOf("runtime.stopBrowserForProfileCheckpoint");
+  const checkpoint = helper.indexOf("stoppedProfileCheckpoint");
+  assert.ok(stop >= 0 && checkpoint > stop);
+});
+
+
+test("deployment profile checkpoint is credential-safe-transport agnostic", () => {
+  assert.match(server, /credentialSafeProfileCheckpointEnabled = Boolean\(config\.browserProfileCheckpoint\.module\)/);
+  assert.match(server, /credentialSafeVerificationOptions\(active\.id\)/);
+  assert.match(server, /credentialSafeVerificationOptions\(state\.interventionId\)/);
+  assert.doesNotMatch(server, /usedHostedBrowserSurface/);
+  assert.doesNotMatch(server, /providerKind === "hosted-browser-takeover"[\s\S]{0,400}stoppedProfileCheckpoint/);
 });
 
 test("explicit cancellation cannot create a profile checkpoint", () => {

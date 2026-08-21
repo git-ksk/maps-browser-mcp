@@ -80,19 +80,22 @@ HTTP port precedence is:
 
 ## Credential-safe takeover with container deployments
 
-A container or Cloud Run instance may host the MCP/control plane and its process-owned Chromium automation. Credential-safe Human control still follows the same cross-platform rule: **stop the automation browser and open the same dedicated profile in a normal browser without remote-debugging/automation authority**. The current accepted WebRTC host is macOS-specific because its capture/input helper uses ScreenCaptureKit/CoreGraphics; Linux requires its own normal-browser capture/input helper behind the same Handoff WebRTC protocol.
+A container or Cloud Run instance may host the MCP/control plane and its process-owned Chromium automation. Credential-safe Human control follows the same cross-platform rule: **stop the automation browser and open the same dedicated profile in a normal browser without remote-debugging/automation authority**. The pinned Handoff release now includes a Linux X11/Xvfb normal-browser WebRTC host. Ubuntu/Xvfb acceptance passes exact-window capture, CPU H.264/WebRTC, tap, focused Human text delivered over helper stdin (not argv/clipboard/log), Enter, and bounded teardown. Cloud Run + physical-iPhone real Google sign-in acceptance is still required before production promotion.
 
-For a container deployment, keep the credential-safe transport explicit. Until the Linux normal-browser WebRTC host exists, use `external` or keep the profile pre-authenticated. The legacy `hosted_cdp` value is retained for rollout compatibility but **fails closed for Human credential/consent/challenge control**; it must not be used as a substitute for the normal-browser boundary.
+For Linux/container `webrtc_takeover`, provide an isolated local X11 display and the Handoff Linux helper executable/wrapper. `MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME` is required on Linux. The legacy `hosted_cdp` value remains disabled for Human credential/consent/challenge control.
 
 ```bash
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=external
-MAPS_CREDENTIAL_SAFE_OPERATOR_URL=https://human-browser.example.com
+MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover
+MAPS_REMOTE_TAKEOVER=true
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://maps-mcp.example.com
+MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=$PWD/node_modules/.bin/handoff-linux-webrtc-host
+MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99
 MAPS_HEADLESS=true
-# configure the authenticated HTTP principal and independent takeover-operator boundary
+# start the isolated X11 display/window manager before Maps; keep the public operator boundary authenticated
 ```
 
-The earlier `hosted_cdp` experiment fenced Agent authority but still let the Human operate the managed automation Chromium through a Human-owned CDP attachment. Physical Cloud Run/iPhone Safari acceptance showed that this is not equivalent to the accepted normal-browser handoff: Google rejected the sign-in surface as an insecure browser/app and the takeover degraded to the generic HTTP control UI. That path is therefore disabled for credential/consent/challenge Human steps. Linux work must instead provide exact-window normal-browser capture/input and reuse the Handoff WebRTC session, generation, TURN, revoke, and stale-client fencing.
+The earlier `hosted_cdp` experiment fenced Agent authority but still let the Human operate the managed automation Chromium through a Human-owned CDP attachment. Physical Cloud Run/iPhone Safari acceptance showed that this is not equivalent to the accepted normal-browser handoff: Google rejected the sign-in surface as an insecure browser/app and the takeover degraded to the generic HTTP control UI. That path is therefore disabled for credential/consent/challenge Human steps. Linux now provides exact-window normal-browser capture/input and reuses the Handoff WebRTC session, generation, TURN, revoke, and stale-client fencing. Production promotion still requires the real Cloud Run Google sign-in acceptance.
 
 On a co-located physical Mac, `webrtc_takeover` remains the recommended built-in low-latency mobile path and has passed physical iPhone Safari acceptance over same-LAN direct WebRTC and cellular TURN relay, including the real V5 Google sign-in recovery flow. `thin_takeover` remains an optional/experimental Native sibling pending its separate physical app acceptance. Neither path requires a hosted-browser vendor API key.
 
@@ -106,7 +109,7 @@ The image defaults to an ephemeral dedicated profile:
 /tmp/maps-browser-mcp/chrome-profile
 ```
 
-Override it with `MAPS_CHROME_PROFILE_DIR` only when you have a specific single-user persistence requirement. Never point the server at an everyday browser profile, and never share one profile across concurrent users or instances. The reference OAuth gateway can restore/checkpoint this stopped profile through `MAPS_PROFILE_SNAPSHOT_BUCKET`; live Chromium still runs only against local ephemeral storage. When that snapshot layer is enabled, the entrypoint automatically wires the deployment-only `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` so a freshly verified `hosted_cdp` sign-in is checkpointed before Handoff becomes resumable.
+Override it with `MAPS_CHROME_PROFILE_DIR` only when you have a specific single-user persistence requirement. Never point the server at an everyday browser profile, and never share one profile across concurrent users or instances. The reference OAuth gateway can restore/checkpoint this stopped profile through `MAPS_PROFILE_SNAPSHOT_BUCKET`; live Chromium still runs only against local ephemeral storage. When that snapshot layer is enabled, the entrypoint wires the deployment-only `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE`; after any credential-safe Human transport is revoked, a fresh Agent `signed_in` verification must succeed, then the automation browser is stopped and only that stopped profile may be checkpointed.
 
 ## Health and readiness
 

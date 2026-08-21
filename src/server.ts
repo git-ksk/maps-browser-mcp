@@ -107,6 +107,17 @@ const hostedBrowserCredentialTakeover = config.credentialSafeHandoff.enabled &&
   ? new HostedBrowserTakeoverProvider(takeoverBroker)
   : undefined;
 const stoppedProfileCheckpoint = createStoppedBrowserProfileCheckpointHook(config.browserProfileCheckpoint.module);
+const credentialSafeProfileCheckpointEnabled = Boolean(config.browserProfileCheckpoint.module);
+
+function credentialSafeVerificationOptions(interventionId: string) {
+  if (!credentialSafeProfileCheckpointEnabled) return undefined;
+  return {
+    beforeMarkVerified: async () => {
+      await runtime.stopBrowserForProfileCheckpoint(interventionId);
+      await stoppedProfileCheckpoint({ reason: "credential_safe_sign_in" });
+    }
+  };
+}
 const nativeCredentialTakeover = nativeTakeoverRuntime
   ? new NativeCredentialTakeoverBoundary(takeoverBroker)
   : undefined;
@@ -324,7 +335,7 @@ async function prepareHandoffPrompt(intervention: MapsIntervention, owner: Hando
     clearHandoffCheckpoint(owner);
     throw new BrowserRuntimeError(
       "BROWSER_UNAVAILABLE",
-      "Human browser control requires the automation browser to stop and the same dedicated profile to open in a normal browser without remote-debugging or automation authority. The legacy hosted_cdp Human path is disabled until the Linux normal-browser WebRTC runtime is available."
+      "Human browser control requires the automation browser to stop and the same dedicated profile to open in a normal browser without remote-debugging or automation authority. The legacy hosted_cdp Human path is disabled for credential-safe Human control; use a supported normal-browser transport such as webrtc_takeover."
     );
   }
   if (
@@ -540,21 +551,12 @@ async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
     takeoverBroker.revokeForIntervention(active.id);
     const currentSurface = credentialSafeSurface?.getActive();
     const usedCredentialSafeSurface = currentSurface?.interventionId === active.id;
-    const usedHostedBrowserSurface = usedCredentialSafeSurface &&
-      currentSurface?.providerKind === "hosted-browser-takeover";
     await revokeCredentialSafeSurface(active.id, owner);
     runtime.markHumanControlComplete(active.id);
     await operationQueue.run(() => usedCredentialSafeSurface
       ? runtime.verifyCredentialSafeHumanIntervention(
           active.id,
-          usedHostedBrowserSurface
-            ? {
-                beforeMarkVerified: async () => {
-                  await runtime.stopBrowserForProfileCheckpoint(active.id);
-                  await stoppedProfileCheckpoint({ reason: "credential_safe_sign_in" });
-                }
-              }
-            : undefined
+          credentialSafeVerificationOptions(active.id)
         )
       : runtime.verifyHumanIntervention(active.id));
   } catch (error) {
@@ -721,22 +723,13 @@ async function runToolWithHandoff<T>(input: {
   takeoverBroker.revokeForIntervention(state.interventionId);
   const activeCredentialSafeSurface = credentialSafeSurface?.getActive();
   const usedCredentialSafeSurface = activeCredentialSafeSurface?.interventionId === state.interventionId;
-  const usedHostedBrowserSurface = usedCredentialSafeSurface &&
-    activeCredentialSafeSurface?.providerKind === "hosted-browser-takeover";
   try {
     await revokeCredentialSafeSurface(state.interventionId, owner);
     runtime.markHumanControlComplete(state.interventionId);
     await operationQueue.run(() => usedCredentialSafeSurface
       ? runtime.verifyCredentialSafeHumanIntervention(
           state.interventionId,
-          usedHostedBrowserSurface
-            ? {
-                beforeMarkVerified: async () => {
-                  await runtime.stopBrowserForProfileCheckpoint(state.interventionId);
-                  await stoppedProfileCheckpoint({ reason: "credential_safe_sign_in" });
-                }
-              }
-            : undefined
+          credentialSafeVerificationOptions(state.interventionId)
         )
       : runtime.verifyHumanIntervention(state.interventionId));
   } catch (error) {
@@ -947,7 +940,7 @@ export function buildServer(): McpServer {
     server.registerTool(
       "maps_request_human_sign_in",
       {
-        description: "Request a Human-only Google Maps sign-in ceremony when the dedicated session is signed out. This tool never clicks Sign in, selects an account, enters credentials/MFA, reads account identity, or exports session material. With credential-safe handoff enabled, supported Human transports stop the automation browser and open the same dedicated profile in a normal browser without agent-owned remote-debugging/automation authority before Human control begins. The legacy hosted_cdp Human path fails closed until the Linux normal-browser WebRTC runtime is available.",
+        description: "Request a Human-only Google Maps sign-in ceremony when the dedicated session is signed out. This tool never clicks Sign in, selects an account, enters credentials/MFA, reads account identity, or exports session material. With credential-safe handoff enabled, supported Human transports stop the automation browser and open the same dedicated profile in a normal browser without agent-owned remote-debugging/automation authority before Human control begins. The legacy hosted_cdp Human path fails closed for credential-safe Human control; Linux/container deployments use the normal-browser webrtc_takeover path.",
         inputSchema: z.object({}),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
       },

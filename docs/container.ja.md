@@ -80,23 +80,22 @@ HTTP port は次の順番で決まります。
 
 ## Container deploymentとcredential-safe takeover
 
-Container / Cloud RunはMCP control planeとprocess-owned Chromium automationをhostできます。ただしcredential-safe Human controlの共通ルールは変わらず、**automation browserを停止し、same dedicated profileをremote-debugging / automation authorityなしのnormal browserで開く**必要があります。現在acceptance済みのWebRTC hostはScreenCaptureKit / CoreGraphicsを使うためmacOS専用で、Linuxには同じHandoff WebRTC protocolの背後で動くnormal-browser capture/input helperが必要です。
+Container / Cloud RunはMCP control planeとprocess-owned Chromium automationをhostできます。credential-safe Human controlの共通ルールは変わらず、**automation browserを停止し、same dedicated profileをremote-debugging / automation authorityなしのnormal browserで開く**必要があります。pin済みHandoffにはLinux X11/Xvfb normal-browser WebRTC hostが入り、Ubuntu/Xvfb acceptanceでexact-window capture、CPU H.264/WebRTC、tap、helper stdin経由のfocused Human text（argv / clipboard / logへ出さない）、Enter、bounded teardownまでPASSしています。ただしCloud Run + 物理iPhoneでのreal Google sign-in acceptanceは本番昇格前に別途必要です。
 
-Container deploymentではcredential-safe transportを明示します。
-
-- Linux normal-browser WebRTC hostが完成するまでは `external` または事前sign-in済みprofileを使う。legacy `hosted_cdp` はrollout互換のため残すが、Human credential / consent / challenge controlではfail closedし、normal-browser boundaryの代替には使わない。
-- Human surfaceをcontainer外で提供する場合は `external` を使う。
-- separate execution workerが必要な場合はHandoff control-plane / private-worker topologyを使う。
+Linux/container `webrtc_takeover` ではisolated local X11 displayとHandoff Linux helper executable/wrapperを用意します。Linuxでは `MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME` が必須です。legacy `hosted_cdp` はHuman credential / consent / challenge controlで引き続き無効です。
 
 ```bash
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
-MAPS_CREDENTIAL_SAFE_TRANSPORT=external
-MAPS_CREDENTIAL_SAFE_OPERATOR_URL=https://human-browser.example.com
+MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover
+MAPS_REMOTE_TAKEOVER=true
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://maps-mcp.example.com
+MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=$PWD/node_modules/.bin/handoff-linux-webrtc-host
+MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99
 MAPS_HEADLESS=true
-# authenticated HTTP principalと独立したtakeover-operator boundaryを別途設定
+# Maps起動前にisolated X11 display/window managerを起動し、public operator boundaryは認証必須
 ```
 
-以前の `hosted_cdp` experimentはAgent authorityをfenceしていましたが、Humanがmanaged automation ChromiumをHuman-owned CDP経由で操作する形でした。Cloud Run + iPhone Safariの物理acceptanceでは、Google sign-inが「安全でないbrowser/app」として拒否され、takeover UIもgeneric HTTP controlへdegradeすることを確認したため、credential / consent / challenge Human stepではこの経路を無効化します。Linux側はexact-window normal-browser capture/inputを実装し、HandoffのWebRTC session / generation / TURN / revoke / stale-client fencingを再利用します。
+以前の `hosted_cdp` experimentはAgent authorityをfenceしていましたが、Humanがmanaged automation ChromiumをHuman-owned CDP経由で操作する形でした。Cloud Run + iPhone Safariの物理acceptanceでは、Google sign-inが「安全でないbrowser/app」として拒否され、takeover UIもgeneric HTTP controlへdegradeすることを確認したため、credential / consent / challenge Human stepではこの経路を無効化します。Linux側はexact-window normal-browser capture/inputを実装済みで、HandoffのWebRTC session / generation / TURN / revoke / stale-client fencingを再利用します。本番昇格にはreal Cloud Run Google sign-in acceptanceが別途必要です。
 
 Co-locatedな物理Macでは `webrtc_takeover` がrecommended built-in low-latency mobile pathで、物理iPhone Safariにてsame-LAN direct WebRTC / cellular TURN relay、およびreal V5 Google sign-in recoveryまでacceptance済みです。`thin_takeover` はNative appの別物理acceptanceが完了するまでoptional / experimental siblingとして残します。どちらもhosted-browser vendor API keyは不要です。
 
@@ -110,7 +109,7 @@ browser / Handoff authorityはprocess / worker-localのままです。instance�
 /tmp/maps-browser-mcp/chrome-profile
 ```
 
-single-user で profile の永続化が本当に必要な場合のみ `MAPS_CHROME_PROFILE_DIR` で変更してください。普段使いの browser profile を指定したり、複数ユーザー・複数instanceで1つの profile を共有したりしないでください。Reference OAuth gatewayでは `MAPS_PROFILE_SNAPSHOT_BUCKET` により停止済みprofileをrestore/checkpointできますが、live Chromiumはlocal ephemeral storageだけを使います。このsnapshot layer有効時はentrypointがdeployment-onlyな `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` を自動配線し、fresh verification済み `hosted_cdp` sign-inをHandoff resume前にcheckpointします。
+single-user で profile の永続化が本当に必要な場合のみ `MAPS_CHROME_PROFILE_DIR` で変更してください。普段使いの browser profile を指定したり、複数ユーザー・複数instanceで1つの profile を共有したりしないでください。Reference OAuth gatewayでは `MAPS_PROFILE_SNAPSHOT_BUCKET` により停止済みprofileをrestore/checkpointできますが、live Chromiumはlocal ephemeral storageだけを使います。このsnapshot layer有効時はentrypointがdeployment-onlyな `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` を配線します。credential-safe Human transportをrevokeした後にfresh Agent `signed_in` verificationが成功した場合だけautomation browserを停止し、そのstopped profileだけをcheckpointします。
 
 ## Health / Readiness
 

@@ -1,24 +1,24 @@
-# WebRTC Human Takeover — macOS + iPhone Safari
+# WebRTC Human Takeover — macOS/Linux + iPhone Safari
 
 [日本語](webrtc-human-takeover.ja.md)
 
-This is the recommended built-in **remote Human handoff** path for the current **single-user macOS** deployment. It is optional: V5 does **not** require WebRTC, Cloudflare, TURN, or any remote takeover when the dedicated Maps Chrome profile is already signed in. The simplest V5 deployment is a persistent dedicated profile that the Human signs into locally once; WebRTC is for later sign-in/re-authentication, consent, or challenge handling when the Human needs remote access. The normal Maps automation path remains unchanged until `MAPS_CREDENTIAL_SAFE_HANDOFF=true` and `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` are configured.
+This is the built-in **remote Human handoff** path for current single-user macOS and Linux/container deployments. It is optional: V5 does **not** require WebRTC, Cloudflare, TURN, or any remote takeover when the dedicated Maps Chrome profile is already signed in. The simplest V5 deployment is a persistent dedicated profile that the Human signs into locally once; WebRTC is for later sign-in/re-authentication, consent, or challenge handling when the Human needs remote access. The normal Maps automation path remains unchanged until `MAPS_CREDENTIAL_SAFE_HANDOFF=true` and `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` are configured.
 
-Physical acceptance has passed with a real Mac + iPhone Safari on both same-LAN direct WebRTC and cellular/4G TURN relay, including the V5 Google sign-in recovery sequence. The Human controls only the dedicated normal-Chrome window; Maps itself never receives framebuffer bytes, raw Human input, SDP/ICE candidates, TURN credentials, Google credentials, MFA values, cookies, or account identity.
+Physical acceptance has passed with a real Mac + iPhone Safari on both same-LAN direct WebRTC and cellular/4G TURN relay, including the V5 Google sign-in recovery sequence. The Linux host has separately passed Ubuntu/Xvfb acceptance for normal-browser exact-window capture/input, H.264/WebRTC, focused text over stdin, Enter, and teardown; Cloud Run + physical-iPhone real Google sign-in acceptance remains pending. The Human controls only the dedicated normal-Chrome window; Maps itself never receives framebuffer bytes, raw Human input, SDP/ICE candidates, TURN credentials, Google credentials, MFA values, cookies, or account identity.
 
 ## 1. Prerequisites
 
-- macOS host running Maps and the dedicated Chrome profile;
+- macOS or Linux host running Maps and the dedicated Chrome profile;
 - Node.js 20+ and the repository checkout;
-- Xcode Command Line Tools / Swift toolchain to build `takeover-webrtc-host`;
+- macOS: Xcode Command Line Tools / Swift toolchain to build `takeover-webrtc-host`, plus **Screen Recording** and **Accessibility** permission;
+- Linux: isolated X11/Xvfb display, a lightweight window manager, `xdotool`, and `ffmpeg`;
 - Chrome/Chromium managed by Maps, using a dedicated non-default profile;
-- macOS **Screen Recording** and **Accessibility** permission for the process that launches the Handoff helper;
 - an iPhone/iPad browser compatible with Safari WebRTC;
 - an **authenticated HTTPS operator origin** that proxies `/takeover/*` to the loopback Maps/Handoff core without exposing CDP or the loopback broker directly.
 
 The versioned [reference OAuth gateway](../reference/oauth-gateway/README.md) is the repository example for the current single-user public-auth/private-core topology. A custom gateway must preserve the same principal and takeover security boundaries.
 
-Current built-in capture/input execution is macOS-only. A Linux/Windows host or a standalone Cloud Run instance cannot act as the ScreenCaptureKit/input worker; see [Container / headless Linux](container.md).
+The built-in WebRTC runtime supports macOS and Linux with different platform helpers behind the same Handoff protocol. Windows remains unsupported. Linux/container details are documented in [Container / headless Linux](container.md).
 
 ## 2. Install and build the pinned Handoff helper
 
@@ -42,7 +42,15 @@ WEBRTC_HOST="$(swift build -c release --package-path "$HANDOFF_SWIFT_PACKAGE" --
 test -x "$WEBRTC_HOST"
 ```
 
-Keep `WEBRTC_HOST` as an absolute path for the Maps configuration.
+Keep `WEBRTC_HOST` as an absolute path for the Maps configuration. On Linux, use the pinned package binary instead of the Swift build:
+
+```bash
+WEBRTC_HOST="$PWD/node_modules/.bin/handoff-linux-webrtc-host"
+test -x "$WEBRTC_HOST"
+export MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99
+```
+
+The Linux display must be a local isolated X11 display owned by the same single-user runtime.
 
 ## 3. Configure the Maps core
 
@@ -106,7 +114,8 @@ Do not enable raw candidate, SDP, address, framebuffer, or Human-input logging t
 
 ## 7. Current limitations
 
-- macOS is required for the built-in WebRTC host runtime;
+- macOS and Linux are supported by separate Handoff helpers; Windows is not supported;
+- Linux Cloud Run real Google sign-in still requires physical iPhone acceptance before production promotion;
 - the iOS software keyboard can still obscure part of the remote target in some layouts;
 - adaptive portrait/landscape target sizing and polished explicit reload/reconnect UX are follow-up work in upstream Handoff issue #17;
 - do not rely on browser reload to preserve an active lease. If the Human surface cannot recover explicitly, revoke/reissue a fresh takeover rather than trying to bypass generation fencing;

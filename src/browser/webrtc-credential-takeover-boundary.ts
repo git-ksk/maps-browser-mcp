@@ -7,8 +7,8 @@ export class WebRtcCredentialTakeoverBoundary implements CredentialTakeoverBound
     private readonly broker: TakeoverBroker,
     platform: NodeJS.Platform = process.platform
   ) {
-    if (platform !== "darwin") {
-      throw new Error("WebRTC credential takeover currently requires a macOS host runtime");
+    if (platform !== "darwin" && platform !== "linux") {
+      throw new Error("WebRTC credential takeover requires a macOS or Linux host runtime");
     }
   }
 

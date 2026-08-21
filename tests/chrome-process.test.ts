@@ -51,3 +51,17 @@ test("browser child environment strips server-side secret material", () => {
     SAFE_FEATURE_FLAG: "1"
   });
 });
+
+
+test("browser child environment preserves the local graphical environment while stripping secrets", () => {
+  const env = buildBrowserProcessEnv({
+    DISPLAY: ":99",
+    XDG_RUNTIME_DIR: "/tmp/runtime",
+    MAPS_OPERATOR_SECRET: "must-not-leak",
+    HOME: "/home/mcp"
+  });
+  assert.equal(env.DISPLAY, ":99");
+  assert.equal(env.XDG_RUNTIME_DIR, "/tmp/runtime");
+  assert.equal(env.HOME, "/home/mcp");
+  assert.equal(env.MAPS_OPERATOR_SECRET, undefined);
+});

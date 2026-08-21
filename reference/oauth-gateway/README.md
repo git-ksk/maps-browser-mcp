@@ -102,7 +102,11 @@ MCP_TAKEOVER_OPERATOR_SECRET=<independent 32+ byte secret>
 MCP_TAKEOVER_OPERATOR_SESSION_SECONDS=900
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
 MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover
+MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99
+MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=/app/node_modules/.bin/handoff-linux-webrtc-host
 ```
+
+The reference container starts an isolated local Xvfb/Openbox surface only when `webrtc_takeover` is selected. It listens on no X11 TCP socket, and Handoff scopes capture/input to the exact normal-browser PID/window.
 
 Use a different secret for `MCP_TAKEOVER_OPERATOR_SECRET` and `MCP_OAUTH_TRANSACTION_SECRET`. The core child process receives only `MCP_CORE_BEARER_TOKEN` as its private HTTP auth token.
 
@@ -184,7 +188,7 @@ A `1Gi` instance was observed to cross its memory limit during repeated headless
 
 The default container Chrome profile is ephemeral. That is acceptable for protocol/transport dogfood and a disposable signed-out Google acceptance run, but it is **not durable signed-in Maps state**. If persistent authenticated Maps workflows are required later, use a controlled single-user runtime with an appropriate persistent profile strategy and the same V5 isolation rules.
 
-## Thin Takeover pre-Google acceptance checklist
+## WebRTC normal-browser pre-Google acceptance checklist
 
 Before entering any real target Google credential:
 
@@ -219,7 +223,7 @@ MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
 
 `MAPS_PROFILE_SNAPSHOT_REQUIRED=false` is the default. A first boot with no object therefore starts with an empty dedicated profile. Set it to `true` only when an operator intentionally wants a missing/invalid snapshot to prevent startup.
 
-For `MAPS_CREDENTIAL_SAFE_TRANSPORT=hosted_cdp`, the entrypoint automatically wires `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` to the reference checkpoint provider whenever `MAPS_PROFILE_SNAPSHOT_BUCKET` is configured. The sign-in flow revokes the Human broker/CDP authority, verifies `signed_in` from a fresh Agent CDP attachment, cleanly stops Chromium, and checkpoints the profile **before** Handoff becomes resumable. A checkpoint failure therefore fails the intervention closed instead of silently accepting an unpersisted sign-in.
+Whenever `MAPS_PROFILE_SNAPSHOT_BUCKET` is configured, the entrypoint automatically wires `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` to the reference checkpoint provider. This is credential-safe-transport agnostic: after the Human surface is revoked and the normal Human browser is closed, Maps verifies `signed_in` from a fresh Agent CDP attachment, cleanly stops the Agent browser, and checkpoints the profile **before** Handoff becomes resumable. A checkpoint failure therefore fails the intervention closed instead of silently accepting an unpersisted sign-in. Legacy `hosted_cdp` remains disabled for credential-safe Human control.
 
 The snapshot helper:
 

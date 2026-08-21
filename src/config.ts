@@ -31,6 +31,32 @@ function envOptionalInt(name: string, min: number, max: number): number | undefi
   return parsed;
 }
 
+export function validateWebRtcPlatformDisplay(
+  platform: NodeJS.Platform,
+  displayId: number | undefined,
+  displayName: string | undefined
+): { displayId?: number; displayName?: string } {
+  if (displayName !== undefined && !/^:\d+(?:\.\d+)?$/.test(displayName)) {
+    throw new Error("MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME must be a local X11 display such as :99");
+  }
+  if (platform === "linux") {
+    if (!displayName) {
+      throw new Error("MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME is required for Linux webrtc_takeover");
+    }
+    if (displayId !== undefined) {
+      throw new Error("MAPS_WEBRTC_TAKEOVER_DISPLAY_ID is macOS-only; use MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME on Linux");
+    }
+    return { displayName };
+  }
+  if (platform === "darwin") {
+    if (displayName !== undefined) {
+      throw new Error("MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME is Linux-only");
+    }
+    return displayId === undefined ? {} : { displayId };
+  }
+  throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover is supported only on macOS or Linux hosts");
+}
+
 function normalizeHostname(value: string): string {
   let normalized = value.trim().toLowerCase();
   if (normalized.startsWith("[") && normalized.endsWith("]")) {
@@ -176,6 +202,7 @@ export interface AppConfig {
     webRtcRuntime?: {
       hostExecutable: string;
       displayId?: number;
+      displayName?: string;
     };
     nativeRuntime?: {
       hostExecutable: string;
@@ -353,9 +380,14 @@ export function loadConfig(): AppConfig {
     if (credentialSafeOperatorUrl) {
       throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL cannot be combined with MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover because the Handoff broker issues the operator locator");
     }
+    const platformDisplay = validateWebRtcPlatformDisplay(
+      process.platform,
+      envOptionalInt("MAPS_WEBRTC_TAKEOVER_DISPLAY_ID", 1, 4_294_967_295),
+      process.env.MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME?.trim() || undefined
+    );
     webRtcRuntime = {
       hostExecutable: requiredAbsolutePath("MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE"),
-      displayId: envOptionalInt("MAPS_WEBRTC_TAKEOVER_DISPLAY_ID", 1, 4_294_967_295)
+      ...platformDisplay
     };
   }
   if (credentialSafeTransportMode === "thin_takeover") {
