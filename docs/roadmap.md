@@ -6,6 +6,10 @@ This roadmap records likely directions for `maps-browser-mcp`. It is not a commi
 
 ## Current baseline
 
+The current stable source release is **v0.3.3**. The product baseline now includes the completed V4 unauthenticated semantic coverage, V5-A through V5-D bounded authenticated workflows, and the optional credential-safe Human Handoff path used for later sign-in/re-authentication when a dedicated profile is not already signed in.
+
+V5 does **not** require WebRTC, Cloudflare, TURN, or any remote takeover product. The simplest deployment remains a persistent dedicated Chrome profile that a Human signs into locally. WebRTC Handoff is an optional recovery/credential ceremony transport, not a prerequisite for authenticated Maps tools.
+
 The current server intentionally separates two operating modes:
 
 - **Navigation-only** — open Google Maps search, directions, map, and Street View surfaces without reading rendered Maps content.
@@ -42,7 +46,7 @@ V4 was delivered in reviewable slices:
 
 Login-required capability stays out of V4 and moves to V5. Consent, sign-in, CAPTCHA, or access challenges that occur naturally continue to stop at the existing Human Intervention boundary; they are never bypassed and completing human intervention does not approve a different semantic action.
 
-Maps now consumes the extracted `mcp-execution-handoff` formal upstream at the immutable v0.1.0 source-release commit. The two-real-adapter validation with Japan Cinema is complete. This integration does not generalize the Maps server into a browser/desktop/shell MCP.
+Maps consumes the extracted `mcp-execution-handoff` upstream through an immutable dependency pin. The v0.3.3 baseline includes the physically accepted Handoff-owned Safari WebRTC path for same-LAN direct and cellular TURN relay, while Maps itself remains transport-blind and owns only the Maps-specific Human-intervention lifecycle. The two-real-adapter validation with Japan Cinema is complete. This integration does not generalize the Maps server into a browser/desktop/shell MCP.
 
 ### Initial V4 implementation slice (completed)
 
@@ -146,21 +150,32 @@ See [MCP Apps portability and deployment](mcp-apps.md) for the canonical contrac
 
 ## Pre-v1 release progression
 
-The current planning sequence maps the remaining major pre-v1 work to release themes. These are planning targets rather than promises to ship every listed item in a specific release. Scope may move when live Google Maps Web behavior, MCP host support, or security constraints require it.
+The roadmap is now organized around completed capability baselines and the next evidence-driven release themes. Version labels are planning targets rather than promises; scope may move when live Google Maps Web behavior, MCP host support, or safety constraints require it.
 
-- **v0.3.0 — V5 authenticated workflows + clean remote-auth foundation**
-  - Implement V5 in the staged order below rather than enabling broad signed-in browser automation.
-  - The clean external OAuth reference gateway tracked in issue #74 is complete: the versioned isolated implementation provides the Maps-specific OAuth boundary plus loopback private hop, MCP Runtime/ChatGPT dogfood and reconnect validation passed, the historical Monokura-derived services were retired after traffic verification, and #74 is closed.
-- **v0.4.0 — MCP Apps production portability**
-  - Re-validate the existing host-neutral MCP Apps surface on a suitable second production host with a real restricted Google Maps Embed key.
-  - Reconsider the experimental UI label only after production-host evidence; preserve useful text/structured fallback and avoid turning rich UI into a core requirement.
-- **v0.5.0 — reliability, UI-change resilience, and observability**
-  - Strengthen detection and diagnosis of Google Maps Web UI drift while preserving fail-closed behavior.
-  - Improve shared semantic identity/postcondition machinery, failure classification, live compatibility evidence, and locale/A-B-variation resilience without widening into generic browser automation.
+### Completed — v0.3.x capability baseline
 
-Later pre-v1 releases remain intentionally open for evidence-driven semantic capability gaps or hardening discovered through real use. **v1.0.0 is not reserved for a final feature dump**: it should graduate an already-complete, bounded, documented, and operationally mature product surface to stable status.
+- **V4 unauthenticated semantic coverage** — complete through V4-F closeout.
+- **V5-A through V5-D authenticated workflows** — implemented behind fail-closed opt-in / Interactive Assist boundaries; V5-E History remains intentionally blocked/evaluated rather than silently broadened.
+- **Clean remote-auth / OAuth reference boundary** — complete; the isolated Maps-specific OAuth gateway and loopback private hop are established and the historical derived service was retired.
+- **Credential-safe Human Handoff** — v0.3.3 adds the optional Safari WebRTC path with physical same-LAN direct and cellular TURN acceptance, exact-window fencing, revoke/stale-locator rejection, and real Human-only Google sign-in recovery through fresh `signed_in` + bounded V5-B read.
 
-## V5 / v0.3.0 — authenticated Google Maps Web workflows
+### Next — v0.4.0: MCP Apps production portability
+
+- Re-validate the existing host-neutral MCP Apps surface on a suitable **second production host** with a real restricted Google Maps Embed key.
+- Verify the real render path, CSP/sandbox behavior, lifecycle, and text/structured fallback without making rich UI a core requirement.
+- Reconsider the `experimental` UI label only after production-host evidence is recorded.
+
+### Then — v0.5.0: reliability, UI-change resilience, and observability
+
+- Strengthen detection and diagnosis of Google Maps Web UI drift while preserving fail-closed behavior.
+- Improve shared semantic identity/postcondition machinery, failure classification, live compatibility evidence, and locale/A-B-variation resilience.
+- Keep diagnostics bounded and privacy-safe; do not widen the MCP surface into generic browser automation.
+
+### Toward v1.0.0
+
+Later pre-v1 releases remain intentionally open for evidence-driven semantic capability gaps or hardening discovered through real use. **v1.0.0 is not reserved for a final feature dump**: it should graduate an already-complete, bounded, documented, operationally mature product surface to stable status.
+
+## V5 — authenticated Google Maps Web workflows
 
 V5 is defined as **bounded authenticated Google Maps Web workflows, starting with read-oriented and low-consequence reversible account state**. V5-A through V5-D are implemented behind the existing fail-closed opt-in/Interactive Assist boundaries; V5-E has been evaluated as a privacy/browser-surface gate and intentionally adds no history tool. The physical V5 sign-in acceptance is complete through the Handoff-owned Safari WebRTC path (direct and cellular TURN): fresh `signed_out` -> Human-only Google sign-in -> revoke/stale-locator fencing -> fresh `signed_in` readiness -> bounded V5-B read. Remaining mobile viewport/reload polish is generic Handoff work tracked in `mcp-execution-handoff` #17, not a Maps semantic capability gap.
 
@@ -177,6 +192,17 @@ Timeline is removed from the V5 Web candidate set because current Google Maps do
 The MCP authorization principal and the Google Account active in the dedicated browser are distinct identities. Until per-principal browser/profile isolation exists, V5 account-backed tools are designed only for a single-user deployment/profile. No raw Google account identifier is required in MCP output merely to prove sign-in.
 
 See [V5 authenticated workflows — design baseline](v5-authenticated-workflows.md) for the entry gate, proposed semantic shapes, logging/privacy rules, test plan, and explicit deferrals.
+
+## Cross-repository Handoff follow-ups — not Maps release blockers
+
+The remaining Handoff work belongs upstream unless it creates a new Maps-specific semantic requirement. Maps should consume these improvements through the narrow start/revoke lifecycle rather than reimplement transport logic locally.
+
+- [`mcp-execution-handoff` #17](https://github.com/git-ksk/mcp-execution-handoff/issues/17) — adaptive mobile viewport, keyboard-aware composition, and safe reload/reconnect. This is the highest-value WebRTC usability follow-up after the v0.3.3 physical baseline.
+- [`mcp-execution-handoff` #19](https://github.com/git-ksk/mcp-execution-handoff/issues/19) — provider-neutral relay ownership. Cloudflare Realtime TURN is the physically accepted reference path today, but Maps must remain unaware of relay providers.
+- [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane/private execution-worker topology. Current built-in capture/input is a macOS-worker capability; a Linux/Cloud Run control plane must not pretend to be that execution worker.
+- [`mcp-execution-handoff` #13](https://github.com/git-ksk/mcp-execution-handoff/issues/13) — optional Native/Thin Takeover transport and reconnect path. Native remains a sibling/experimental option and is not required for the accepted Safari WebRTC path.
+
+These upstream items do not reopen V5-A through V5-D or block the v0.3.3 Maps baseline. Re-run Maps consumer acceptance only when an upstream change materially affects the Maps-owned lifecycle or browser authority boundary.
 
 ## Explicit non-goals for the roadmap
 
