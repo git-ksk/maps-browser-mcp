@@ -320,7 +320,8 @@ export async function checkpointProfileToCloud(config, { storage = new Storage()
     const archive = await createProfileArchive(config.profileDir, archivePath, { maxBytes: config.maxBytes });
     const stamp = new Date().toISOString().replaceAll(":", "").replaceAll(".", "-");
     const object = `${snapshotsPrefix(config)}${stamp}-${randomUUID()}.tar.gz`;
-    await bucket.file(object).upload(archivePath, {
+    await bucket.upload(archivePath, {
+      destination: object,
       resumable: false,
       validation: "crc32c",
       metadata: {
