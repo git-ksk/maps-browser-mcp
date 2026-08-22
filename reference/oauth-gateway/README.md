@@ -190,6 +190,14 @@ The default container Chrome profile is ephemeral. That is acceptable for protoc
 
 ## WebRTC normal-browser pre-Google acceptance checklist
 
+The reference OAuth image carries the same production-shaped Linux harness used by CI/Cloud Build. Run it inside the built image with:
+
+```bash
+docker run --rm --entrypoint node maps-browser-mcp-oauth-reference:ci /app/scripts/linux-webrtc-container-acceptance.mjs
+```
+
+It gates the exact normal-browser PID/window boundary, H.264 RTP, bounded DataChannel tap/text/Backspace/Enter input, CJK font fallback, Human-text argv isolation, revoke/cleanup, and profile unlock without using real Google credentials.
+
 Before entering any real target Google credential:
 
 1. build/deploy a recorded PR #107 commit under a distinct single-user gateway URL;

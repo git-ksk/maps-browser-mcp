@@ -38,6 +38,7 @@
     "smoke:browser": "node scripts/smoke-browser.mjs",
     "e2e:live:maps": "node scripts/live-maps-e2e.mjs",
     "acceptance:local:google-sign-in": "node scripts/live-google-sign-in-acceptance.mjs",
+    "acceptance:linux:webrtc:container": "node scripts/linux-webrtc-container-acceptance.mjs",
     "prepack": "npm run check && npm run build"
   },
   "dependencies": {
