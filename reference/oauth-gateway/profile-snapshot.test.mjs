@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import * as tar from "tar";
 import {
+  checkpointProfileToCloud,
   createProfileArchive,
   isExcludedProfilePath,
   loadProfileSnapshotConfig,
@@ -71,6 +72,75 @@ test("restore rejects parent traversal and symlink entries", async () => {
     const archive = path.join(root, "unsafe.tar.gz");
     await tar.c({ cwd: payload, file: archive, gzip: true }, ["."]);
     await assert.rejects(restoreProfileArchive(archive, path.join(root, "restore")), /unsupported entry type/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("cloud checkpoint uploads the archive through Bucket.upload with an explicit object destination", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-cloud-checkpoint-test-"));
+  try {
+    const profileDir = path.join(root, "profile");
+    await mkdir(path.join(profileDir, "Default"), { recursive: true });
+    await writeFile(path.join(profileDir, "Default", "Cookies"), "cookie-db");
+
+    let uploaded;
+    let pointerSaved;
+    const missingPointer = Object.assign(new Error("missing pointer"), { code: 404 });
+    const bucket = {
+      async upload(filePath, options) {
+        uploaded = {
+          bytes: (await readFile(filePath)).byteLength,
+          options
+        };
+        return [{}];
+      },
+      file(name) {
+        return {
+          async getMetadata() {
+            throw missingPointer;
+          },
+          async download() {
+            throw missingPointer;
+          },
+          async save(buffer, options) {
+            pointerSaved = { name, buffer: Buffer.from(buffer), options };
+          },
+          async delete() {}
+        };
+      },
+      async getFiles() {
+        return [[]];
+      }
+    };
+    const storage = { bucket: (name) => {
+      assert.equal(name, "profile-bucket");
+      return bucket;
+    } };
+    const config = {
+      enabled: true,
+      bucket: "profile-bucket",
+      prefix: "maps-browser-mcp/profile",
+      profileDir,
+      required: false,
+      maxBytes: 16 * 1024 * 1024,
+      keepSnapshots: 2
+    };
+    const logger = { error() {} };
+
+    const result = await checkpointProfileToCloud(config, { storage, logger });
+    assert.equal(result.status, "checkpointed");
+    assert.ok(uploaded?.bytes > 0);
+    assert.equal(uploaded.options.destination, result.object);
+    assert.equal(uploaded.options.resumable, false);
+    assert.equal(uploaded.options.validation, "crc32c");
+    assert.deepEqual(uploaded.options.preconditionOpts, { ifGenerationMatch: 0 });
+    assert.equal(pointerSaved?.name, "maps-browser-mcp/profile/current.json");
+    const pointer = JSON.parse(pointerSaved.buffer.toString("utf8"));
+    assert.equal(pointer.current.object, result.object);
+    assert.equal(pointer.current.sha256, result.sha256);
+    assert.equal(pointer.current.bytes, result.bytes);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
