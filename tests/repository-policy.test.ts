@@ -142,6 +142,7 @@ test("reference Cloud Run image provisions the bounded Linux normal-browser WebR
   assert.match(dockerfile, /openbox/);
   assert.match(dockerfile, /xdotool/);
   assert.match(dockerfile, /ffmpeg/);
+  assert.match(dockerfile, /fonts-noto-cjk/);
   assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99/);
   assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=\/app\/node_modules\/\.bin\/handoff-linux-webrtc-host/);
   assert.match(dockerfile, /XDG_RUNTIME_DIR=\/tmp\/maps-browser-mcp\/xdg-runtime/);
@@ -169,6 +170,11 @@ test("reference Cloud Run profile protects the single Chromium runtime from OOM/
     assert.match(source, /503/);
     assert.match(source, /TaskGroup/);
   }
+});
+
+test("runtime images install CJK system font fallback for Chromium UI", () => {
+  assert.match(read("Dockerfile"), /fonts-noto-cjk/);
+  assert.match(read("reference/oauth-gateway/Dockerfile"), /fonts-noto-cjk/);
 });
 
 test("container base image is digest-pinned and monitored", () => {

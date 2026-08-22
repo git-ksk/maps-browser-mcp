@@ -19,7 +19,7 @@ ENV NODE_ENV=production \
     XDG_CACHE_HOME=/tmp/maps-browser-mcp/xdg-cache
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates \
+    && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates fonts-noto-cjk \
     && chromium --version \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system mcp \
