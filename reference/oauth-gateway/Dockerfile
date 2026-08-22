@@ -42,6 +42,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=build /app/dist ./dist
+COPY scripts/linux-webrtc-container-acceptance.mjs ./scripts/linux-webrtc-container-acceptance.mjs
 
 WORKDIR /app/reference/oauth-gateway
 COPY reference/oauth-gateway/package.json reference/oauth-gateway/package-lock.json ./

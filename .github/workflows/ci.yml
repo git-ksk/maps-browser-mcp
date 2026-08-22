@@ -54,6 +54,12 @@ jobs:
       - name: Build reference OAuth gateway image
         if: matrix.node == 22
         run: docker build -f reference/oauth-gateway/Dockerfile --tag maps-browser-mcp-oauth-reference:ci .
+      - name: Linux normal-browser WebRTC container acceptance
+        if: matrix.node == 22
+        run: >-
+          docker run --rm --entrypoint node
+          maps-browser-mcp-oauth-reference:ci
+          /app/scripts/linux-webrtc-container-acceptance.mjs
       - name: Record reference gateway runtime versions
         if: matrix.node == 22
         run: >-

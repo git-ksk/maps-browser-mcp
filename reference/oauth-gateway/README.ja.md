@@ -177,6 +177,14 @@ Default container Chrome profileはephemeralです。Protocol/transport dogfood�
 
 ## Googleログイン直前のAcceptance Checklist
 
+Reference OAuth imageには、CI/Cloud Buildと同じproduction-shaped Linux harnessを同梱します。Build済みimage内で以下を実行します。
+
+```bash
+docker run --rm --entrypoint node maps-browser-mcp-oauth-reference:ci /app/scripts/linux-webrtc-container-acceptance.mjs
+```
+
+実Google credentialを使わず、normal-browserのexact PID/window境界、H.264 RTP、bounded DataChannelのtap/text/Backspace/Enter、CJK font fallback、Human textのargv非露出、revoke/cleanup、profile unlockをgateします。
+
 Target Google credentialを入力する前に:
 
 1. PR #107のrecorded commitからdistinct single-user gatewayへbuild/deploy

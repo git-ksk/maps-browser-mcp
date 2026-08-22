@@ -177,6 +177,26 @@ test("runtime images install CJK system font fallback for Chromium UI", () => {
   assert.match(read("reference/oauth-gateway/Dockerfile"), /fonts-noto-cjk/);
 });
 
+
+test("Linux normal-browser WebRTC acceptance is a checked-in container gate", () => {
+  const harness = read("scripts/linux-webrtc-container-acceptance.mjs");
+  const dockerfile = read("reference/oauth-gateway/Dockerfile");
+  const workflow = read(".github/workflows/ci.yml");
+  const pkg = JSON.parse(read("package.json")) as { scripts?: Record<string, string> };
+
+  assert.equal(pkg.scripts?.["acceptance:linux:webrtc:container"], "node scripts/linux-webrtc-container-acceptance.mjs");
+  assert.match(dockerfile, /COPY scripts\/linux-webrtc-container-acceptance\.mjs \.\/scripts\/linux-webrtc-container-acceptance\.mjs/);
+  assert.match(workflow, /Linux normal-browser WebRTC container acceptance/);
+  assert.match(workflow, /\/app\/scripts\/linux-webrtc-container-acceptance\.mjs/);
+  assert.match(harness, /kind: "key", key: "Backspace"/);
+  assert.match(harness, /typedLength === marker\.length - 1/);
+  assert.match(harness, /fc-match/);
+  assert.match(harness, /Noto \(\?:Sans\|Serif\) CJK/);
+  assert.match(harness, /markerInAnyProcess/);
+  assert.doesNotMatch(harness, /pid,ppid,stat,comm,args/);
+  assert.doesNotMatch(harness, /CLEANUP_DIAG error=/);
+});
+
 test("container base image is digest-pinned and monitored", () => {
   const dockerfile = read("Dockerfile");
   const fromLines = dockerfile.split(/\r?\n/).filter((line) => line.startsWith("FROM "));
