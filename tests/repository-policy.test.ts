@@ -55,7 +55,7 @@ test("execution handoff upstream source release is pinned to an immutable commit
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(
     pkg.dependencies?.["mcp-execution-handoff"],
-    "https://github.com/git-ksk/mcp-execution-handoff/archive/b9c3f41f2ec3225548ff7528a68eef18523c6833.tar.gz"
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/7124d8a26eca6c298cd7e6b7a24c1e4193cb7c98.tar.gz"
   );
 });
 
