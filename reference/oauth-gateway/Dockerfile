@@ -28,7 +28,7 @@ ENV NODE_ENV=production \
     XDG_RUNTIME_DIR=/tmp/maps-browser-mcp/xdg-runtime
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates xvfb openbox xdotool ffmpeg \
+    && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates fonts-noto-cjk xvfb openbox xdotool ffmpeg \
     && chromium --version \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system mcp \
