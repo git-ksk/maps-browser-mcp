@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.git-ksk/maps-browser-mcp",
+  "title": "Maps Browser MCP",
+  "description": "A constrained Google Maps MCP server with bounded browser automation and optional Human takeover.",
+  "repository": {
+    "url": "https://github.com/git-ksk/maps-browser-mcp",
+    "source": "github"
+  },
+  "version": "0.3.4",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "maps-browser-mcp",
+      "version": "0.3.4",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
