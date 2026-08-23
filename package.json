@@ -1,7 +1,8 @@
 {
   "name": "maps-browser-mcp",
   "version": "0.3.3",
-  "description": "A lightweight MCP server for interacting with Google Maps through a dedicated Chrome session.",
+  "description": "A constrained Google Maps MCP server with bounded browser automation and optional Human takeover through a dedicated Chrome session.",
+  "mcpName": "io.github.git-ksk/maps-browser-mcp",
   "type": "module",
   "bin": {
     "maps-browser-mcp": "./dist/index.js"
@@ -55,9 +56,14 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
     "google-maps",
+    "google-maps-mcp",
     "browser-automation",
+    "browser-takeover",
+    "human-in-the-loop",
+    "human-takeover",
     "chromium",
     "cdp"
   ],
