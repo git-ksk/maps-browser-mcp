@@ -1,10 +1,23 @@
-import type { TakeoverBroker } from "mcp-execution-handoff/browser-takeover";
+import type { BrowserHandoffAdapter } from "mcp-execution-handoff/browser-takeover";
 import type { CredentialTakeoverBoundary, CredentialTakeoverStartRequest } from "./credential-takeover-boundary.js";
 
-/** Browser WebRTC Takeover adapter; signaling/media/input/reconnect stay in mcp-execution-handoff. */
+const CREDENTIAL_SAFE_INPUT_POLICY = Object.freeze({
+  tap: true,
+  scroll: true,
+  text: true,
+  key: true
+} as const);
+
+/**
+ * Maps-facing boundary over Handoff's first-class BrowserHandoffAdapter.
+ *
+ * Maps owns the normal-browser/profile/authentication lifecycle and fresh verification. Handoff
+ * owns WebRTC/TURN/reconnect/generation fencing, exact target binding, completion-only recovery,
+ * and server-enforced Human input policy.
+ */
 export class WebRtcCredentialTakeoverBoundary implements CredentialTakeoverBoundary {
   constructor(
-    private readonly broker: TakeoverBroker,
+    private readonly handoff: BrowserHandoffAdapter,
     platform: NodeJS.Platform = process.platform
   ) {
     if (platform !== "darwin" && platform !== "linux") {
@@ -13,16 +26,18 @@ export class WebRtcCredentialTakeoverBoundary implements CredentialTakeoverBound
   }
 
   start(request: CredentialTakeoverStartRequest): string {
-    const locator = this.broker.createWebRtcLink(
-      { id: request.interventionId, epoch: request.epoch },
-      request.principalBinding,
-      { processId: request.targetProcessId }
-    );
-    if (!locator) throw new Error("WebRTC credential takeover is unavailable");
-    return locator;
+    return this.handoff.start({
+      intervention: { id: request.interventionId, epoch: request.epoch },
+      principalBinding: request.principalBinding,
+      target: { processId: request.targetProcessId },
+      // Credential-safe Maps interventions include sign-in/MFA/passkey-adjacent ceremonies where
+      // the Human may need pointer, scroll, text, Backspace, and Enter. This is explicit rather
+      // than inheriting a transport default; Handoff binds and enforces it for the session.
+      inputPolicy: CREDENTIAL_SAFE_INPUT_POLICY
+    });
   }
 
   async revoke(interventionId: string): Promise<void> {
-    await this.broker.revokeWebRtcForIntervention(interventionId);
+    await this.handoff.revoke(interventionId);
   }
 }

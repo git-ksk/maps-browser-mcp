@@ -72,7 +72,7 @@ import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { resolveFreshRouteSendTarget, type RouteSendActionInput } from "./browser/route-send.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import { createStoppedBrowserProfileCheckpointHook } from "./browser-profile-checkpoint.js";
-import { HostedBrowserTakeoverProvider, InheritedFdNativeRuntimeProvider, SpawnedWebRtcRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
+import { BrowserHandoffAdapter, HostedBrowserTakeoverProvider, InheritedFdNativeRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.3.3";
@@ -96,12 +96,15 @@ const nativeTakeoverRuntime = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.nativeRuntime
   ? new InheritedFdNativeRuntimeProvider(config.credentialSafeHandoff.nativeRuntime)
   : undefined;
-const webRtcTakeoverRuntime = config.credentialSafeHandoff.enabled &&
+const browserHandoffAdapter = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.transport === "webrtc_takeover" &&
   config.credentialSafeHandoff.webRtcRuntime
-  ? new SpawnedWebRtcRuntimeProvider(config.credentialSafeHandoff.webRtcRuntime)
+  ? new BrowserHandoffAdapter({
+      takeover: config.takeover,
+      runtime: config.credentialSafeHandoff.webRtcRuntime
+    })
   : undefined;
-const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime, webRtcTakeoverRuntime);
+const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime);
 const hostedBrowserCredentialTakeover = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.transport === "hosted_cdp"
   ? new HostedBrowserTakeoverProvider(takeoverBroker)
@@ -121,8 +124,8 @@ function credentialSafeVerificationOptions(interventionId: string) {
 const nativeCredentialTakeover = nativeTakeoverRuntime
   ? new NativeCredentialTakeoverBoundary(takeoverBroker)
   : undefined;
-const webRtcCredentialTakeover = webRtcTakeoverRuntime
-  ? new WebRtcCredentialTakeoverBoundary(takeoverBroker)
+const webRtcCredentialTakeover = browserHandoffAdapter
+  ? new WebRtcCredentialTakeoverBoundary(browserHandoffAdapter)
   : undefined;
 const credentialSafeBrowser = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.transport !== "hosted_cdp"
@@ -1689,12 +1692,18 @@ export function buildServer(): McpServer {
 }
 
 export function isTakeoverHttpPath(pathname: string): boolean {
+  if (browserHandoffAdapter?.ownsPath(pathname)) return true;
   return takeoverBroker.isEnabled() && takeoverBroker.isPath(pathname);
 }
 
 export async function handleTakeoverHttpRequest(request: Request): Promise<Response> {
   const principal = currentRequestPrincipal();
-  return takeoverBroker.handle(request, principal ? principalBinding(principal) : undefined);
+  const boundPrincipal = principal ? principalBinding(principal) : undefined;
+  const pathname = new URL(request.url).pathname;
+  if (browserHandoffAdapter?.ownsPath(pathname)) {
+    return browserHandoffAdapter.handle(request, boundPrincipal);
+  }
+  return takeoverBroker.handle(request, boundPrincipal);
 }
 
 export async function probeBrowserReady(): Promise<void> {
@@ -1706,7 +1715,10 @@ export async function probeBrowserReady(): Promise<void> {
 
 export async function shutdownRuntime(): Promise<void> {
   const active = runtime.getActiveIntervention();
-  if (active) takeoverBroker.revokeForIntervention(active.id);
+  if (active) {
+    takeoverBroker.revokeForIntervention(active.id);
+    await browserHandoffAdapter?.revoke(active.id).catch(() => undefined);
+  }
   await operationQueue.drain();
   await credentialSafeCuaAdapter?.close().catch(() => undefined);
   await credentialSafeBrowser?.close().catch(() => undefined);

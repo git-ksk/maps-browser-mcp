@@ -45,7 +45,7 @@
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
     "chrome-remote-interface": "0.34.0",
-    "mcp-execution-handoff": "https://github.com/git-ksk/mcp-execution-handoff/archive/7124d8a26eca6c298cd7e6b7a24c1e4193cb7c98.tar.gz",
+    "mcp-execution-handoff": "https://github.com/git-ksk/mcp-execution-handoff/archive/2a2b4351b060cd7fdbf2cb1457bec00c6d2eab57.tar.gz",
     "zod": "4.4.3"
   },
   "devDependencies": {
