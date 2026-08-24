@@ -6,7 +6,27 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
-_No changes yet._
+### Added
+
+- Add the Linux/container normal-browser `webrtc_takeover` host path for credential-safe Human control, including isolated Xvfb/Openbox/xdotool/ffmpeg runtime wiring, exact-window/PID binding, packaged Handoff helper execution, and a checked-in Linux container acceptance harness.
+- Add deployment-only stopped-profile snapshot restore/checkpoint support for the reference Cloud Run OAuth gateway, including Cloud Storage integrity/generation safeguards.
+- Add first-publication preparation for npm + the Official MCP Registry: canonical `mcpName`, a version-matched `server.json.example`, a publication gate, and a Maps ↔ Handoff responsibility overview.
+
+### Changed
+
+- Advance the pinned `mcp-execution-handoff` integration through Linux host readiness, packaged helper launch fixes, provider-owned TURN support, iOS keyboard editing, persistent touch keyboard mode, and related bounded WebRTC diagnostics.
+- Extend the reference Cloud Run path from local/container-only Linux WebRTC evidence to production physical acceptance with Cloudflare Realtime TURN, iPhone Safari `Live · relay`, and real Human-only Google sign-in. The separate explicit Done/revoke -> fresh `signed_in` -> stopped-profile checkpoint -> fresh restore lifecycle remains tracked in #135 and is not claimed complete here.
+- Keep legacy `hosted_cdp` fail-closed for credential/consent/challenge Human control after physical Google sign-in rejected the managed-automation browser surface.
+
+### Fixed
+
+- Allow the existing explicit Linux unsandboxed-Chromium opt-in to cover the credential-safe normal browser in restricted container runtimes without changing the secure default.
+- Fix packaged Handoff helper startup through npm `.bin`, stopped-profile Cloud Storage upload semantics, iOS text/Backspace handling, persistent touch keyboard focus mode, and CJK font presentation in container Chromium.
+
+### Testing / documentation
+
+- Formalize Linux normal-browser WebRTC container acceptance in required CI, including H.264 media, bounded tap/text/Backspace/Enter input, Human-text argv exclusion, CJK fallback, revoke/cleanup, and profile unlock.
+- Document the v0.3.4 first-publication target without changing the current stable version: v0.3.3 remains the latest release and the package remains unpublished until an explicitly authorized release gate is completed.
 
 ## [v0.3.3] - 2026-08-21
 

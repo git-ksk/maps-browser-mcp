@@ -19,6 +19,12 @@ v0.3.3ではsingle-user macOS向けopt-in credential-safe WebRTC Human takeover�
 
 詳細な変更履歴は [CHANGELOG 日本語版](../CHANGELOG.ja.md) を参照してください。
 
+## Current `main` とv0.3.4 publication target
+
+`main` は意図的にv0.3.3より先行しています。Linux / Cloud Run normal-browser WebRTC production path、stopped-profile Cloud Storage checkpoint、iPhone / CJK hardening、Linux container acceptance gate、publication準備documentationがmerge済みですが、これらは **未release** です。
+
+最初のnpm + Official MCP Registry publication targetは **v0.3.4** です。`server.json.example` はその予定release shapeを示すだけで、v0.3.4がnpmやRegistryへ公開済みである証拠ではありません。Release時にpackage / lock / server / registry metadataを同時にversion bump・検証し、publication自体はmaintainerの明示操作として行います。詳細は [Official MCP Registry publication](official-mcp-registry.md) を参照してください。
+
 ## 安定版を使う場合
 
 検証・公開されたsourceをそのまま使う場合はrelease tagをcheckoutしてください。

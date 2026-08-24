@@ -17,6 +17,12 @@ The changed handoff boundary was physically accepted from fresh `signed_out` thr
 
 For the detailed release history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Current `main` and the v0.3.4 publication target
+
+`main` is intentionally ahead of v0.3.3. It contains the Linux/Cloud Run normal-browser WebRTC production path, stopped-profile Cloud Storage checkpointing, iPhone/CJK hardening, the Linux container acceptance gate, and publication-preparation documentation. These changes are **unreleased**.
+
+The first npm + Official MCP Registry publication target is **v0.3.4**. `server.json.example` describes that intended release shape; it is not evidence that v0.3.4 exists on npm or in the Registry. At release time, package/lock/server/registry metadata must be bumped and verified together, and publication remains an explicit maintainer action. See [Official MCP Registry publication](official-mcp-registry.md).
+
 ## Stable checkout
 
 If you want the exact source that was validated and released, check out the release tag:

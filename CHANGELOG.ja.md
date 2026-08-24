@@ -8,7 +8,27 @@
 
 ## [Unreleased]
 
-_No changes yet._
+### 追加
+
+- Credential-safe Human control向けにLinux / container normal-browser `webrtc_takeover` host pathを追加。Isolated Xvfb / Openbox / xdotool / ffmpeg runtime、exact-window / PID binding、packaged Handoff helper実行、checked-in Linux container acceptance harnessまで含みます。
+- Reference Cloud Run OAuth gatewayへdeployment-onlyなstopped-profile snapshot restore / checkpointを追加し、Cloud Storageのintegrity / generation guardを維持します。
+- npm + Official MCP Registryの初回公開準備としてcanonical `mcpName`、version-matched `server.json.example`、publication gate、Maps ↔ Handoff責務overviewを追加します。
+
+### 変更
+
+- Pin済み `mcp-execution-handoff` integrationをLinux host readiness、packaged helper launch fix、provider-owned TURN、iOS keyboard editing、persistent touch keyboard mode、bounded WebRTC diagnosticsまで更新します。
+- Reference Cloud Run pathをlocal / container Linux WebRTC evidenceからproduction physical acceptanceまで進め、Cloudflare Realtime TURN、物理iPhone Safari `Live · relay`、real Human-only Google sign-inを確認しました。明示Done/revoke -> fresh `signed_in` -> stopped-profile checkpoint -> fresh restoreは#135で別追跡し、ここでは完了claimしません。
+- Managed automation browserがphysical Google sign-inで拒否されたため、legacy `hosted_cdp` はcredential / consent / challenge Human controlでfail-closedを維持します。
+
+### 修正
+
+- Restricted container runtime向け既存Linux unsandboxed-Chromium明示Opt-inをcredential-safe normal browserにも適用しつつ、secure defaultは変更しません。
+- npm `.bin` 経由packaged Handoff helper起動、stopped-profile Cloud Storage upload semantics、iOS text / Backspace、persistent touch keyboard focus mode、container ChromiumのCJK font表示を修正します。
+
+### Test / Documentation
+
+- Linux normal-browser WebRTC container acceptanceをrequired CIへ正式組み込みし、H.264 media、bounded tap / text / Backspace / Enter、Human textのargv除外、CJK fallback、revoke / cleanup、profile unlockまで検証します。
+- 現行stable versionを変更せずv0.3.4を初回publication targetとして明文化します。v0.3.3が引き続きlatest releaseで、明示authorizeされたrelease gate完了まではpackage未公開です。
 
 ## [v0.3.3] - 2026-08-21
 

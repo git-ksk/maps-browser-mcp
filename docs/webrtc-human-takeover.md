@@ -4,7 +4,7 @@
 
 This is the built-in **remote Human handoff** path for current single-user macOS and Linux/container deployments. It is optional: V5 does **not** require WebRTC, Cloudflare, TURN, or any remote takeover when the dedicated Maps Chrome profile is already signed in. The simplest V5 deployment is a persistent dedicated profile that the Human signs into locally once; WebRTC is for later sign-in/re-authentication, consent, or challenge handling when the Human needs remote access. The normal Maps automation path remains unchanged until `MAPS_CREDENTIAL_SAFE_HANDOFF=true` and `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` are configured.
 
-Physical acceptance has passed with a real Mac + iPhone Safari on both same-LAN direct WebRTC and cellular/4G TURN relay, including the V5 Google sign-in recovery sequence. The Linux host has separately passed Ubuntu/Xvfb acceptance for normal-browser exact-window capture/input, H.264/WebRTC, focused text over stdin, Enter, and teardown; Cloud Run + physical-iPhone real Google sign-in acceptance remains pending. The Human controls only the dedicated normal-Chrome window; Maps itself never receives framebuffer bytes, raw Human input, SDP/ICE candidates, TURN credentials, Google credentials, MFA values, cookies, or account identity.
+Physical acceptance has passed with a real Mac + iPhone Safari on both same-LAN direct WebRTC and cellular/4G TURN relay, including the V5 Google sign-in recovery sequence. Linux separately passes Ubuntu/Xvfb acceptance for normal-browser exact-window capture/input, H.264/WebRTC, focused text over stdin, Enter, and teardown, and the Cloud Run production path has passed physical iPhone Safari relay plus real Human-only Google sign-in. That production evidence intentionally does not claim the still-open explicit post-Done checkpoint/fresh-restore lifecycle (#135) or final mobile keyboard/CJK UX regression (#134). The Human controls only the dedicated normal-Chrome window; Maps itself never receives framebuffer bytes, raw Human input, SDP/ICE candidates, TURN credentials, Google credentials, MFA values, cookies, or account identity.
 
 ## 1. Prerequisites
 
@@ -115,7 +115,7 @@ Do not enable raw candidate, SDP, address, framebuffer, or Human-input logging t
 ## 7. Current limitations
 
 - macOS and Linux are supported by separate Handoff helpers; Windows is not supported;
-- Linux Cloud Run real Google sign-in still requires physical iPhone acceptance before production promotion;
+- Linux Cloud Run core transport/sign-in is physically accepted with iPhone Safari relay and real Google sign-in; the explicit post-Done checkpoint/fresh-restore lifecycle remains tracked in #135;
 - the iOS software keyboard can still obscure part of the remote target in some layouts;
 - adaptive portrait/landscape target sizing and polished explicit reload/reconnect UX are follow-up work in upstream Handoff issue #17;
 - do not rely on browser reload to preserve an active lease. If the Human surface cannot recover explicitly, revoke/reissue a fresh takeover rather than trying to bypass generation fencing;
