@@ -15,6 +15,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 ### Changed
 
 - Advance the pinned `mcp-execution-handoff` integration through Linux host readiness, packaged helper launch fixes, provider-owned TURN support, iOS keyboard editing, persistent touch keyboard mode, and related bounded WebRTC diagnostics.
+- Migrate Maps `webrtc_takeover` from consumer-local `TakeoverBroker + SpawnedWebRtcRuntimeProvider + createWebRtcLink()` composition to Handoff's first-class `BrowserHandoffAdapter`. Maps now supplies only the intervention/principal, normal-Chrome PID, and an explicit credential-safe input policy; Handoff owns WebRTC runtime composition, route ownership, exact-window/focus fencing, completion-only disconnect/reload recovery, and transport teardown.
 - Extend the reference Cloud Run path from local/container-only Linux WebRTC evidence to production physical acceptance with Cloudflare Realtime TURN, iPhone Safari `Live · relay`, and real Human-only Google sign-in. The separate explicit Done/revoke -> fresh `signed_in` -> stopped-profile checkpoint -> fresh restore lifecycle remains tracked in #135 and is not claimed complete here.
 - Keep legacy `hosted_cdp` fail-closed for credential/consent/challenge Human control after physical Google sign-in rejected the managed-automation browser surface.
 

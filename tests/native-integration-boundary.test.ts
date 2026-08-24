@@ -42,18 +42,19 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
 
   assert.match(nativeBoundary, /broker\.createNativeLink\(/);
   assert.match(nativeBoundary, /broker\.revokeNativeForIntervention\(/);
-  assert.match(webRtcBoundary, /broker\.createWebRtcLink\(/);
-  assert.match(webRtcBoundary, /broker\.revokeWebRtcForIntervention\(/);
+  assert.match(webRtcBoundary, /this\.handoff\.start\(/);
+  assert.match(webRtcBoundary, /this\.handoff\.revoke\(/);
   assert.match(server, /new InheritedFdNativeRuntimeProvider\(config\.credentialSafeHandoff\.nativeRuntime\)/);
-  assert.match(server, /new SpawnedWebRtcRuntimeProvider\(config\.credentialSafeHandoff\.webRtcRuntime\)/);
+  assert.match(server, /new BrowserHandoffAdapter\(\{[\s\S]*runtime: config\.credentialSafeHandoff\.webRtcRuntime/);
   assert.match(server, /new NativeCredentialTakeoverBoundary\(takeoverBroker\)/);
-  assert.match(server, /new WebRtcCredentialTakeoverBoundary\(takeoverBroker\)/);
+  assert.match(server, /new WebRtcCredentialTakeoverBoundary\(browserHandoffAdapter\)/);
   assert.match(provider, /SystemBrowserCredentialSession/);
   assert.match(provider, /await this\.browser\.start\(\)/);
   assert.match(provider, /this\.browser\.getPid\(\)/);
   assert.match(provider, /targetProcessId/);
   assert.match(nativeBoundary, /\{ processId: request\.targetProcessId \}/);
-  assert.match(webRtcBoundary, /\{ processId: request\.targetProcessId \}/);
+  assert.match(webRtcBoundary, /target: \{ processId: request\.targetProcessId \}/);
+  assert.match(webRtcBoundary, /inputPolicy: CREDENTIAL_SAFE_INPUT_POLICY/);
   assert.match(provider, /await this\.browser\.close\(\)/);
   assert.doesNotMatch(server, /preserveBrowserSession/);
   assert.match(
@@ -64,6 +65,10 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
   assert.match(server, /automation browser process is stopped/);
   assert.doesNotMatch(server, /preserveBrowserSession:\s*config\.credentialSafeHandoff\.transport === "thin_takeover"/);
   assert.doesNotMatch(server, /preserveBrowserSession:\s*config\.credentialSafeHandoff\.transport === "webrtc_takeover"/);
+  assert.doesNotMatch(server, /new SpawnedWebRtcRuntimeProvider/);
+  assert.doesNotMatch(webRtcBoundary, /createWebRtcLink|SpawnedWebRtcRuntimeProvider|TakeoverBroker/);
+  assert.match(server, /browserHandoffAdapter\?\.ownsPath\(pathname\)/);
+  assert.match(server, /browserHandoffAdapter\.handle\(request, boundPrincipal\)/);
 });
 
 test("Native and WebRTC transports are siblings and neither instantiates CUA", () => {

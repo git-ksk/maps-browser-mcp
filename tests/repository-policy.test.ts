@@ -101,11 +101,11 @@ test("release documentation keeps distribution metadata and Cloud Run acceptance
   assert.match(read("CHANGELOG.md"), /## \[Unreleased\][\s\S]*Linux\/container normal-browser `webrtc_takeover`/);
 });
 
-test("execution handoff upstream source release is pinned to an immutable commit", () => {
+test("execution handoff upstream Browser Handoff integration is pinned to an immutable commit", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(
     pkg.dependencies?.["mcp-execution-handoff"],
-    "https://github.com/git-ksk/mcp-execution-handoff/archive/7124d8a26eca6c298cd7e6b7a24c1e4193cb7c98.tar.gz"
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/2a2b4351b060cd7fdbf2cb1457bec00c6d2eab57.tar.gz"
   );
 });
 
