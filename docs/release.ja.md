@@ -21,7 +21,7 @@ Repository policy testは `src/server.ts` のMCP server versionと `package.json
 npm run check
 ```
 
-Tag作成前に `package-lock.json` のroot package metadataもrelease versionと一致することを確認してください。Package / server metadataと異なるversion tagを作らないでください。
+Tag作成前に `package-lock.json` のroot package metadataもrelease versionと一致することを確認してください。Official MCP Registry publication向けに実 `server.json` をmaterializeする場合、そのserver version / npm package versionも `package.json`、`package-lock.json`、`src/server.ts`、release tagとexact matchさせます。`server.json.example` は `main` が前stable metadataのままでも次publication予定versionを示せますが、actual release gateではexample / materialized recordをexact release versionへ更新します。Versionが食い違うtag / package / Registry recordを作成・publishしないでください。
 
 ## 3. Dependency / Build Verification
 
@@ -167,19 +167,25 @@ Sourceで表現できるworkflow pinning / manual-live / container-gating invari
 
 以下がrelease内容と一致することを確認:
 
-- `README.md`
-- `README.ja.md`
+- `README.md` / `README.ja.md`
 - `.env.example`
+- `CHANGELOG.md` / `CHANGELOG.ja.md`
 - `docs/getting-started.md` / `.ja.md`
+- `docs/releases.md` / `.ja.md`
+- `docs/roadmap.md` / `.ja.md`
 - `docs/container.md` / `.ja.md`
+- `docs/webrtc-human-takeover.md` / `.ja.md`
+- `docs/v5-authenticated-workflows.md` / `.ja.md`
+- `docs/handoff-overview.md` / `.ja.md`
+- Package / Registry publicationがscopeなら `docs/official-mcp-registry.md`
 - `docs/troubleshooting.md` / `.ja.md`
 - `docs/chatgpt.md` / `.ja.md`
 - `docs/architecture.md` / `.ja.md`
 - `docs/compliance.md` / `.ja.md`
 - `docs/manual-e2e.md` / `.ja.md`
-- `docs/release.md` / `.ja.md`
-- `SECURITY.md` / `SECURITY.ja.md`
-- `CONTRIBUTING.md` / `CONTRIBUTING.ja.md`
+- Registry publicationがscopeなら `server.json` / `server.json.example`
+- `SECURITY.md`
+- `CONTRIBUTING.md`
 
 特にdefault値、tool name、environment variable、health / readiness behavior、error / recovery guidance、Node / browser / platform前提、ChatGPT / Remote接続、safety / compliance boundaryを確認してください。
 
@@ -210,9 +216,11 @@ Release noteに含める内容:
 
 V3を将来のGoogle Maps UIでも必ず動くと表現しないでください。
 
-## 11. npm公開（有効化する場合）
+## 11. npm + Official MCP Registry公開（有効化する場合）
 
-Packageが実際に公開され、ownership / provenance setupを確認するまではREADMEでnpm install可能と案内しないでください。
+Exact releaseのpublish / verifyが終わるまで、READMEでnpmまたはOfficial MCP Registry利用可能と表現しないでください。初回publication gateの正本は [Official MCP Registry publication](official-mcp-registry.md) とします。Publicationにはmaintainerの明示authorizeが必要で、metadata準備やrelease PR作成自体をpublish許可とみなしません。
+
+Publish前に `package.json`、`package-lock.json`、`src/server.ts`、release tag、packed npm artifact、materialized `server.json` のpackage/server recordが1つのexact versionで一致することを確認します。
 
 公開前:
 
@@ -222,12 +230,13 @@ npm pack --dry-run
 
 Release時点でregistryが対応するprovenance / 2FA-capable publishing practiceを優先します。npm account / package namespaceはGitHubとは別のSupply Chain security boundaryとして扱います。
 
-公開後はclean environmentへpublished artifactをinstallし、少なくともnon-live smoke pathを通してから推奨install方法として案内してください。
+npm公開後はclean environmentへexact published artifactをinstallし、少なくともnon-live stdio smokeを実行します。その後same versionを `mcp-publisher` でauthenticate / publishし、Official MCP Registryで `io.github.git-ksk/maps-browser-mcp` をqueryしてversion、npm package record、stdio transportを検証してから、どちらのdistribution channelも案内します。
 
 ## 12. Post Release
 
 - GitHub tag / Releaseが意図したcommitを指すことを確認
 - `main` CI greenを確認
 - Dependabot / CodeQL / security alertを確認
+- npm / Registry publicationを行った場合、両public recordがexact release version / package identityへresolveすることを確認
 - 今後のGoogle Maps UI変更検知用にManual Live E2Eを維持
 - Security-sensitive regressionが見つかった場合、既存tagを書き換えず `SECURITY.md` に従ってpatch releaseを作成

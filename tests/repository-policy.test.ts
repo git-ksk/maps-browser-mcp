@@ -51,6 +51,56 @@ test("top-level READMEs document every registered MCP tool and current release v
   }
 });
 
+test("release documentation keeps distribution metadata and Cloud Run acceptance claims synchronized", () => {
+  const packageJson = JSON.parse(read("package.json")) as { name?: unknown; version?: unknown; mcpName?: unknown };
+  const registryGuide = read("docs/official-mcp-registry.md");
+  const targetMatch = registryGuide.match(
+    /first npm \+ Official MCP Registry publication target is \*\*v([0-9]+\.[0-9]+\.[0-9]+)\*\*/i
+  );
+  assert.ok(targetMatch, "registry guide must declare the next exact publication target");
+  const targetVersion = targetMatch[1];
+
+  const serverExample = JSON.parse(read("server.json.example")) as {
+    name?: unknown;
+    version?: unknown;
+    packages?: Array<{ identifier?: unknown; version?: unknown; transport?: { type?: unknown } }>;
+  };
+  assert.equal(serverExample.name, packageJson.mcpName);
+  assert.equal(serverExample.version, targetVersion);
+  assert.equal(serverExample.packages?.[0]?.identifier, packageJson.name);
+  assert.equal(serverExample.packages?.[0]?.version, targetVersion);
+  assert.equal(serverExample.packages?.[0]?.transport?.type, "stdio");
+
+  for (const readme of ["README.md", "README.ja.md"]) {
+    assert.match(read(readme), /handoff-overview(?:\.ja)?\.md/);
+  }
+
+  const currentAcceptanceDocs = [
+    "README.md",
+    "README.ja.md",
+    "docs/architecture.md",
+    "docs/architecture.ja.md",
+    "docs/container.md",
+    "docs/container.ja.md",
+    "docs/v5-authenticated-workflows.md",
+    "docs/v5-authenticated-workflows.ja.md",
+    "docs/webrtc-human-takeover.md",
+    "docs/webrtc-human-takeover.ja.md"
+  ];
+  for (const doc of currentAcceptanceDocs) {
+    const source = read(doc);
+    assert.doesNotMatch(source, /Cloud Run \+ physical[- ]iPhone real Google sign-in acceptance remains pending/i);
+    assert.doesNotMatch(source, /Cloud Run \+ physical iPhone Google sign-in acceptance is still pending/i);
+    assert.doesNotMatch(source, /Cloud Run \+ 物理iPhoneでのreal Google sign-in acceptanceは未実施/);
+    assert.doesNotMatch(source, /本番昇格にはreal Cloud Run Google sign-in acceptance/);
+  }
+
+  const releaseGuide = read("docs/release.md");
+  assert.match(releaseGuide, /Official MCP Registry publication/);
+  assert.match(releaseGuide, /server\.json/);
+  assert.match(read("CHANGELOG.md"), /## \[Unreleased\][\s\S]*Linux\/container normal-browser `webrtc_takeover`/);
+});
+
 test("execution handoff upstream source release is pinned to an immutable commit", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(

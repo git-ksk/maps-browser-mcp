@@ -4,7 +4,7 @@
 
 現在のsingle-user macOS / Linux-container構成向けbuilt-in **remote Human handoff**です。ただしV5自体にWebRTC / Cloudflare / TURN / remote takeoverは必須ではありません。最も単純なV5構成は、Humanがローカルで一度ログインしたpersistentなMaps専用Chrome profileを使う形です。WebRTCは、後からsign-in / re-authentication、consent、challenge対応が必要になり、Humanが遠隔操作したい場合のoptional transportです。`MAPS_CREDENTIAL_SAFE_HANDOFF=true` と `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` を設定しない限り通常のMaps automation経路は変わりません。
 
-物理Mac + iPhone Safariでsame-LAN direct WebRTC / cellular TURN / V5 Google sign-in recoveryまでacceptance済みです。Linux hostは別途Ubuntu/Xvfb acceptanceでnormal-browser exact-window capture/input、H.264/WebRTC、stdin経由focused text、Enter、teardownまでPASSしています。Cloud Run + 物理iPhoneでのreal Google sign-in acceptanceは未実施です。Humanが操作するのはdedicated normal-Chrome windowだけで、Maps自体はframebuffer、raw Human input、SDP/ICE candidate、TURN credential、Google credential、MFA値、cookie、account identityを受け取りません。
+物理Mac + iPhone Safariでsame-LAN direct WebRTC / cellular TURN / V5 Google sign-in recoveryまでacceptance済みです。LinuxもUbuntu/Xvfb acceptanceでnormal-browser exact-window capture/input、H.264/WebRTC、stdin経由focused text、Enter、teardownまでPASSし、Cloud Run production pathでは物理iPhone Safari relay + real Human-only Google sign-inまで完了しています。このproduction evidenceは、未完の明示Done後checkpoint / fresh restore lifecycle（#135）やmobile keyboard / CJK最終UX regression（#134）まで完了したとはclaimしません。Humanが操作するのはdedicated normal-Chrome windowだけで、Maps自体はframebuffer、raw Human input、SDP/ICE candidate、TURN credential、Google credential、MFA値、cookie、account identityを受け取りません。
 
 ## 1. 前提
 
@@ -115,7 +115,7 @@ Connectivity debugのためraw candidate、SDP、address、framebuffer、Human i
 ## 7. 現在の制約
 
 - macOS / Linuxは別Handoff helperで対応。Windowsは未対応;
-- Linux Cloud Runのreal Google sign-inは本番昇格前に物理iPhone acceptanceが必要;
+- Linux Cloud Run core transport / sign-inは物理iPhone Safari relay + real Google sign-inまでacceptance済み。明示Done後のcheckpoint / fresh restore lifecycleは#135で継続追跡;
 - iOS software keyboardがremote targetの一部を覆う場合がある;
 - adaptive portrait/landscape target sizingと明示reload/reconnect UXはupstream Handoff #17のfollow-up;
 - browser reloadでactive leaseが維持される前提にしない。Explicit recoveryできない場合はgeneration fencingを迂回せずrevoke/reissueする;

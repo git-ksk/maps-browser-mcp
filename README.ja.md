@@ -6,6 +6,10 @@ Google Mapsのuser-visible Web UIを、専用Chrome / Chromiumセッションか
 
 > **ステータス:** 現行の未認証scopeではV1〜V4を実装・closeout済みです。V5-A〜V5-D authenticated workflowも、default無効・fail-closed・single-user / dedicated-profile限定のOpt-in配下で実装済みです。V5-E historyは評価済みですが意図的にhistory toolを追加していません。残るpartial capabilityはguessで埋めずobservation/design-gatedとし、実UI依存のsemantic interaction / bounded visible-state readingはExperimentalです。
 
+### Human Handoffの責務境界
+
+Google sign-in / re-authentication / consent / access challengeでHuman操作が必要な場合、`maps-browser-mcp` はMaps semantics、profile ownership、Human後のfresh verificationを所有し、[`mcp-execution-handoff`](https://github.com/git-ksk/mcp-execution-handoff) が一時的Human authority、exact-window capture/input、WebRTC/TURN、generation fencing、revokeを所有します。Humanの **Done** はHuman authority終了であり、認証成功証明でも後続Maps mutationのapprovalでもありません。詳細は **[Maps ↔ Handoff責務境界](docs/handoff-overview.ja.md)** を参照してください。
+
 ## このプロジェクトの狙い
 
 汎用Browser MCPは強力ですが、Google Mapsの操作だけをしたい場合には公開する操作面が大きすぎます。`maps-browser-mcp` は逆に、機能を意図的に絞ります。
@@ -379,7 +383,7 @@ V5自体にremote handoff transportは必須ではありません。すでにsig
 
 credential-safe transportはすべてprofile-switch lifecycleを使います。managed CDP Chromeを停止し、same dedicated profileをremote-debugging/automation flagなしのnormal Chromeで開き、Human surface revoke後にfresh readinessを確認してautomationを再起動します。`external` はOS-level Human surface、`cua_takeover` はlocal fallback/reference、`thin_takeover` は低遅延Native runtime、`webrtc_takeover` はHandoff-ownedなSafari direct-touch surfaceです。Native/WebRTC credential takeoverでMapsが渡すcapture ownership情報は、自分が起動したnormal ChromeのPIDだけです。Handoffはeligible windowが厳密に1つであることを要求し、desktop全体ではなくそのwindowだけへcapture/inputをscopeします。ScreenCaptureKit / VideoToolbox / WebRTC signaling・RTP・DataChannel / reconnect fencing / input deliveryはMapsへ持ち込みません。Done/revokeはHuman authorityを停止してnormal Chromeを閉じますが、それ自体を認証成功とは扱いません。
 
-運用上、`webrtc_takeover` はsame browser/session boundaryの背後にmacOS / Linuxのplatform hostを持ちます。macOSはiPhone Safariのdirect / TURNとreal Google sign-in recoveryまで物理acceptance済みです。Linux normal-browser capture/inputはpin済みHandoffのUbuntu/Xvfb acceptanceでexact window、H.264/WebRTC、tap、stdin経由focused text、Enter、bounded cleanupまでPASSしています。ただしCloud Run + 物理iPhoneでのreal Google sign-in acceptanceはまだ未実施です。**normal-browser boundaryはtransport / OS共通の不変条件**で、Human credential / consent / challenge操作にAgent automation browserやHuman-owned CDPを再利用しません。legacy `hosted_cdp` は引き続きこれらHuman stepで無効です。`external` はdefault、`thin_takeover` はoptional / experimentalのままです。
+運用上、`webrtc_takeover` はsame browser/session boundaryの背後にmacOS / Linuxのplatform hostを持ちます。macOSはiPhone Safariのdirect / TURNとreal Google sign-in recoveryまで物理acceptance済みです。Linux / Cloud Runもcore transport / sign-in boundaryはproduction acceptance済みで、Xvfb / Openbox / xdotool / ffmpeg + packaged exact-window Handoff host、Cloudflare Realtime TURN、物理iPhone Safariの `Live · relay`、real Human-only Google sign-inまで確認しています。残るCloud Run scopeは意図的に狭く、#135で明示Done -> revoke -> stale-client fencing -> fresh `signed_in` -> stopped-profile checkpoint -> fresh restore、#134でiPhone keyboard / Backspace / CJKの最終UX regressionを追跡します。**normal-browser boundaryはtransport / OS共通の不変条件**で、Human credential / consent / challenge操作にAgent automation browserやHuman-owned CDPを再利用しません。legacy `hosted_cdp` は引き続きこれらHuman stepで無効です。`external` はdefault、`thin_takeover` はoptional / experimentalのままです。
 
 WebRTCはdirect-firstで、ICE policyもHandoff側だけが所有します。Safari/browser peerはhost-only (`iceServers: []`) のまま、Node/werift peerはdependency内部の暗黙third-party STUN defaultを避けるためCloudflare STUNを明示利用します。Cloudflare Realtime TURN設定時はpeerごとのshort-lived TURN credentialを追加し、`iceTransportPolicy: all` のままsame-LAN/direct ICEを優先しつつWAN/CGNATではrelayへfallbackできます。long-lived TURN tokenはserver-sideだけに保持し、Maps / Chrome / browser client / helperへ渡しません。MapsはICE/STUN/TURN detail、candidate/address data、SDP、RTP、framebuffer、raw Human inputを処理しません。vendor browser API keyやhosted-browser backendは不要です。Steelは外部比較/UX benchmarkの参考に限定し、runtime dependencyにはしません。
 

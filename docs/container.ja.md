@@ -80,7 +80,7 @@ HTTP port は次の順番で決まります。
 
 ## Container deploymentとcredential-safe takeover
 
-Container / Cloud RunはMCP control planeとprocess-owned Chromium automationをhostできます。credential-safe Human controlの共通ルールは変わらず、**automation browserを停止し、same dedicated profileをremote-debugging / automation authorityなしのnormal browserで開く**必要があります。pin済みHandoffにはLinux X11/Xvfb normal-browser WebRTC hostが入り、Ubuntu/Xvfb acceptanceでexact-window capture、CPU H.264/WebRTC、tap、helper stdin経由のfocused Human text（argv / clipboard / logへ出さない）、Enter、bounded teardownまでPASSしています。ただしCloud Run + 物理iPhoneでのreal Google sign-in acceptanceは本番昇格前に別途必要です。
+Container / Cloud RunはMCP control planeとprocess-owned Chromium automationをhostできます。credential-safe Human controlの共通ルールは変わらず、**automation browserを停止し、same dedicated profileをremote-debugging / automation authorityなしのnormal browserで開く**必要があります。pin済みHandoffにはLinux X11/Xvfb normal-browser WebRTC hostが入り、Ubuntu/Xvfb acceptanceでexact-window capture、CPU H.264/WebRTC、tap、helper stdin経由のfocused Human text（argv / clipboard / logへ出さない）、Enter、bounded teardownまでPASSしています。Core Cloud Run transport / sign-in pathもCloudflare Realtime TURN、物理iPhone Safari `Live · relay`、real Human-only Google sign-inまでproduction physical acceptance済みです。Post-Done revoke / checkpoint / fresh restoreは#135、mobile keyboard / CJK最終UX regressionは#134として別gateで維持します。
 
 Linux/container `webrtc_takeover` ではisolated local X11 displayとHandoff Linux helper executable/wrapperを用意します。Linuxでは `MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME` が必須です。legacy `hosted_cdp` はHuman credential / consent / challenge controlで引き続き無効です。
 
@@ -95,7 +95,7 @@ MAPS_HEADLESS=true
 # Maps起動前にisolated X11 display/window managerを起動し、public operator boundaryは認証必須
 ```
 
-以前の `hosted_cdp` experimentはAgent authorityをfenceしていましたが、Humanがmanaged automation ChromiumをHuman-owned CDP経由で操作する形でした。Cloud Run + iPhone Safariの物理acceptanceでは、Google sign-inが「安全でないbrowser/app」として拒否され、takeover UIもgeneric HTTP controlへdegradeすることを確認したため、credential / consent / challenge Human stepではこの経路を無効化します。Linux側はexact-window normal-browser capture/inputを実装済みで、HandoffのWebRTC session / generation / TURN / revoke / stale-client fencingを再利用します。本番昇格にはreal Cloud Run Google sign-in acceptanceが別途必要です。
+以前の `hosted_cdp` experimentはAgent authorityをfenceしていましたが、Humanがmanaged automation ChromiumをHuman-owned CDP経由で操作する形でした。Cloud Run + iPhone Safariの物理acceptanceでは、Google sign-inが「安全でないbrowser/app」として拒否され、takeover UIもgeneric HTTP controlへdegradeすることを確認したため、credential / consent / challenge Human stepではこの経路を無効化します。Linux側はexact-window normal-browser capture/inputを実装済みで、HandoffのWebRTC session / generation / TURN / revoke / stale-client fencingを再利用します。Replacement normal-browser Cloud Run pathのreal Google sign-in acceptanceは完了済みで、残るdurability gateは明示Done/revoke後のfresh Agent verification、stopped-profile checkpoint、fresh-instance restore（#135）です。
 
 Co-locatedな物理Macでは `webrtc_takeover` がrecommended built-in low-latency mobile pathで、物理iPhone Safariにてsame-LAN direct WebRTC / cellular TURN relay、およびreal V5 Google sign-in recoveryまでacceptance済みです。`thin_takeover` はNative appの別物理acceptanceが完了するまでoptional / experimental siblingとして残します。どちらもhosted-browser vendor API keyは不要です。
 

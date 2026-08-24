@@ -161,6 +161,15 @@ Roadmapは、完了済みcapability baselineと次のevidence-driven release the
 - **Clean remote-auth / OAuth reference boundary** — Maps専用OAuth gateway + loopback private hopを確立し、historical derived serviceもretire済み。
 - **Credential-safe Human Handoff** — v0.3.3でoptionalなSafari WebRTC pathを追加し、same-LAN direct / cellular TURN、exact-window fencing、revoke / stale-locator rejection、Human-only Google sign-in後のfresh `signed_in` + bounded V5-B readまで物理acceptance済み。
 
+### 次のpatch — v0.3.4: Linux / Cloud Run Handoff + first-distribution closeout
+
+- すでにmerge済みのLinux / Cloud Run normal-browser WebRTC hardeningをreleaseする。Packaged Handoff helper、restricted-runtime sandbox Opt-in、stopped-profile Cloud Storage snapshot、Cloudflare TURN production path、iOS / CJK fix、checked-in Linux container acceptance gateを含む。
+- Cloud Run post-Done durabilityをclaimする前に#135を完了する。明示Done、Human revoke / stale-client fencing、fresh identity-free `signed_in`、stopped-profile checkpoint、DOM / page / action / intervention stateをreplayしないfresh Cloud Run restoreまで確認する。
+- Mobile takeover UXをfully acceptedと表現する前に#134のiPhone Safari keyboard / Backspace / CJK focused regressionを完了する。
+- 初回の広いpackage / Registry publication前に#117のpre-meter usage liability boundaryを解決し、proven pre-meter precondition refusalを完了browser workとして暗黙課金しない。
+- #141のfirst-publication gateはmaintainerが明示authorizeした場合だけ完了する。v0.3.4 metadata同期、packed artifact inspection、clean-consumer stdio smoke、npm verification、Official MCP Registry verification、repository discovery metadataを含む。
+- #143はCI efficiency follow-upでありv0.3.4 runtime / release blockerではない。Required contextとbranch protectionを維持する。
+
 ### 次 — v0.4.0: MCP Apps production portability
 
 - 既存host-neutral MCP Apps surfaceを、適切な **second production host** + real restricted Google Maps Embed keyで再検証する。
@@ -201,7 +210,7 @@ Entry gate、proposed semantic shape、logging/privacy rule、test plan、explic
 
 - [`mcp-execution-handoff` #17](https://github.com/git-ksk/mcp-execution-handoff/issues/17) — adaptive mobile viewport、keyboard-aware composition、safe reload/reconnect。v0.3.3物理baseline後の最優先WebRTC usability follow-up。
 - [`mcp-execution-handoff` #19](https://github.com/git-ksk/mcp-execution-handoff/issues/19) — provider-neutral relay ownership。現時点の物理acceptance済みreferenceはCloudflare Realtime TURNだが、Mapsはrelay providerを知らないまま維持する。
-- [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane / private execution-worker topology。現行built-in capture/inputはmacOS worker capabilityであり、Linux / Cloud Run control planeをexecution workerとして扱わない。
+- [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane / private execution-worker topology。Linux / Cloud Runは現在constrainedなco-located Maps execution hostとして成立済みで、このupstream issueはLinux capture/input欠如ではなく、authority ownershipを弱めずhosted control planeとprivate execution workerを分離する課題。
 - [`mcp-execution-handoff` #13](https://github.com/git-ksk/mcp-execution-handoff/issues/13) — optional Native / Thin Takeover transportとreconnect path。Nativeはsibling / experimental optionで、acceptedなSafari WebRTC pathの前提ではない。
 
 これらupstream itemはV5-A〜V5-Dをre-openせず、v0.3.3 Maps baselineのrelease blockerでもありません。Upstream変更がMaps-owned lifecycleまたはbrowser authority boundaryへmaterialな影響を与えた時だけMaps consumer acceptanceを再実行します。

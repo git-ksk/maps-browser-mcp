@@ -21,7 +21,7 @@ Run:
 npm run check
 ```
 
-Before tagging, also verify the root package metadata in `package-lock.json` matches the intended version. Do not create a tag whose version disagrees with package/server metadata.
+Before tagging, also verify the root package metadata in `package-lock.json` matches the intended version. If an actual `server.json` is being materialized for Official MCP Registry publication, its server version and npm package version must match `package.json`, `package-lock.json`, `src/server.ts`, and the release tag exactly. `server.json.example` may describe the next intended publication while `main` still carries the previous stable metadata, but at the actual release gate the example/materialized record must be updated to the exact release version. Do not create or publish a tag/package/Registry record whose versions disagree.
 
 ## 3. Dependency and build verification
 
@@ -161,16 +161,23 @@ Repository tests enforce the workflow pinning/manual-live/container-gating invar
 
 Confirm the following still match the release:
 
-- `README.md`
-- `README.ja.md`
+- `README.md` / `README.ja.md`
 - `.env.example`
-- `docs/getting-started.md`
-- `docs/container.md`
-- `docs/troubleshooting.md`
-- `docs/chatgpt.md`
-- `docs/architecture.md`
-- `docs/compliance.md`
-- `docs/manual-e2e.md`
+- `CHANGELOG.md` / `CHANGELOG.ja.md`
+- `docs/getting-started.md` / `.ja.md`
+- `docs/releases.md` / `.ja.md`
+- `docs/roadmap.md` / `.ja.md`
+- `docs/container.md` / `.ja.md`
+- `docs/webrtc-human-takeover.md` / `.ja.md`
+- `docs/v5-authenticated-workflows.md` / `.ja.md`
+- `docs/handoff-overview.md` / `.ja.md`
+- `docs/official-mcp-registry.md` when package/Registry publication is in scope
+- `docs/troubleshooting.md` / `.ja.md`
+- `docs/chatgpt.md` / `.ja.md`
+- `docs/architecture.md` / `.ja.md`
+- `docs/compliance.md` / `.ja.md`
+- `docs/manual-e2e.md` / `.ja.md`
+- `server.json` / `server.json.example` when Registry publication is in scope
 - `SECURITY.md`
 - `CONTRIBUTING.md`
 
@@ -203,9 +210,11 @@ Release notes should include:
 
 Do not describe V3 as guaranteed compatible with future Google Maps UI versions.
 
-## 11. npm publication, if/when enabled
+## 11. npm + Official MCP Registry publication, if/when enabled
 
-Do not imply npm availability in README until the package has actually been published and the package ownership/provenance setup is verified.
+Do not imply npm or Official MCP Registry availability in README until the exact release has actually been published and verified. Follow [Official MCP Registry publication](official-mcp-registry.md) as the canonical first-publication gate. Publication requires explicit maintainer authorization; preparing metadata or a release PR is not authorization to publish.
+
+Before publishing, verify one exact version across `package.json`, `package-lock.json`, `src/server.ts`, the release tag, the packed npm artifact, and the materialized `server.json` package/server records.
 
 Before publishing:
 
@@ -215,12 +224,13 @@ npm pack --dry-run
 
 Prefer provenance/2FA-capable publishing practices supported by the registry at release time. Treat the npm account/package namespace as a separate supply-chain security boundary.
 
-After publication, install the published artifact in a clean environment and run at least the non-live smoke path before advertising it as the recommended installation method.
+After npm publication, install the exact published artifact in a clean environment and run at least the non-live stdio smoke path. Then authenticate/publish the same version with `mcp-publisher`, query the Official MCP Registry for `io.github.git-ksk/maps-browser-mcp`, and verify the returned version, npm package record, and stdio transport before advertising either distribution channel.
 
 ## 12. Post-release
 
 - Verify the GitHub tag/release points to the intended commit.
 - Verify `main` CI remains green.
 - Check Dependabot/CodeQL/security alerts.
+- If npm/Registry publication occurred, verify both public records still resolve to the exact release version and package identity.
 - Keep the manual live E2E available for future Google Maps UI changes.
 - If a security-sensitive regression is discovered, follow `SECURITY.md` and cut a new patch release rather than rewriting an existing tag.
