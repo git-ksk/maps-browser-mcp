@@ -28,6 +28,7 @@
 
 ### Test / Documentation
 
+- 旧Maps-local Execution Handoff V1/V2文書を歴史的protocol referenceとして明確化し、V3切り出し記録を現行first-class `BrowserHandoffAdapter` の責務モデルへ同期しました。
 - Linux normal-browser WebRTC container acceptanceをrequired CIへ正式組み込みし、H.264 media、bounded tap / text / Backspace / Enter、Human textのargv除外、CJK fallback、revoke / cleanup、profile unlockまで検証します。
 - 現行stable versionを変更せずv0.3.4を初回publication targetとして明文化します。v0.3.3が引き続きlatest releaseで、明示authorizeされたrelease gate完了まではpackage未公開です。
 

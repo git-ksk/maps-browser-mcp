@@ -21,6 +21,9 @@ Documentation index for `maps-browser-mcp`.
 ## Design and safety
 
 - [Architecture](architecture.md) — process model, CDP, semantic interaction, bounded V3/V4 reader/controller and HTTP boundary
+- [Maps ↔ Handoff responsibility boundary](handoff-overview.md) — current consumer/upstream ownership split and `Done != approval` invariant
+- [Execution Handoff V3 extraction record](execution-handoff-v3.md) — extraction history updated for the current first-class `BrowserHandoffAdapter` consumer API
+- [Legacy Execution Handoff protocol reference](execution-handoff.md) — historical Maps-local V1/V2 MRTR and HTTP-frame broker design; not the current WebRTC setup guide
 - [Project positioning](positioning.md) — competitive category, Maps Web coverage priority, and official-interface overlap policy
 - [Compliance / Safety](compliance.md) — intended use, non-goals, policy boundaries and live-E2E policy
 - [Security Policy](../SECURITY.md) — exposure boundaries, sensitive information and private vulnerability reporting

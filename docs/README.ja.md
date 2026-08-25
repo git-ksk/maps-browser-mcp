@@ -21,6 +21,9 @@
 ## 設計・安全性
 
 - [Architecture 日本語版](architecture.ja.md) — プロセスモデル、CDP、Semantic Interaction、bounded V3/V4 reader/controller、HTTP境界
+- [Maps ↔ Handoff責務境界](handoff-overview.ja.md) — 現行consumer/upstream責務分離と `Done != approval` invariant
+- [Execution Handoff V3切り出し記録](execution-handoff-v3.ja.md) — 現行first-class `BrowserHandoffAdapter` consumer APIへ同期した切り出し履歴
+- [Legacy Execution Handoff protocol reference](execution-handoff.ja.md) — 旧Maps-local V1/V2 MRTR / HTTP-frame broker設計。現行WebRTC setup guideではない
 - [Project positioning 日本語版](positioning.ja.md) — 競合category、Maps Web coverage優先順位、公式interface重複の扱い
 - [Compliance / Safety 日本語版](compliance.ja.md) — Google Maps利用時の設計上の境界、非ゴール、Policy Engine、Live E2E方針
 - [Security Policy 日本語版](../SECURITY.ja.md) — 安全な公開方法、機密情報、脆弱性報告

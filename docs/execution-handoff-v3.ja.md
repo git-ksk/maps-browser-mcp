@@ -2,7 +2,7 @@
 
 [English](execution-handoff-v3.md)
 
-> ここでいうV3は **Execution Handoff subsystemのversion** で、repository内のMaps V1〜V4 feature labelとは別軸です。
+> この文書は **Execution Handoff subsystemの切り出しと責務分離** を記録するもので、repository内のMaps V1〜V4 feature labelとは別軸です。現在のconsumer-facing Browser Handoff APIは `BrowserHandoffAdapter` で、旧revisionのlow-level broker compositionは歴史的説明です。
 
 generic Execution Handoff runtimeは `git-ksk/mcp-execution-handoff` へ切り出しました。`maps-browser-mcp` はMaps固有 `browser.maps` adapterとしてfirst real consumerを維持します。
 
@@ -62,7 +62,9 @@ restart後のrecoveryはmarkerだけです。同じlogical principalが同じval
 
 ## Browser takeoverはoptional
 
-upstream `TakeoverBroker` はtransport-onlyで、`{ id, epoch }`、明示的なnon-secret principal binding、Maps browser adapterだけを受け取ります。どのpageをHuman takeover対象にするか、各browser operationをactive intervention/epochに照らして許可するかはMaps runtime側の責務です。
+現在のcanonical Maps WebRTC pathはupstream `BrowserHandoffAdapter` をconsumeします。Mapsが渡すのはdomain intervention/principal binding、exact normal-browser PID（またはreview済みexact window）、明示的Human input policyです。Locator/session lifecycle、WebRTC runtime/signaling、direct-first/TURN transport、exact-window binding、reconnect generation fencing、completion/revoke、bounded transport diagnosticsはHandoffが所有します。WebRTC runtimeがmissing/unusableなら明示的にfailし、canonical adapterからHTTP screenshot pollingへsilent fallbackしません。
+
+`TakeoverBroker` はHandoff内部のlow-level primitive/compatibility APIとして残りますが、Mapsのconsumer compositionではありません。Google surfaceのintervention eligibility、browser/profile/auth semantics、Human後のfresh verificationは引き続きMapsが所有します。
 
 authenticated pageはmemory-only remote-client bindingを1つ使います。同一origin bootstrapで返すshort-lived capabilityはsession + intervention + epoch + principal + client binding + expiryへbindされます。public locator自体のquery/hashにはcapabilityを含めません。
 
@@ -80,15 +82,15 @@ MFA完了 != message承認
 
 ## Two-adapter extraction status
 
-two-real-adapter extraction gateは完了済みです。
+two-real-consumer extraction gateは完了済みです。
 
-1. `maps-browser-mcp` の `browser.maps` がgreen
-2. second real adapterの `japan-cinema-browser-mcp` もgreen
+1. `maps-browser-mcp` はconsumer-localなWebRTC broker/runtime compositionから `BrowserHandoffAdapter` へ移行済み
+2. `japan-cinema-browser-mcp` は独立した2つ目のbrowser MCPとして同じadapterを直接consumeし、物理iPhone Safari/TURN acceptanceまで完了
 
 `mcp-execution-handoff` はformal upstreamとなり、**v0.1.0 source release** も作成済みです。Consumerは引き続きimmutable source pinを使用し、npm publishは意図的に無効のままです。
 
-## V2.2 manual mobile verification
+## Physical mobile verification status
 
-live phone verificationにはauthenticated HTTPS gateway、dedicated Chrome session、phoneが必要です。通常CIでCAPTCHA/sign-in challengeを意図的に発生させません。
+canonical Browser Handoff pathはshared Handoff adapter上で物理iPhone Safariのdirectとcellular/TURN relay acceptanceを通過済みです。Mapsではaccepted normal-browser boundary上のreal Human-only Google sign-in recoveryも完了しています。残るMaps固有follow-up（例: #135 post-Done checkpoint/restore、#134 keyboard/CJK polish）はより狭いlifecycle/UX課題で、reusable Browser Handoff切り出し自体のblockerではありません。
 
-manual flowではsame-principal access、cross-principal reject、one-client lease、reload reclaim reject、Human-only authority、`Done != approval`、post-Human verification、stale epoch/capability/requestState reject、secret-free loggingを確認します。challengeをテスト目的で意図的に発生・回避しません。
+通常CIでCAPTCHA/sign-in challengeを意図的に発生させません。Manual verificationではsame-principal access、cross-principal reject、one-client lease、Human-only authority、`Done != approval`、post-Human verification、stale generation/epoch/capability reject、secret-free loggingを引き続き確認します。challengeをテスト目的で意図的に発生・回避しません。

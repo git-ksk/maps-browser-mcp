@@ -26,6 +26,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Testing / documentation
 
+- Reclassified the older Maps-local Execution Handoff V1/V2 documents as historical protocol references and synchronized the V3 extraction record with the current first-class `BrowserHandoffAdapter` ownership model.
 - Formalize Linux normal-browser WebRTC container acceptance in required CI, including H.264 media, bounded tap/text/Backspace/Enter input, Human-text argv exclusion, CJK fallback, revoke/cleanup, and profile unlock.
 - Document the v0.3.4 first-publication target without changing the current stable version: v0.3.3 remains the latest release and the package remains unpublished until an explicitly authorized release gate is completed.
 

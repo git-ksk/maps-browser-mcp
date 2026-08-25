@@ -4,7 +4,9 @@ This document describes the internal foundation for handing browser execution au
 
 ## Status
 
-The current implementation includes **V1 MCP MRTR handoff** and an opt-in **V2 remote/mobile human takeover broker**.
+> **Historical protocol reference.** This document preserves the original Maps-local V1/V2 MRTR and HTTP-frame takeover design. The current canonical remote Browser Handoff path is the first-class `BrowserHandoffAdapter` exported by [`mcp-execution-handoff`](https://github.com/git-ksk/mcp-execution-handoff). Maps no longer composes WebRTC signaling/runtime or the low-level `TakeoverBroker` directly. For current responsibilities and deployment, use [Maps ↔ Handoff responsibility boundary](handoff-overview.md) and [WebRTC Human Takeover](webrtc-human-takeover.md).
+
+The repository still retains compatibility code and tests for the earlier **V1 MCP MRTR handoff** and **V2 HTTP frame/mobile takeover broker**, so the invariants below remain useful as design history and regression context.
 
 When Google Maps presents a CAPTCHA/access challenge, sign-in, consent, or another manual surface during an MCP operation, the server returns MCP `input_required`. By default, the user completes the sensitive step directly in the dedicated Chrome window. When V2 remote takeover is explicitly enabled, the same prompt also contains a phone-friendly takeover session URL served through the configured authenticated HTTPS gateway.
 
@@ -105,9 +107,11 @@ The generic handoff core defines four policies:
 
 A human solving a challenge or completing sign-in is **not** approval for a later irreversible action. If this core is reused for purchasing, deletion, sending, booking, cloud administration, or similar side effects, takeover completion and action approval must remain separate events.
 
-## V2 remote/mobile takeover
+## Legacy V2 HTTP frame/mobile takeover
 
-Remote takeover is disabled by default. Enabling it requires all of the following:
+This section documents the earlier Maps-local HTTP frame/input broker. It is **not** the canonical credential-safe WebRTC Browser Handoff path. The current `webrtc_takeover` integration uses Handoff's first-class `BrowserHandoffAdapter`; see [WebRTC Human Takeover](webrtc-human-takeover.md).
+
+The legacy remote takeover is disabled by default. Enabling that compatibility path requires all of the following:
 
 ```bash
 MCP_HTTP_HOST=127.0.0.1
@@ -183,16 +187,16 @@ V2 preserves these constraints:
 
 A remote takeover deployment still has a trusted path: the phone, authenticated HTTPS gateway, local broker process, and dedicated Chrome session. Text typed into the phone UI is visible to those endpoints as needed to relay it, although it is not included in MCP/LLM content and the broker does not log it. Use a gateway and host you control.
 
-## V2.1 direction
+## Historical V2.1 direction
 
 The next security layer is direct identity binding between the MCP authorization principal and the takeover request. The existing optional single-user auth-provider work is the intended integration point. Once rebased onto the current MRTR/runtime state, the broker should require an authenticated principal on every takeover page/API request and compare it to the principal that created the intervention.
 
-Possible later improvements include a lower-latency WebRTC/WebTransport view, stronger device-bound proof, and MCP Tasks integration for long-lived/disconnected interventions. Those are transport improvements; they must not weaken the authority/epoch/resume rules above.
+The lower-latency WebRTC direction described by the original V2 design is now implemented upstream as the first-class `BrowserHandoffAdapter`: exact-window/PID binding, direct-first WebRTC, TURN fallback, generation fencing, completion/revoke, and bounded transport diagnostics are Handoff-owned. Maps consumes that high-level adapter rather than assembling the low-level broker/runtime itself. Stronger device-bound proof and MCP Tasks integration for long-lived/disconnected interventions remain possible future work; they must not weaken the authority/epoch/resume rules above.
 
 ## CI boundary
 
-Normal CI never waits for human takeover and does not intentionally trigger CAPTCHA or sign-in challenges. Deterministic tests cover the authority state machine, request-state binding helpers, takeover capability rotation/expiry/revocation, capability bootstrap, HTTP broker boundaries, and fail-closed configuration. The manual Live Maps E2E remains a fixed, low-volume compatibility check; a naturally occurring challenge is not something CI should bypass.
+Normal CI never waits for human takeover and does not intentionally trigger CAPTCHA or sign-in challenges. Deterministic tests retain coverage for the authority state machine, request-state binding helpers, takeover capability rotation/expiry/revocation, the legacy HTTP broker boundary, and fail-closed configuration. The canonical WebRTC adapter/runtime gates live upstream in `mcp-execution-handoff`, while Maps keeps consumer integration and bounded manual acceptance. The manual Live Maps E2E remains fixed and low-volume; a naturally occurring challenge is not something CI should bypass.
 
 ## Current upstream status
 
-The generic control-plane implementation has been extracted to `git-ksk/mcp-execution-handoff`. Maps-specific URLs/surface classification, postcondition verification, and CDP execution remain in this repository. The Japan Cinema second-adapter validation is complete, the upstream is the formal source of truth, and `v0.1.0` exists as a source release. npm publication remains intentionally disabled; Maps consumes an immutable source-release commit.
+The generic control-plane implementation has been extracted to `git-ksk/mcp-execution-handoff`. Maps-specific URL/surface classification, browser/profile policy, and postcondition verification remain in this repository. Maps and Japan Cinema now consume the same first-class `BrowserHandoffAdapter` as two independent browser MCPs and have passed physical WebRTC acceptance, so the upstream is the formal source of truth. `v0.1.0` exists as a source release, npm publication remains intentionally disabled, and Maps consumes an immutable source commit.
