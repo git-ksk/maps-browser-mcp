@@ -2,7 +2,7 @@
 
 [日本語](execution-handoff-v3.ja.md)
 
-> This document versions the **Execution Handoff subsystem**, not the Maps V1–V4 feature labels used elsewhere in this repository.
+> This document records the **Execution Handoff subsystem extraction and responsibility split**, not the Maps V1–V4 feature labels used elsewhere in this repository. The current consumer-facing Browser Handoff API is `BrowserHandoffAdapter`; low-level broker composition described in older revisions is historical.
 
 The generic Execution Handoff runtime is now extracted to `git-ksk/mcp-execution-handoff`. `maps-browser-mcp` remains the first real consumer through the Maps-specific `browser.maps` adapter.
 
@@ -62,7 +62,9 @@ After restart, recovery is only a marker. The same logical principal must reissu
 
 ## Browser takeover remains optional
 
-The upstream `TakeoverBroker` is transport-only and receives only `{ id, epoch }`, an explicit non-secret principal binding, and the Maps browser adapter. The Maps runtime still decides whether the current page is an eligible intervention surface and verifies every browser operation against the active intervention and epoch.
+The canonical Maps WebRTC path now consumes upstream `BrowserHandoffAdapter`. Maps supplies its domain intervention/principal binding, the exact normal-browser PID (or reviewed exact window), and an explicit Human input policy. Handoff owns locator/session lifecycle, WebRTC runtime/signaling, direct-first/TURN transport, exact-window binding, reconnect generation fencing, completion/revoke, and bounded transport diagnostics. Missing or unusable WebRTC runtime state fails explicitly; the canonical adapter does not silently fall back to HTTP screenshot polling.
+
+`TakeoverBroker` remains a low-level Handoff primitive/compatibility API and is no longer consumer composition in Maps. Maps still decides whether the current Google surface is eligible for intervention, owns browser/profile/auth semantics, and performs fresh post-Human verification.
 
 The authenticated page uses one memory-only remote-client binding. Same-origin bootstrap returns a short-lived capability bound to session + intervention + epoch + principal + client binding + expiry. The public locator itself has no capability in its query string or fragment.
 
@@ -80,15 +82,15 @@ MFA complete != message approved
 
 ## Two-adapter extraction status
 
-The two-real-adapter extraction gate is complete:
+The two-real-consumer extraction gate is complete:
 
-1. `maps-browser-mcp` is green as `browser.maps`, and
-2. `japan-cinema-browser-mcp` is green as the second real adapter.
+1. `maps-browser-mcp` migrated its WebRTC takeover from consumer-local broker/runtime composition to `BrowserHandoffAdapter`, and
+2. `japan-cinema-browser-mcp` consumes the same adapter directly as an independent second browser MCP, including physical iPhone Safari/TURN acceptance.
 
 `mcp-execution-handoff` is now the formal upstream and has a versioned **v0.1.0 source release**. Consumers still use immutable source pins; npm publication remains intentionally disabled.
 
-## V2.2 manual mobile verification
+## Physical mobile verification status
 
-Live phone verification still requires a configured authenticated HTTPS gateway, a dedicated Chrome session, and a phone. Normal CI does not intentionally trigger CAPTCHA/sign-in challenges.
+The canonical Browser Handoff path has passed physical iPhone Safari direct and cellular/TURN relay acceptance on the shared Handoff adapter. Maps additionally passed real Human-only Google sign-in recovery on the accepted normal-browser boundary. Remaining Maps-specific follow-ups are narrower lifecycle/UX work tracked separately (for example #135 post-Done checkpoint/restore and #134 keyboard/CJK polish), not blockers for the reusable Browser Handoff extraction itself.
 
-The manual flow should verify same-principal access, cross-principal rejection, one-client lease behavior, reload reclaim rejection, Human-only input authority, `Done != approval`, safe post-Human verification, stale epoch/capability/requestState rejection, and secret-free logging. Do not deliberately trigger or bypass a challenge for this test.
+Normal CI does not intentionally trigger CAPTCHA/sign-in challenges. Manual verification continues to check same-principal access, cross-principal rejection, one-client lease behavior, Human-only input authority, `Done != approval`, safe post-Human verification, stale generation/epoch/capability rejection, and secret-free logging. Do not deliberately trigger or bypass a challenge for this test.

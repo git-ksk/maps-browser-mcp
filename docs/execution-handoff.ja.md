@@ -4,7 +4,9 @@
 
 ## Status
 
-現在は **V1 MCP MRTR handoff** に加えて、opt-inの **V2 Remote / Mobile Human Takeover Broker** を実装しています。
+> **歴史的protocol referenceです。** この文書はMaps-localだったV1/V2 MRTRとHTTP-frame takeover設計を保存しています。現在のcanonical remote Browser Handoffは [`mcp-execution-handoff`](https://github.com/git-ksk/mcp-execution-handoff) が公開するfirst-class `BrowserHandoffAdapter` です。MapsはWebRTC signaling/runtimeやlow-level `TakeoverBroker`を直接compositionしません。現行の責務境界とdeploymentは [Maps ↔ Handoff責務境界](handoff-overview.ja.md) と [WebRTC Human Takeover](webrtc-human-takeover.ja.md) を参照してください。
+
+repositoryには以前の **V1 MCP MRTR handoff** と **V2 HTTP frame/mobile takeover broker** のcompatibility code/testも残るため、以下のinvariantは設計履歴とregression contextとして維持します。
 
 Google Maps操作中にCAPTCHA / access challenge、sign-in、consent、その他のmanual surfaceが出た場合、ServerはMCP `input_required` を返します。通常は専用ChromeでHumanが直接操作します。V2 Remote Takeoverを明示的に有効化した場合は、同じpromptにスマホ向けTakeover session URLも追加されます。
 
@@ -105,9 +107,11 @@ Generic handoff coreは以下を定義します。
 
 HumanがCAPTCHAを解いたことやsign-inしたことは、その後の不可逆actionへのapprovalではありません。購入、削除、送信、予約、Cloud管理等へ再利用する場合、takeover completionとaction approvalは必ず分離します。
 
-## V2 Remote / Mobile Takeover
+## Legacy V2 HTTP frame/mobile takeover
 
-Remote Takeoverはdefault OFFです。有効化する場合は以下の境界を必須にします。
+この節は以前のMaps-local HTTP frame/input brokerを説明します。現在のcredential-safe WebRTC Browser Handoffのcanonical pathではありません。現行 `webrtc_takeover` はHandoff first-class `BrowserHandoffAdapter`を利用します。詳細は [WebRTC Human Takeover](webrtc-human-takeover.ja.md) を参照してください。
+
+legacy Remote Takeoverはdefault OFFです。このcompatibility pathを有効化する場合は以下の境界を必須にします。
 
 ```bash
 MCP_HTTP_HOST=127.0.0.1
@@ -183,16 +187,16 @@ V2でも以下を維持します。
 
 Remote takeover時のtrusted pathはphone、authenticated HTTPS gateway、local Broker process、dedicated Chromeです。スマホで入力したtextは中継のためこれらendpointで扱われますが、MCP/LLM contentには含めず、Brokerはpayloadをlogしません。自分でcontrolできるgateway/hostを使用してください。
 
-## V2.1 Direction
+## Historical V2.1 Direction
 
 次はMCP authorization principalとTakeover requestのdirect identity bindingです。既存のoptional single-user auth-provider実装をcurrent MRTR/runtimeへrebaseし、Takeover page/API requestごとにauthenticated principalを取得して、intervention作成者と一致することをServer側でも検証する想定です。
 
-その後の候補はWebRTC/WebTransportによるlow-latency view、device-bound proof、長時間/切断跨ぎ向けMCP Tasks integrationです。ただしtransportを進化させてもauthority / epoch / resume ruleは弱めません。
+当初V2で将来候補だったlow-latency WebRTCは、現在upstreamのfirst-class `BrowserHandoffAdapter` として実装済みです。Exact window/PID binding、direct-first WebRTC、TURN fallback、generation fencing、completion/revoke、bounded transport diagnosticsをHandoffが所有し、Mapsはlow-level broker/runtimeを組み立てずhigh-level adapterをconsumeします。Device-bound proof強化や長時間/切断跨ぎ向けMCP Tasks integrationは将来候補として残りますが、authority / epoch / resume ruleは弱めません。
 
 ## CI Boundary
 
-通常CIはHuman takeoverを待たず、CAPTCHAやsign-in challengeを意図的に発生させません。Authority state machine、request-state binding、takeover capabilityのrotation/expiry/revoke、capability bootstrap、Broker HTTP boundary、fail-closed configをdeterministic testで確認します。Manual Live Maps E2Eで自然発生したchallengeもCIが突破する対象にはしません。
+通常CIはHuman takeoverを待たず、CAPTCHAやsign-in challengeを意図的に発生させません。Authority state machine、request-state binding、takeover capabilityのrotation/expiry/revoke、legacy HTTP broker boundary、fail-closed configはdeterministic testを維持します。Canonical WebRTC adapter/runtime gateは `mcp-execution-handoff` upstreamが所有し、Maps側ではconsumer integrationとbounded manual acceptanceを確認します。Manual Live Maps E2Eで自然発生したchallengeもCIが突破する対象にはしません。
 
 ## Upstream化の現在地
 
-generic control-plane実装は `git-ksk/mcp-execution-handoff` へ切り出しました。Maps固有URL/surface classification、postcondition verification、CDP executionはこのrepositoryに残します。Japan Cinemaをsecond real adapterとして検証済みで、upstreamはformal source of truthになりました。`v0.1.0` はsource releaseとして作成済みですが、npm publishは意図的に無効のままです。Mapsはimmutableなsource-release commitをconsumeします。
+generic control-plane実装は `git-ksk/mcp-execution-handoff` へ切り出しました。Maps固有URL/surface classification、browser/profile policy、postcondition verificationはこのrepositoryに残します。MapsとJapan Cinemaの2つの独立browser MCPが同じfirst-class `BrowserHandoffAdapter` をconsumeし、物理WebRTC acceptanceまで通過したため、upstreamはformal source of truthです。`v0.1.0` はsource releaseとして作成済みですが、npm publishは意図的に無効のままです。Mapsはimmutableなsource commitをconsumeします。
