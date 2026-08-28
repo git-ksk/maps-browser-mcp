@@ -105,7 +105,7 @@ test("execution handoff upstream Browser Handoff integration is pinned to an imm
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(
     pkg.dependencies?.["mcp-execution-handoff"],
-    "https://github.com/git-ksk/mcp-execution-handoff/archive/2a2b4351b060cd7fdbf2cb1457bec00c6d2eab57.tar.gz"
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/f5dee317c13bc2f8da97c10c2d6907ff5664c7ae.tar.gz"
   );
 });
 
@@ -170,6 +170,32 @@ test("container portability is gated by the existing required Node 22 check", ()
   assert.doesNotMatch(source, /^  container:\s*$/m, "container validation must not live in a separate optional job");
 });
 
+test("WebSocket upgrade keeps transport selection Handoff-owned across the public gateway", () => {
+  const server = read("src/server.ts");
+  const index = read("src/index.ts");
+  const gatewayServer = read("reference/oauth-gateway/server.mjs");
+  const gatewayProxy = read("reference/oauth-gateway/proxy.mjs");
+  const mapsOwned = `${server}\n${index}\n${gatewayServer}\n${gatewayProxy}`;
+
+  assert.match(server, /managedFallback: config\.credentialSafeHandoff\.managedFallback/);
+  assert.match(index, /httpServer\.on\("upgrade"/);
+  assert.match(gatewayServer, /server\.on\("upgrade"/);
+  assert.match(gatewayProxy, /proxyTakeoverUpgrade/);
+  assert.match(gatewayProxy, /x-mcp-handoff-fallback/);
+  for (const forbidden of [
+    "websocket_relay",
+    "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID",
+    "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN",
+    "iceTransportPolicy"
+  ]) {
+    assert.equal(
+      mapsOwned.includes(forbidden),
+      false,
+      `Maps/gateway must not select Handoff transport via ${forbidden}`
+    );
+  }
+});
+
 test("readiness, MCP, and takeover paths use the configured HTTP auth provider", () => {
   const indexSource = read("src/index.ts");
   const authSource = read("src/auth-provider.ts");
@@ -179,6 +205,8 @@ test("readiness, MCP, and takeover paths use the configured HTTP auth provider",
   assert.match(indexSource, /isTakeoverHttpPath\(requestUrl\.pathname\)/);
   assert.match(indexSource, /authorizeRequest\(authProvider, req, res, requestUrl\)/);
   assert.match(indexSource, /runWithRequestPrincipal\(principal/);
+  assert.match(indexSource, /authorizeUpgradeRequest\(authProvider, req, requestUrl\)/);
+  assert.match(indexSource, /handleTakeoverUpgradeRequest\(req, socket, head\)/);
   assert.match(authSource, /bearerAllowed\(request\.headers\.authorization, expectedToken\)/);
   assert.match(authSource, /www-authenticate/);
   assert.match(authSource, /createAuthProvider/);

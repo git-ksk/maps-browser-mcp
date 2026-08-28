@@ -30,6 +30,9 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
     "RTCDataChannel",
     "setRemoteDescription",
     "iceServers",
+    "iceTransportPolicy",
+    "websocket_relay",
+    "MCP_HANDOFF_CLOUDFLARE_TURN",
     "DTLS",
     "RtpPacket"
   ]) {
@@ -50,10 +53,12 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
   assert.match(server, /new WebRtcCredentialTakeoverBoundary\(browserHandoffAdapter\)/);
   assert.match(provider, /SystemBrowserCredentialSession/);
   assert.match(provider, /await this\.browser\.start\(\)/);
-  assert.match(provider, /this\.browser\.getPid\(\)/);
-  assert.match(provider, /targetProcessId/);
+  assert.match(provider, /await this\.browser\.getTakeoverTarget\(\)/);
+  assert.match(provider, /targetProcessId: target\.processId/);
+  assert.match(provider, /targetWindowId: target\.windowId/);
   assert.match(nativeBoundary, /\{ processId: request\.targetProcessId \}/);
-  assert.match(webRtcBoundary, /target: \{ processId: request\.targetProcessId \}/);
+  assert.match(webRtcBoundary, /processId: request\.targetProcessId/);
+  assert.match(webRtcBoundary, /windowId: request\.targetWindowId/);
   assert.match(webRtcBoundary, /inputPolicy: CREDENTIAL_SAFE_INPUT_POLICY/);
   assert.match(provider, /await this\.browser\.close\(\)/);
   assert.doesNotMatch(server, /preserveBrowserSession/);
@@ -69,6 +74,8 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
   assert.doesNotMatch(webRtcBoundary, /createWebRtcLink|SpawnedWebRtcRuntimeProvider|TakeoverBroker/);
   assert.match(server, /browserHandoffAdapter\?\.ownsPath\(pathname\)/);
   assert.match(server, /browserHandoffAdapter\.handle\(request, boundPrincipal\)/);
+  assert.match(server, /managedFallback: config\.credentialSafeHandoff\.managedFallback/);
+  assert.match(server, /browserHandoffAdapter\?\.handleUpgrade\(request, socket, head\)/);
 });
 
 test("Native and WebRTC transports are siblings and neither instantiates CUA", () => {
@@ -80,10 +87,10 @@ test("Native and WebRTC transports are siblings and neither instantiates CUA", (
   assert.doesNotMatch(read("src/browser/webrtc-credential-takeover-boundary.ts"), /Cua|CUA|cua-driver/);
 });
 
-test("credential prompts distinguish Native app from direct Safari WebRTC takeover", () => {
+test("credential prompts distinguish Native app from Handoff-managed Safari takeover", () => {
   const server = read("src/server.ts");
   assert.match(server, /Open the Native Takeover app and use this short-lived Native-only locator/);
-  assert.match(server, /Open this short-lived WebRTC takeover locator in iPhone Safari/);
-  assert.match(server, /Control only the dedicated Chrome window directly with tap\/swipe and the iOS keyboard/);
-  assert.match(server, /Legacy button-driven frame\/input takeover is disabled/);
+  assert.match(server, /Open this short-lived Handoff takeover locator in iPhone Safari/);
+  assert.match(server, /Control only the dedicated Chrome window with tap\/swipe and the iOS keyboard/);
+  assert.match(server, /Handoff owns transport fallback and stale-generation fencing/);
 });

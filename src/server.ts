@@ -1,3 +1,5 @@
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
 import { randomBytes } from "node:crypto";
 import {
   acceptedContent,
@@ -101,7 +103,10 @@ const browserHandoffAdapter = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.webRtcRuntime
   ? new BrowserHandoffAdapter({
       takeover: config.takeover,
-      runtime: config.credentialSafeHandoff.webRtcRuntime
+      runtime: config.credentialSafeHandoff.webRtcRuntime,
+      ...(config.credentialSafeHandoff.managedFallback
+        ? { managedFallback: config.credentialSafeHandoff.managedFallback }
+        : {})
     })
   : undefined;
 const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime);
@@ -133,7 +138,10 @@ const credentialSafeBrowser = config.credentialSafeHandoff.enabled &&
       executable: config.browser.executable,
       profileDir: config.browser.profileDir,
       startUrl: "https://www.google.com/maps",
-      allowUnsandboxedChromium: config.browser.allowUnsandboxedChromium
+      allowUnsandboxedChromium: config.browser.allowUnsandboxedChromium,
+      ...(config.credentialSafeHandoff.managedFallback
+        ? { takeoverDisplayName: config.credentialSafeHandoff.managedFallback.displayName }
+        : {})
     })
   : undefined;
 const credentialSafeProvider = !config.credentialSafeHandoff.enabled
@@ -314,7 +322,7 @@ function credentialSafePrompt(
   const remote = surface.providerKind === "thin-takeover" && /^https?:\/\//i.test(surface.locator)
     ? `Open the Native Takeover app and use this short-lived Native-only locator:\n${surface.locator}\n\nDo not use the locator as a Web takeover page; legacy Web bootstrap/frame/input are disabled for this Human session.`
     : surface.providerKind === "webrtc-takeover" && /^https?:\/\//i.test(surface.locator)
-      ? `Open this short-lived WebRTC takeover locator in iPhone Safari:\n${surface.locator}\n\nControl only the dedicated Chrome window directly with tap/swipe and the iOS keyboard. Legacy button-driven frame/input takeover is disabled for this Human session.`
+      ? `Open this short-lived Handoff takeover locator in iPhone Safari:\n${surface.locator}\n\nControl only the dedicated Chrome window with tap/swipe and the iOS keyboard. Handoff owns transport fallback and stale-generation fencing; Maps does not replay Human input or pre-auth actions.`
       : /^https?:\/\//i.test(surface.locator)
           ? `Open the configured Human access surface:\n${surface.locator}`
           : "Use the local or separately configured OS-level Human access surface to control the dedicated browser.";
@@ -1694,6 +1702,14 @@ export function buildServer(): McpServer {
 export function isTakeoverHttpPath(pathname: string): boolean {
   if (browserHandoffAdapter?.ownsPath(pathname)) return true;
   return takeoverBroker.isEnabled() && takeoverBroker.isPath(pathname);
+}
+
+export function handleTakeoverUpgradeRequest(
+  request: IncomingMessage,
+  socket: Duplex,
+  head: Buffer
+): boolean {
+  return browserHandoffAdapter?.handleUpgrade(request, socket, head) ?? false;
 }
 
 export async function handleTakeoverHttpRequest(request: Request): Promise<Response> {

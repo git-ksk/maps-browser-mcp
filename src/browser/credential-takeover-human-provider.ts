@@ -34,13 +34,13 @@ export class CredentialTakeoverHumanProvider implements ExternalHumanSurfaceProv
     if (this.active) throw new Error("Credential Takeover Human provider is already active");
     await this.browser.start();
     try {
-      const targetProcessId = this.browser.getPid();
-      if (!targetProcessId) throw new Error("Credential-safe normal Chrome process is unavailable");
+      const target = await this.browser.getTakeoverTarget();
       const locator = this.takeover.start({
         interventionId: request.interventionId,
         epoch: request.epoch,
         principalBinding: request.principalBinding,
-        targetProcessId
+        targetProcessId: target.processId,
+        ...(target.windowId === undefined ? {} : { targetWindowId: target.windowId })
       });
       const sessionId = randomUUID();
       this.active = { sessionId, interventionId: request.interventionId, epoch: request.epoch };

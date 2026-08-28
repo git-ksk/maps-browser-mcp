@@ -507,9 +507,14 @@ test("WebRTC Takeover requires the authenticated broker and a Handoff-owned plat
     if (process.platform === "linux") {
       assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayName, ":99");
       assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, undefined);
+      assert.deepEqual(config.credentialSafeHandoff.managedFallback, {
+        linuxHostScript: "/opt/thin/takeover-webrtc-host",
+        displayName: ":99"
+      });
     } else {
       assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, 7);
       assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayName, undefined);
+      assert.equal(config.credentialSafeHandoff.managedFallback, undefined);
     }
     assert.equal(config.takeover.enabled, true);
   });

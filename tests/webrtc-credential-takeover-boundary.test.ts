@@ -6,7 +6,10 @@ import { WebRtcCredentialTakeoverBoundary } from "../src/browser/webrtc-credenti
 function fakeHandoff(calls: string[]): BrowserHandoffAdapter {
   return {
     start(request: BrowserHandoffStartRequest) {
-      calls.push(`start:${request.intervention.id}:${request.intervention.epoch}:${request.principalBinding}:${request.target.processId}:${JSON.stringify(request.inputPolicy)}`);
+      calls.push(
+        `start:${request.intervention.id}:${request.intervention.epoch}:${request.principalBinding}`
+        + `:${request.target.processId}:${request.target.windowId ?? "none"}:${JSON.stringify(request.inputPolicy)}`
+      );
       return "https://takeover.example/takeover/webrtc-locator";
     },
     async revoke(interventionId: string) {
@@ -30,11 +33,26 @@ test("WebRTC credential boundary delegates only target/policy lifecycle to Brows
   const locator = boundary.start({ interventionId: "int-1", epoch: 8, principalBinding: "principal-a", targetProcessId: 5252 });
   assert.equal(locator, "https://takeover.example/takeover/webrtc-locator");
   assert.deepEqual(calls, [
-    'start:int-1:8:principal-a:5252:{"tap":true,"scroll":true,"text":true,"key":true}'
+    'start:int-1:8:principal-a:5252:none:{"tap":true,"scroll":true,"text":true,"key":true}'
   ]);
   await boundary.revoke("int-1");
   assert.deepEqual(calls, [
-    'start:int-1:8:principal-a:5252:{"tap":true,"scroll":true,"text":true,"key":true}',
+    'start:int-1:8:principal-a:5252:none:{"tap":true,"scroll":true,"text":true,"key":true}',
     "revoke:int-1"
+  ]);
+});
+
+test("WebRTC credential boundary forwards exact-window identity without transport selection", () => {
+  const calls: string[] = [];
+  const boundary = new WebRtcCredentialTakeoverBoundary(fakeHandoff(calls), "linux");
+  boundary.start({
+    interventionId: "int-window",
+    epoch: 10,
+    principalBinding: "principal-window",
+    targetProcessId: 6262,
+    targetWindowId: 8080
+  });
+  assert.deepEqual(calls, [
+    'start:int-window:10:principal-window:6262:8080:{"tap":true,"scroll":true,"text":true,"key":true}'
   ]);
 });

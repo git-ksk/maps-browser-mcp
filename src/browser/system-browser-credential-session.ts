@@ -32,6 +32,96 @@ export interface SystemBrowserCredentialSessionOptions {
   startUrl?: string;
   profileUnlockTimeoutMs?: number;
   allowUnsandboxedChromium?: boolean;
+  takeoverDisplayName?: string;
+  xdotoolExecutable?: string;
+}
+
+export interface CredentialTakeoverTarget {
+  processId: number;
+  windowId?: number;
+}
+
+type WindowCommandRunner = (
+  executable: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv
+) => Promise<string>;
+
+const EXACT_WINDOW_TIMEOUT_MS = 5_000;
+const EXACT_WINDOW_POLL_MS = 100;
+
+export function parseLinuxWindowIds(value: string): number[] {
+  return [...new Set(value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((item) => Number(item))
+    .filter((item) => Number.isSafeInteger(item) && item > 0))];
+}
+
+export async function resolveLinuxExactWindowId(
+  processId: number,
+  displayName: string,
+  options: {
+    xdotoolExecutable?: string;
+    timeoutMs?: number;
+    pollMs?: number;
+    runCommand?: WindowCommandRunner;
+  } = {}
+): Promise<number> {
+  if (!Number.isSafeInteger(processId) || processId <= 0) {
+    throw new Error("Credential-safe normal Chrome process is unavailable");
+  }
+  if (!/^:\d+(?:\.\d+)?$/.test(displayName)) {
+    throw new Error("Credential-safe exact-window lookup requires a local X11 display");
+  }
+  const xdotoolExecutable = options.xdotoolExecutable ?? "/usr/bin/xdotool";
+  if (!path.isAbsolute(xdotoolExecutable)) {
+    throw new Error("Credential-safe xdotool executable must be an absolute path");
+  }
+  const timeoutMs = options.timeoutMs ?? EXACT_WINDOW_TIMEOUT_MS;
+  const pollMs = options.pollMs ?? EXACT_WINDOW_POLL_MS;
+  const runCommand = options.runCommand ?? runBoundedWindowCommand;
+  const deadline = Date.now() + timeoutMs;
+  const env = { ...buildBrowserProcessEnv(), DISPLAY: displayName };
+  let stableWindowId: number | undefined;
+  let stableSamples = 0;
+
+  for (;;) {
+    const rawIds = await runCommand(
+      xdotoolExecutable,
+      ["search", "--onlyvisible", "--pid", String(processId)],
+      env
+    ).catch(() => "");
+    const ids = parseLinuxWindowIds(rawIds);
+    if (ids.length === 1) {
+      const windowId = ids[0]!;
+      const rawOwner = await runCommand(
+        xdotoolExecutable,
+        ["getwindowpid", String(windowId)],
+        env
+      ).catch(() => "");
+      const ownerPid = Number(rawOwner.trim());
+      if (Number.isSafeInteger(ownerPid) && ownerPid === processId) {
+        if (stableWindowId === windowId) stableSamples += 1;
+        else {
+          stableWindowId = windowId;
+          stableSamples = 1;
+        }
+        if (stableSamples >= 2) return windowId;
+      } else {
+        stableWindowId = undefined;
+        stableSamples = 0;
+      }
+    } else {
+      stableWindowId = undefined;
+      stableSamples = 0;
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error("Credential-safe normal Chrome exact window is unavailable");
+    }
+    await sleep(pollMs);
+  }
 }
 
 export function buildCredentialSafeChromeArgs(options: Pick<SystemBrowserCredentialSessionOptions, "profileDir" | "startUrl" | "allowUnsandboxedChromium">): string[] {
@@ -61,6 +151,21 @@ export class SystemBrowserCredentialSession {
 
   getPid(): number | undefined {
     return this.isActive() ? this.child?.pid : undefined;
+  }
+
+  async getTakeoverTarget(): Promise<CredentialTakeoverTarget> {
+    const processId = this.getPid();
+    if (!processId) throw new Error("Credential-safe normal Chrome process is unavailable");
+    if (process.platform !== "linux" || !this.options.takeoverDisplayName) {
+      return { processId };
+    }
+    const windowId = await resolveLinuxExactWindowId(processId, this.options.takeoverDisplayName, {
+      ...(this.options.xdotoolExecutable ? { xdotoolExecutable: this.options.xdotoolExecutable } : {})
+    });
+    if (this.getPid() !== processId) {
+      throw new Error("Credential-safe normal Chrome process changed during exact-window lookup");
+    }
+    return { processId, windowId };
   }
 
   async start(): Promise<void> {
@@ -179,4 +284,43 @@ export class SystemBrowserCredentialSession {
     }
     return present;
   }
+}
+
+async function runBoundedWindowCommand(
+  executable: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv
+): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const child = spawn(executable, [...args], { env, stdio: ["ignore", "pipe", "ignore"] });
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      reject(new Error("Credential-safe exact-window lookup timed out"));
+    }, 1_000);
+    child.stdout.on("data", (chunk: Buffer) => {
+      bytes += chunk.byteLength;
+      if (bytes <= 8 * 1024) chunks.push(chunk);
+    });
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code !== 0 || bytes > 8 * 1024) {
+        reject(new Error("Credential-safe exact-window lookup failed"));
+        return;
+      }
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+  });
 }

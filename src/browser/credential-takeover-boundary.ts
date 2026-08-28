@@ -3,6 +3,7 @@ export interface CredentialTakeoverStartRequest {
   epoch: number;
   principalBinding: string;
   targetProcessId: number;
+  targetWindowId?: number;
 }
 
 /**

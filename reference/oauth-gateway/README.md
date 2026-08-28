@@ -40,11 +40,12 @@ This is intentionally narrow:
 - `iss` in authorization responses;
 - `no-store` OAuth responses;
 - separate Firestore control-plane collections prefixed `_mapsBrowserMcpRefOAuth...`;
-- optional remote/mobile `/takeover/*` proxy for `thin_takeover`, gated by a separate short-lived Human operator session;
+- optional remote/mobile `/takeover/*` HTTPS + WebSocket proxy, gated by a separate short-lived Human operator session;
 - operator session cookie is HttpOnly, Secure, SameSite=Strict, scoped to `/takeover`, account-bound, signed, and short-lived;
 - public/operator Authorization or Cookie headers are stripped before the loopback hop;
-- only the bounded takeover request/response headers required by the Handoff broker are forwarded;
-- frame streams remain streaming responses through the gateway and are not intentionally buffered or persisted.
+- only the bounded takeover HTTPS/WebSocket headers required by Handoff are forwarded;
+- public OAuth/cookie material is stripped from WebSocket upgrades and replaced only with the independent private-core bearer;
+- frame streams and WebSocket payloads remain opaque transit data and are not intentionally buffered, logged, or persisted.
 
 It deliberately does **not** expose Dynamic Client Registration, multi-user browser/profile sharing, generic browser automation, raw Google credentials, takeover capabilities in the locator URL, public OAuth token passthrough, CAPTCHA bypass, or passkey/WebAuthn proxying.
 
@@ -54,7 +55,7 @@ When `MAPS_REMOTE_TAKEOVER=true`, the public gateway can host the credential-saf
 
 The initial visit to a valid `/takeover/<opaque-id>` locator does **not** grant browser control by itself. If the browser has no valid operator session, the gateway presents a single-user Firebase authorization page. Email/password is sent directly to Firebase Identity Toolkit; the password field is cleared; the gateway receives only the resulting Firebase ID token, verifies the configured allowed account, then issues the short-lived `/takeover` operator cookie.
 
-After operator authorization, the same locator reloads and the gateway proxies the bounded broker page/API to the private core using `MCP_CORE_BEARER_TOKEN`. The core still enforces the Handoff session capability, client binding, principal/intervention/epoch fencing, one-live-client rules, same-origin input, revoke/Done, and active stream abort.
+After operator authorization, the same locator reloads and the gateway proxies the bounded Handoff page/API to the private core using `MCP_CORE_BEARER_TOKEN`. Managed fallback may then upgrade `/takeover/ws/*` on the same public origin. The gateway authenticates the operator cookie before that upgrade, strips the cookie/public Authorization header, forwards only the bounded WebSocket handshake plus the private core bearer, and then pipes opaque bytes without inspection. Handoff independently validates the exact public Origin and its short-lived ticket carried in the WebSocket subprotocol. The core still enforces client binding, principal/intervention/epoch fencing, one-live-client rules, revoke/Done, and stale-generation fencing.
 
 This operator login is only the gateway access boundary. It is separate from the **target Google account** sign-in performed inside the dedicated Chromium surface. Target Google password/MFA/passkey material must remain Human-controlled and must never be copied into the gateway, MCP request, model context, logs, argv, or repository artifacts.
 
@@ -106,7 +107,7 @@ MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99
 MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=/app/node_modules/.bin/handoff-linux-webrtc-host
 ```
 
-The reference container starts an isolated local Xvfb/Openbox surface only when `webrtc_takeover` is selected. It listens on no X11 TCP socket, and Handoff scopes capture/input to the exact normal-browser PID/window.
+The reference container starts an isolated local Xvfb/Openbox surface only when `webrtc_takeover` is selected. It listens on no X11 TCP socket. Maps resolves only its normal-browser PID plus one stable X11 window ID; Handoff keeps capture/input on that exact window and owns direct WebRTC -> WebSocket relay -> optional TURN fallback. No WebSocket/TURN provider selector is configured in Maps.
 
 Use a different secret for `MCP_TAKEOVER_OPERATOR_SECRET` and `MCP_OAUTH_TRANSACTION_SECRET`. The core child process receives only `MCP_CORE_BEARER_TOKEN` as its private HTTP auth token.
 
@@ -188,7 +189,7 @@ A `1Gi` instance was observed to cross its memory limit during repeated headless
 
 The default container Chrome profile is ephemeral. That is acceptable for protocol/transport dogfood and a disposable signed-out Google acceptance run, but it is **not durable signed-in Maps state**. If persistent authenticated Maps workflows are required later, use a controlled single-user runtime with an appropriate persistent profile strategy and the same V5 isolation rules.
 
-## WebRTC normal-browser pre-Google acceptance checklist
+## Managed normal-browser pre-Google acceptance checklist
 
 The reference OAuth image carries the same production-shaped Linux harness used by CI/Cloud Build. Run it inside the built image with:
 
@@ -200,17 +201,18 @@ It gates the exact normal-browser PID/window boundary, H.264 RTP, bounded DataCh
 
 Before entering any real target Google credential:
 
-1. build/deploy a recorded PR #107 commit under a distinct single-user gateway URL;
+1. record the candidate commit/revision and build/deploy it at 0% traffic under a distinct single-user gateway URL;
 2. configure the remote takeover variables above and independent secrets in Secret Manager;
 3. confirm `/mcp` OAuth still works and public OAuth tokens do not reach the core;
 4. create a benign Human intervention and open its `/takeover/<id>` locator from the intended mobile browser;
 5. confirm the operator login is required before the broker page appears;
 6. confirm no operator cookie/Firebase ID token is forwarded to the core;
-7. confirm push-frame streaming renders and tap/scroll/text/key input works on a benign allowed surface;
-8. confirm slow/recreated clients fail closed or recover only through the Handoff reconnect rules;
-9. confirm Done/revoke closes the active frame stream and stale capability/client generation no longer works;
-10. confirm fresh Agent-owned CDP reattach succeeds and fresh readiness is required;
-11. only then run maps-browser-mcp #104 with a disposable dedicated profile starting `signed_out`.
+7. make direct WebRTC unavailable and confirm Handoff selects WebSocket relay without TURN;
+8. confirm tap/scroll/text/Backspace/Enter works over the managed relay on a benign allowed surface;
+9. confirm slow/recreated clients fail closed or recover only through the Handoff reconnect rules;
+10. confirm Done/revoke closes the active transport and stale locator/input generation no longer works;
+11. confirm fresh Agent-owned CDP reattach succeeds and fresh readiness is required;
+12. only then run the Human-only Google sign-in acceptance with a disposable dedicated profile starting `signed_out`.
 
 The actual target Google sign-in remains a Human acceptance step and is intentionally not automated by this gateway.
 
