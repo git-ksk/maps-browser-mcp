@@ -221,6 +221,10 @@ test("reference Cloud Run image provisions the bounded Linux normal-browser WebR
   assert.match(dockerfile, /xdotool/);
   assert.match(dockerfile, /ffmpeg/);
   assert.match(dockerfile, /fonts-noto-cjk/);
+  assert.match(dockerfile, /build-linux-xtest-helper\.sh/);
+  assert.match(dockerfile, /build-linux-atspi-helper\.sh/);
+  assert.match(dockerfile, /dist\/native\/mcp-handoff-linux-xtest-helper/);
+  assert.match(dockerfile, /dist\/native\/mcp-handoff-linux-atspi-helper/);
   assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99/);
   assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=\/app\/node_modules\/\.bin\/handoff-linux-webrtc-host/);
   assert.match(dockerfile, /XDG_RUNTIME_DIR=\/tmp\/maps-browser-mcp\/xdg-runtime/);
