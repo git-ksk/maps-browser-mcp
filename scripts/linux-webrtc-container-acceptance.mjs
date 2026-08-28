@@ -304,7 +304,12 @@ async function main() {
 main().then(() => {
   process.exit(0);
 }).catch((error) => {
-  process.stderr.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_FAIL ${error instanceof Error ? error.message : "unknown"}
-`);
+  const code = typeof error?.code === "string" ? error.code : "unknown";
+  const stage = typeof error?.startStage === "string" ? error.startStage : "unknown";
+  const reason = typeof error?.startReason === "string" ? error.startReason : "unknown";
+  const endCause = typeof error?.startEndCause === "string" ? error.startEndCause : "none";
+  process.stderr.write(
+    `LINUX_WEBRTC_HOST_ACCEPTANCE_FAIL code=${code} stage=${stage} reason=${reason} end=${endCause}\n`
+  );
   process.exit(1);
 });
