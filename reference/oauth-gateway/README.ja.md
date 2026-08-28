@@ -40,12 +40,13 @@ Reference imageではgatewayとcurrent checkoutのcoreを別processとして1つ
 - authorization responseの `iss`
 - OAuth responseは `no-store`
 - Firestore control-plane stateは `_mapsBrowserMcpRefOAuth...` prefix
-- credential-safe takeover用のoptional remote/mobile `/takeover/*` proxy
+- credential-safe takeover用のoptional remote/mobile `/takeover/*` HTTPS + WebSocket proxy
 - `/takeover` は別のshort-lived Human operator sessionで保護
 - operator cookieはHttpOnly / Secure / SameSite=Strict / Path=`/takeover` / account-bound / signed / short-lived
 - public/operator Authorization/Cookie headerはloopback coreへ渡さない
-- Handoff brokerに必要なbounded takeover headerだけallowlistでforward
-- frame streamはgatewayで意図的にbuffer/persistせずstreamingのまま通す
+- Handoffに必要なbounded takeover HTTPS/WebSocket headerだけallowlistでforward
+- WebSocket upgradeではpublic OAuth/cookie materialを除去し、独立private-core bearerだけへ置換
+- frame stream / WebSocket payloadはopaque transit dataとして扱い、意図的にbuffer/log/persistしない
 
 DCR、multi-user profile共有、generic browser automation、raw Google credential、locator URLへのtakeover capability埋め込み、public OAuth token passthrough、CAPTCHA bypass、passkey/WebAuthn proxyは実装しません。
 
@@ -55,7 +56,7 @@ DCR、multi-user profile共有、generic browser automation、raw Google credent
 
 有効な `/takeover/<opaque-id>` を開いただけではbrowser controlは付与されません。Operator sessionが無ければsingle-user Firebase authorization pageを表示します。Email/passwordはbrowserからFirebase Identity Toolkitへ直接送り、password fieldをclearします。Gatewayはshort-lived Firebase ID Tokenだけを受け取り、configured allowed accountを検証した後、短命な `/takeover` operator cookieを発行します。
 
-Operator認証後に同じlocatorをreloadし、gatewayがprivate bearerへ置換してbounded broker page/APIをloopback coreへproxyします。Core側のHandoff session capability、client binding、principal/intervention/epoch fencing、one-live-client、same-origin input、Done/revoke、active stream abortはそのまま有効です。
+Operator認証後に同じlocatorをreloadし、gatewayがprivate bearerへ置換してbounded Handoff page/APIをloopback coreへproxyします。Managed fallbackではsame public originの `/takeover/ws/*` へupgradeできます。Gatewayはupgrade前にoperator cookieを認証し、cookie/public Authorizationを除去してbounded WebSocket handshake + private core bearerだけをforwardし、その後はopaque byteをinspectionせずpipeします。HandoffはWebSocket subprotocol内のshort-lived ticketとexact public Originを独立検証します。Core側のclient binding、principal/intervention/epoch fencing、one-live-client、Done/revoke、stale-generation fencingはそのまま有効です。
 
 このoperator loginはgateway access用です。Dedicated Chromium内で行う **target Google account** のsign-inとは別物です。Target Google password/MFA/passkey materialをgateway、MCP request、model context、log、argv、repository artifactへ入れません。
 
@@ -82,7 +83,7 @@ MCP_CORE_URL=http://127.0.0.1:8081/mcp
 MCP_CORE_BEARER_TOKEN=<24+ character independent random secret>
 ```
 
-Remote/mobile WebRTC Takeover:
+Remote/mobile credential-safe takeover:
 
 ```text
 MAPS_REMOTE_TAKEOVER=true
@@ -95,7 +96,7 @@ MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99
 MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=/app/node_modules/.bin/handoff-linux-webrtc-host
 ```
 
-reference containerは `webrtc_takeover` 選択時だけisolated local Xvfb/Openbox surfaceを起動します。X11 TCP listenerは開かず、Handoffはnormal browserのexact PID/windowだけへcapture/inputをscopeします。
+reference containerは `webrtc_takeover` 選択時だけisolated local Xvfb/Openbox surfaceを起動します。X11 TCP listenerは開きません。Mapsはnormal-browser PIDとstableなX11 window IDだけを解決し、Handoffはcapture/inputをそのexact windowへscopeしたままdirect WebRTC -> WebSocket relay -> optional TURN fallbackを所有します。MapsにWebSocket/TURN provider selectorはありません。
 
 `MCP_TAKEOVER_OPERATOR_SECRET` と `MCP_OAUTH_TRANSACTION_SECRET` は別secretにしてください。Core child processへHTTP authとして渡すのは `MCP_CORE_BEARER_TOKEN` だけです。
 
@@ -187,17 +188,18 @@ docker run --rm --entrypoint node maps-browser-mcp-oauth-reference:ci /app/scrip
 
 Target Google credentialを入力する前に:
 
-1. PR #107のrecorded commitからdistinct single-user gatewayへbuild/deploy
+1. candidate commit/revisionを記録し、distinct single-user gatewayへ0% trafficでbuild/deploy
 2. remote takeover設定とindependent secretをSecret Managerで構成
 3. `/mcp` OAuthが継続動作し、public OAuth tokenがcoreへ届かないことを確認
 4. benign Human interventionを作り、予定しているmobile browserから `/takeover/<id>` を開く
 5. broker page表示前にoperator loginが必須であることを確認
 6. operator cookie/Firebase ID Tokenがcoreへforwardされないことを確認
-7. benign allowed surfaceでpush frame、tap/scroll/text/keyを確認
-8. slow/recreated clientがfail closed、またはHandoff reconnect ruleでのみrecoverすることを確認
-9. Done/revokeでactive frame streamが閉じ、stale capability/client generationが使えないことを確認
-10. fresh Agent-owned CDP reattachとfresh readiness必須を確認
-11. ここまで通ってから maps-browser-mcp #104 をdisposable dedicated `signed_out` profileで実行
+7. direct WebRTCをunavailableにし、TURNなしでHandoffがWebSocket relayを選択することを確認
+8. benign allowed surfaceでmanaged relayのtap/scroll/text/Backspace/Enterを確認
+9. slow/recreated clientがfail closed、またはHandoff reconnect ruleでのみrecoverすることを確認
+10. Done/revokeでactive transportが閉じ、stale locator/input generationが使えないことを確認
+11. fresh Agent-owned CDP reattachとfresh readiness必須を確認
+12. ここまで通ってからdisposable dedicated `signed_out` profileでHuman-only Google sign-in acceptanceを実行
 
 実際のtarget Google sign-inはHuman acceptanceであり、このgatewayでは自動化しません。
 

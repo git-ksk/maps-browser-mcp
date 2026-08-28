@@ -1,3 +1,6 @@
+import { request as httpRequest, STATUS_CODES } from "node:http";
+import { request as httpsRequest } from "node:https";
+
 const MCP_REQUEST_HEADERS = new Set([
   "accept",
   "content-type",
@@ -23,10 +26,27 @@ const TAKEOVER_REQUEST_HEADERS = new Set([
   "origin",
   "sec-fetch-site",
   "user-agent",
+  "x-mcp-handoff-fallback",
   "x-mcp-takeover-capability",
   "x-mcp-takeover-reconnect",
   "x-takeover-client",
   "x-takeover-native-client"
+]);
+
+
+const TAKEOVER_UPGRADE_REQUEST_HEADERS = new Set([
+  "origin",
+  "sec-websocket-key",
+  "sec-websocket-protocol",
+  "sec-websocket-version",
+  "user-agent"
+]);
+
+const TAKEOVER_UPGRADE_RESPONSE_HEADERS = new Set([
+  "connection",
+  "sec-websocket-accept",
+  "sec-websocket-protocol",
+  "upgrade"
 ]);
 
 const TAKEOVER_RESPONSE_HEADERS = new Set([
@@ -89,6 +109,99 @@ export function buildTakeoverCoreRequestHeaders(publicHeaders, privateBearer) {
 
 export function buildTakeoverPublicResponseHeaders(coreHeaders) {
   return copyHeaders(coreHeaders, TAKEOVER_RESPONSE_HEADERS);
+}
+
+export function buildTakeoverCoreUpgradeHeaders(publicHeaders, privateBearer) {
+  const headers = copyHeaders(publicHeaders, TAKEOVER_UPGRADE_REQUEST_HEADERS);
+  headers.set("authorization", `Bearer ${privateBearer}`);
+  headers.set("connection", "Upgrade");
+  headers.set("upgrade", "websocket");
+  return headers;
+}
+
+function upgradeResponseHead(response) {
+  const statusCode = response.statusCode === 101 ? 101 : 502;
+  const statusText = statusCode === 101 ? "Switching Protocols" : (STATUS_CODES[statusCode] || "Bad Gateway");
+  const lines = [`HTTP/1.1 ${statusCode} ${statusText}`];
+  if (statusCode === 101) {
+    for (const [name, value] of Object.entries(response.headers)) {
+      if (!TAKEOVER_UPGRADE_RESPONSE_HEADERS.has(name.toLowerCase()) || value === undefined) continue;
+      for (const item of Array.isArray(value) ? value : [value]) lines.push(`${name}: ${item}`);
+    }
+  } else {
+    lines.push("Connection: close", "Cache-Control: no-store", "Content-Length: 0");
+  }
+  return `${lines.join("\r\n")}\r\n\r\n`;
+}
+
+function rejectUpgradeSocket(socket, statusCode) {
+  if (socket.destroyed) return;
+  const bounded = [400, 401, 403, 404, 405, 502].includes(statusCode) ? statusCode : 502;
+  socket.end(
+    `HTTP/1.1 ${bounded} ${STATUS_CODES[bounded] || "Bad Gateway"}\r\n`
+    + "Connection: close\r\n"
+    + "Cache-Control: no-store\r\n"
+    + "Content-Length: 0\r\n\r\n"
+  );
+}
+
+export function proxyTakeoverUpgrade(
+  req,
+  socket,
+  head,
+  { coreUrl, privateBearer, publicBaseUrl }
+) {
+  if ((req.method || "GET").toUpperCase() !== "GET" || req.headers.upgrade?.toLowerCase() !== "websocket") {
+    rejectUpgradeSocket(socket, 400);
+    return;
+  }
+
+  let target;
+  try {
+    const publicUrl = new URL(req.url || "/", publicBaseUrl);
+    target = new URL(takeoverCoreUrl(coreUrl, publicUrl));
+  } catch {
+    rejectUpgradeSocket(socket, 404);
+    return;
+  }
+
+  const publicHeaders = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (Array.isArray(value)) for (const item of value) publicHeaders.append(name, item);
+    else if (value !== undefined) publicHeaders.set(name, value);
+  }
+  const headers = buildTakeoverCoreUpgradeHeaders(publicHeaders, privateBearer);
+  const requestImpl = target.protocol === "https:" ? httpsRequest : httpRequest;
+  const upstreamRequest = requestImpl(target, {
+    method: "GET",
+    headers: Object.fromEntries(headers.entries()),
+    agent: false
+  });
+
+  upstreamRequest.once("upgrade", (response, upstreamSocket, upstreamHead) => {
+    if (response.statusCode !== 101) {
+      upstreamSocket.destroy();
+      rejectUpgradeSocket(socket, 502);
+      return;
+    }
+    socket.write(upgradeResponseHead(response));
+    if (head?.length) upstreamSocket.write(head);
+    if (upstreamHead?.length) socket.write(upstreamHead);
+    socket.pipe(upstreamSocket);
+    upstreamSocket.pipe(socket);
+    const closePeer = () => {
+      if (!socket.destroyed) socket.destroy();
+      if (!upstreamSocket.destroyed) upstreamSocket.destroy();
+    };
+    socket.once("error", closePeer);
+    upstreamSocket.once("error", closePeer);
+  });
+  upstreamRequest.once("response", (response) => {
+    response.resume();
+    rejectUpgradeSocket(socket, response.statusCode === 401 || response.statusCode === 403 ? 502 : response.statusCode);
+  });
+  upstreamRequest.once("error", () => rejectUpgradeSocket(socket, 502));
+  upstreamRequest.end();
 }
 
 export function takeoverCoreUrl(coreUrl, publicRequestUrl) {

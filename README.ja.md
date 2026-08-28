@@ -8,7 +8,7 @@ Google Mapsのuser-visible Web UIを、専用Chrome / Chromiumセッションか
 
 ### Human Handoffの責務境界
 
-Google sign-in / re-authentication / consent / access challengeでHuman操作が必要な場合、`maps-browser-mcp` はMaps semantics、profile ownership、Human後のfresh verificationを所有し、[`mcp-execution-handoff`](https://github.com/git-ksk/mcp-execution-handoff) が一時的Human authority、exact-window capture/input、WebRTC/TURN、generation fencing、revokeを所有します。Humanの **Done** はHuman authority終了であり、認証成功証明でも後続Maps mutationのapprovalでもありません。詳細は **[Maps ↔ Handoff責務境界](docs/handoff-overview.ja.md)** を参照してください。
+Google sign-in / re-authentication / consent / access challengeでHuman操作が必要な場合、`maps-browser-mcp` はMaps semantics、profile ownership、Human後のfresh verificationを所有し、[`mcp-execution-handoff`](https://github.com/git-ksk/mcp-execution-handoff) が一時的Human authority、exact-window capture/input、direct WebRTC -> WebSocket relay -> optional TURN fallback、generation fencing、revokeを所有します。Humanの **Done** はHuman authority終了であり、認証成功証明でも後続Maps mutationのapprovalでもありません。詳細は **[Maps ↔ Handoff責務境界](docs/handoff-overview.ja.md)** を参照してください。
 
 ## このプロジェクトの狙い
 
@@ -359,7 +359,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `INTERACTIVE_ASSIST_MODE` | `false` | bounded visible-state readingと必要なV4 semantic UI operationを有効化 |
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなbounded V5 authenticated toolを有効化。Interactive Assistと専用single-user profile gateも必須 |
 | `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Google sign-in / consent / challenge向けHuman-only handoff |
-| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` はlocal OS-level surface、`cua_takeover` はlocal Cua、`thin_takeover` はNative Thin Takeover runtime、`webrtc_takeover` はinstall不要のiPhone Safari WebRTC takeover。legacy `hosted_cdp` はdeployment互換のためのみ残し、Human credential / consent / challenge controlではfail closed |
+| `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` はlocal OS-level surface、`cua_takeover` はlocal Cua、`thin_takeover` はNative Thin Takeover runtime、`webrtc_takeover` はHandoff-ownedなSafari surfaceを選択し、transport policyはdirect WebRTC -> WebSocket relay -> optional TURN。legacy `hosted_cdp` はHuman credential / consent / challenge controlではfail closed |
 | `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | local `external` transport専用fixed HTTPS locator。credential/query/fragment付きURLは拒否 |
 | `MAPS_CUA_DRIVER_COMMAND` | `cua-driver` | `cua_takeover` 専用Cua Driver executable。Human transport用の固定7 tool allowlist以外は呼ばない |
 | `MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE` | unset | Handoff WebRTC host executableの絶対path。macOSは `takeover-webrtc-host`、Linuxはpin済みLinux normal-browser helper/wrapperを使用 |
@@ -381,11 +381,11 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 
 V5自体にremote handoff transportは必須ではありません。すでにsign-in済みのpersistentな専用Chrome profileを使う構成が最も単純で、fresh readinessが `signed_in` ならCloudflare / WebRTCなしでbounded V5 toolを利用できます。Credential-safe handoffが必要なのは、Humanによるsign-in / re-authentication、consent、または自然発生したchallenge対応が必要な時だけです。
 
-credential-safe transportはすべてprofile-switch lifecycleを使います。managed CDP Chromeを停止し、same dedicated profileをremote-debugging/automation flagなしのnormal Chromeで開き、Human surface revoke後にfresh readinessを確認してautomationを再起動します。`external` はOS-level Human surface、`cua_takeover` はlocal fallback/reference、`thin_takeover` は低遅延Native runtime、`webrtc_takeover` はHandoff-ownedなSafari direct-touch surfaceです。Native/WebRTC credential takeoverでMapsが渡すcapture ownership情報は、自分が起動したnormal ChromeのPIDだけです。Handoffはeligible windowが厳密に1つであることを要求し、desktop全体ではなくそのwindowだけへcapture/inputをscopeします。ScreenCaptureKit / VideoToolbox / WebRTC signaling・RTP・DataChannel / reconnect fencing / input deliveryはMapsへ持ち込みません。Done/revokeはHuman authorityを停止してnormal Chromeを閉じますが、それ自体を認証成功とは扱いません。
+credential-safe transportはすべてprofile-switch lifecycleを使います。managed CDP Chromeを停止し、same dedicated profileをremote-debugging/automation flagなしのnormal Chromeで開き、Human surface revoke後にfresh readinessを確認してautomationを再起動します。`external` はOS-level Human surface、`cua_takeover` はlocal fallback/reference、`thin_takeover` は低遅延Native runtime、`webrtc_takeover` はHandoff-ownedなSafari surfaceです。Mapsが渡すnormal-Chrome ownershipは全platformでPID、LinuxではさらにPIDから安定したexact X11 window IDだけを解決して渡します。この解決ではwindow title / URL / text / account identityを読みません。Handoffはdesktop全体ではなくそのexact windowだけへcapture/inputをscopeします。WebRTC signaling・RTP・DataChannel、WebSocket payload、reconnect/fallback fencing、ICE/TURN選択、Human input deliveryはMapsへ持ち込みません。Done/revokeはHuman authorityを停止してnormal Chromeを閉じますが、それ自体を認証成功とは扱いません。
 
 運用上、`webrtc_takeover` はsame browser/session boundaryの背後にmacOS / Linuxのplatform hostを持ちます。macOSはiPhone Safariのdirect / TURNとreal Google sign-in recoveryまで物理acceptance済みです。Linux / Cloud Runもcore transport / sign-in boundaryはproduction acceptance済みで、Xvfb / Openbox / xdotool / ffmpeg + packaged exact-window Handoff host、Cloudflare Realtime TURN、物理iPhone Safariの `Live · relay`、real Human-only Google sign-inまで確認しています。残るCloud Run scopeは意図的に狭く、#135で明示Done -> revoke -> stale-client fencing -> fresh `signed_in` -> stopped-profile checkpoint -> fresh restore、#134でiPhone keyboard / Backspace / CJKの最終UX regressionを追跡します。**normal-browser boundaryはtransport / OS共通の不変条件**で、Human credential / consent / challenge操作にAgent automation browserやHuman-owned CDPを再利用しません。legacy `hosted_cdp` は引き続きこれらHuman stepで無効です。`external` はdefault、`thin_takeover` はoptional / experimentalのままです。
 
-WebRTCはdirect-firstで、ICE policyもHandoff側だけが所有します。Safari/browser peerはhost-only (`iceServers: []`) のまま、Node/werift peerはdependency内部の暗黙third-party STUN defaultを避けるためCloudflare STUNを明示利用します。Cloudflare Realtime TURN設定時はpeerごとのshort-lived TURN credentialを追加し、`iceTransportPolicy: all` のままsame-LAN/direct ICEを優先しつつWAN/CGNATではrelayへfallbackできます。long-lived TURN tokenはserver-sideだけに保持し、Maps / Chrome / browser client / helperへ渡しません。MapsはICE/STUN/TURN detail、candidate/address data、SDP、RTP、framebuffer、raw Human inputを処理しません。vendor browser API keyやhosted-browser backendは不要です。Steelは外部比較/UX benchmarkの参考に限定し、runtime dependencyにはしません。
+Remote Safariのtransport policyはdirect-firstかつHandoff-ownedで、direct WebRTC -> authenticated WebSocket relay -> optional WebRTC/TURN relayの順です。そのためCloud Runではdirect WebRTCが使えなくてもcorrectnessのためにTURNは必須ではありません。WebSocket fallbackは認証済みHTTPS operator originを再利用し、bootstrap routeからshort-lived Handoff ticketを取得してWebSocket subprotocol handshakeだけに載せます。Mapsはrelay providerを選択・処理しません。TURNはHandoffだけが所有するoptionalな後段fallbackです。MapsはICE/STUN/TURN detail、candidate/address data、SDP、RTP、framebuffer、WebSocket frame payload、fallback capability、raw Human inputを処理しません。vendor browser API keyやhosted-browser backendは不要です。Steelは外部比較/UX benchmarkの参考に限定し、runtime dependencyにはしません。
 
 両lifecycleともHuman handoff後のstale automatic replayは禁止です。credential-safe ownershipとexisting-CDP attachの併用は拒否し、V5の `MCP_AUTH_PROVIDER=module` はper-principal isolationまで引き続き拒否します。Send mutationにはmodern MCP 2026-07-28 clientのform elicitation supportも必要です。
 
@@ -467,7 +467,7 @@ GitHub Actions dependencyはfull commit SHA固定、Dependabotでnpm / Actions /
 | [Getting Started](docs/getting-started.ja.md) | install、初回起動、client形、Interactive Assist、cleanup |
 | [Container / headless Linux](docs/container.ja.md) | 標準Linux container、headless Chromium、port/profile/readiness/sandbox境界 |
 | [Troubleshooting](docs/troubleshooting.ja.md) | error code別の安全な復旧手順 |
-| [WebRTC Human Takeover](docs/webrtc-human-takeover.ja.md) | macOS + iPhone Safari設定、helper build、authenticated operator origin、direct/TURN動作 |
+| [Managed Human Takeover](docs/webrtc-human-takeover.ja.md) | macOS/Linux + iPhone Safari設定、authenticated operator origin、direct/WSS/optional TURN動作 |
 | [ChatGPT](docs/chatgpt.ja.md) | ChatGPT/App接続境界とtool refresh |
 | [Architecture](docs/architecture.ja.md) | runtime、CDP、state、queue/watchdog、semantic UI operation model |
 | [Project positioning](docs/positioning.ja.md) | 競合category、Maps Web priority、公式interface重複、product direction |

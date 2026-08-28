@@ -1,8 +1,8 @@
-# WebRTC Human Takeover — macOS/Linux + iPhone Safari
+# Managed Human Takeover — macOS/Linux + iPhone Safari
 
 [日本語](webrtc-human-takeover.ja.md)
 
-This is the built-in **remote Human handoff** path for current single-user macOS and Linux/container deployments. It is optional: V5 does **not** require WebRTC, Cloudflare, TURN, or any remote takeover when the dedicated Maps Chrome profile is already signed in. The simplest V5 deployment is a persistent dedicated profile that the Human signs into locally once; WebRTC is for later sign-in/re-authentication, consent, or challenge handling when the Human needs remote access. The normal Maps automation path remains unchanged until `MAPS_CREDENTIAL_SAFE_HANDOFF=true` and `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` are configured.
+This is the built-in **remote Human handoff** path for current single-user macOS and Linux/container deployments. It is optional: V5 does **not** require WebRTC, WebSocket relay, TURN, or any remote takeover when the dedicated Maps Chrome profile is already signed in. When remote Human control is needed, the legacy configuration name `webrtc_takeover` now selects a Handoff-managed Safari surface whose transport policy is direct WebRTC -> WebSocket relay -> optional WebRTC/TURN relay. Maps does not choose among those transports. The normal Maps automation path remains unchanged until `MAPS_CREDENTIAL_SAFE_HANDOFF=true` and `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` are configured.
 
 Physical acceptance has passed with a real Mac + iPhone Safari on both same-LAN direct WebRTC and cellular/4G TURN relay, including the V5 Google sign-in recovery sequence. Linux separately passes Ubuntu/Xvfb acceptance for normal-browser exact-window capture/input, H.264/WebRTC, focused text over stdin, Enter, and teardown, and the Cloud Run production path has passed physical iPhone Safari relay plus real Human-only Google sign-in. That production evidence intentionally does not claim the still-open explicit post-Done checkpoint/fresh-restore lifecycle (#135) or final mobile keyboard/CJK UX regression (#134). The Human controls only the dedicated normal-Chrome window; Maps itself never receives framebuffer bytes, raw Human input, SDP/ICE candidates, TURN credentials, Google credentials, MFA values, cookies, or account identity.
 
@@ -18,7 +18,7 @@ Physical acceptance has passed with a real Mac + iPhone Safari on both same-LAN 
 
 The versioned [reference OAuth gateway](../reference/oauth-gateway/README.md) is the repository example for the current single-user public-auth/private-core topology. A custom gateway must preserve the same principal and takeover security boundaries.
 
-The built-in WebRTC runtime supports macOS and Linux with different platform helpers behind the same Handoff protocol. Windows remains unsupported. Linux/container details are documented in [Container / headless Linux](container.md).
+The built-in Handoff runtime supports macOS and Linux with different platform helpers behind the same browser/session protocol. Windows remains unsupported. Linux/container details are documented in [Container / headless Linux](container.md).
 
 ## 2. Install and build the pinned Handoff helper
 
@@ -75,11 +75,13 @@ The public operator origin must be HTTPS and authenticated. For V5, the current 
 
 See [Reference OAuth gateway](../reference/oauth-gateway/README.md) for the public gateway variables and private-core bearer setup.
 
-## 4. Optional TURN for cellular / external networks
+## 4. Managed fallback and optional TURN
 
-Same-LAN sessions prefer direct WebRTC. WAN, cellular, CGNAT, or restrictive Wi-Fi commonly need a relay.
+Same-LAN sessions prefer direct WebRTC. If direct establishment is unavailable, Handoff first fences that generation and switches to the authenticated WebSocket relay on the same HTTPS operator origin. TURN is optional and is considered only after the WebSocket generation is fenced. No Maps environment variable selects WebSocket or chooses a relay provider.
 
-TURN configuration belongs to **mcp-execution-handoff**, not Maps. The current Cloudflare Realtime TURN adapter recognizes this server-side pair:
+The WebSocket bootstrap returns a short-lived, principal/generation-bound Handoff ticket. Safari carries it only in the WebSocket subprotocol handshake; the public gateway authenticates the operator session, strips public OAuth/cookie material, and forwards only the bounded Handoff handshake plus the independent private-core bearer. The gateway never logs or persists WebSocket payloads or the ticket.
+
+Optional TURN configuration belongs to **mcp-execution-handoff**, not Maps. The current Cloudflare Realtime TURN adapter recognizes this server-side pair:
 
 ```bash
 export MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID=...
@@ -88,7 +90,7 @@ export MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN=...
 
 Set both or neither. A partial pair fails closed. Keep the long-lived token in the server secret boundary; never place it in a locator, browser profile, MCP arguments/results, logs, or repository files.
 
-With TURN configured, Handoff keeps `iceTransportPolicy: all`: direct remains preferred and relay is fallback-only. There is no silent cross-vendor relay failover. Provider-neutral relay work is tracked upstream in `mcp-execution-handoff` issue #19.
+With TURN configured, Handoff still owns the complete staged plan. TURN never moves ahead of WebSocket fallback, and Maps has no provider-specific TURN/WebSocket branch. A stale direct or WebSocket generation cannot regain input authority after fallback, Done, or revoke.
 
 ## 5. Use the Human sign-in flow
 
@@ -105,12 +107,13 @@ With TURN configured, Handoff keeps `iceTransportPolicy: all`: direct remains pr
 
 ## 6. Expected network behavior
 
-- Same LAN: Handoff should normally select a `direct` path.
-- Cellular/external network with TURN configured: Handoff may select `relay` when direct connectivity is unavailable.
+- Same LAN: Handoff should normally stay on direct WebRTC.
+- Cloud Run/WAN when direct WebRTC is unavailable: Handoff should fence direct and select the WebSocket relay without requiring TURN.
+- Optional TURN: Handoff may use WebRTC/TURN only after the WebSocket generation has been fenced.
 - Only the exact dedicated Chrome window is eligible for capture/input. Missing or ambiguous target-window identity fails closed instead of widening to the desktop.
 - If another Mac app is frontmost, Handoff resolves and activates the exact captured target window before accepting Human input.
 
-Do not enable raw candidate, SDP, address, framebuffer, or Human-input logging to debug connectivity. The supported diagnostics are intentionally limited to candidate type/count, peer state, selected direct/relay path, and bounded timings.
+Do not enable raw candidate, SDP, address, framebuffer, WebSocket payload/capability, or Human-input logging to debug connectivity. The supported diagnostics stay bounded to transport/state categories and timings without target or account identity.
 
 ## 7. Current limitations
 
@@ -131,9 +134,9 @@ Grant Screen Recording and Accessibility to the terminal/service/launcher that r
 
 Expected on a protected public origin. Operator authorization protects the Handoff surface; it is not Google authentication.
 
-### Works on Wi-Fi but not cellular
+### Direct WebRTC is unavailable on Cloud Run or cellular
 
-Confirm both Handoff TURN variables are present in the server process and that the reviewed HTTPS operator origin is reachable. Do not copy TURN secrets into Maps configuration or the browser.
+First confirm that the reviewed HTTPS operator origin can complete the authenticated `/takeover/*` HTTPS and WebSocket upgrade path. The managed WebSocket fallback should work without TURN. Configure Handoff TURN only as an optional later fallback; never copy TURN secrets into Maps configuration or the browser.
 
 ### Safari reload loses control
 

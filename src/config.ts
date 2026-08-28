@@ -204,6 +204,10 @@ export interface AppConfig {
       displayId?: number;
       displayName?: string;
     };
+    managedFallback?: {
+      linuxHostScript: string;
+      displayName: string;
+    };
     nativeRuntime?: {
       hostExecutable: string;
       revokeExecutable: string;
@@ -347,6 +351,7 @@ export function loadConfig(): AppConfig {
   const cuaCommand = process.env.MAPS_CUA_DRIVER_COMMAND?.trim() || "cua-driver";
   let nativeRuntime: AppConfig["credentialSafeHandoff"]["nativeRuntime"];
   let webRtcRuntime: AppConfig["credentialSafeHandoff"]["webRtcRuntime"];
+  let managedFallback: AppConfig["credentialSafeHandoff"]["managedFallback"];
 
   if (credentialSafeOperatorUrl && !credentialSafeHandoff) {
     throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
@@ -389,6 +394,12 @@ export function loadConfig(): AppConfig {
       hostExecutable: requiredAbsolutePath("MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE"),
       ...platformDisplay
     };
+    if (process.platform === "linux") {
+      managedFallback = {
+        linuxHostScript: webRtcRuntime.hostExecutable,
+        displayName: webRtcRuntime.displayName!
+      };
+    }
   }
   if (credentialSafeTransportMode === "thin_takeover") {
     if (!remoteTakeover) {
@@ -497,7 +508,8 @@ export function loadConfig(): AppConfig {
       operatorUrl: credentialSafeOperatorUrl,
       cuaCommand,
       nativeRuntime,
-      webRtcRuntime
+      webRtcRuntime,
+      managedFallback
     },
     browserProfileCheckpoint: {
       module: stoppedProfileCheckpointModuleRaw

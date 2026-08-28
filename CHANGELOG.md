@@ -14,6 +14,8 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Changed
 
+- Adopt Handoff-managed Cloud Run fallback behind the existing `webrtc_takeover` configuration: direct WebRTC -> WebSocket relay -> optional TURN, with authenticated WebSocket upgrade proxying and no Maps-owned provider/ICE/TURN selection.
+- Bind Linux managed fallback to the exact normal-Chrome X11 window ID resolved from the Maps-owned PID without reading window content or identity, while keeping helper environment variables secret-stripped.
 - Advance the pinned `mcp-execution-handoff` integration through Linux host readiness, packaged helper launch fixes, provider-owned TURN support, iOS keyboard editing, persistent touch keyboard mode, and related bounded WebRTC diagnostics.
 - Migrate Maps `webrtc_takeover` from consumer-local `TakeoverBroker + SpawnedWebRtcRuntimeProvider + createWebRtcLink()` composition to Handoff's first-class `BrowserHandoffAdapter`. Maps now supplies only the intervention/principal, normal-Chrome PID, and an explicit credential-safe input policy; Handoff owns WebRTC runtime composition, route ownership, exact-window/focus fencing, completion-only disconnect/reload recovery, and transport teardown.
 - Extend the reference Cloud Run path from local/container-only Linux WebRTC evidence to production physical acceptance with Cloudflare Realtime TURN, iPhone Safari `Live · relay`, and real Human-only Google sign-in. The separate explicit Done/revoke -> fresh `signed_in` -> stopped-profile checkpoint -> fresh restore lifecycle remains tracked in #135 and is not claimed complete here.
@@ -26,6 +28,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ### Testing / documentation
 
+- Add deterministic public-gateway WebSocket upgrade/tunnel tests for public credential stripping, private-bearer replacement, opaque byte forwarding, and Handoff fallback-header preservation.
 - Reclassified the older Maps-local Execution Handoff V1/V2 documents as historical protocol references and synchronized the V3 extraction record with the current first-class `BrowserHandoffAdapter` ownership model.
 - Formalize Linux normal-browser WebRTC container acceptance in required CI, including H.264 media, bounded tap/text/Backspace/Enter input, Human-text argv exclusion, CJK fallback, revoke/cleanup, and profile unlock.
 - Document the v0.3.4 first-publication target without changing the current stable version: v0.3.3 remains the latest release and the package remains unpublished until an explicitly authorized release gate is completed.

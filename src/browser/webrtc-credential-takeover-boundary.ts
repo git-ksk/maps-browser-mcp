@@ -12,7 +12,7 @@ const CREDENTIAL_SAFE_INPUT_POLICY = Object.freeze({
  * Maps-facing boundary over Handoff's first-class BrowserHandoffAdapter.
  *
  * Maps owns the normal-browser/profile/authentication lifecycle and fresh verification. Handoff
- * owns WebRTC/TURN/reconnect/generation fencing, exact target binding, completion-only recovery,
+ * owns direct/WSS/optional TURN selection, reconnect/generation fencing, exact target binding,
  * and server-enforced Human input policy.
  */
 export class WebRtcCredentialTakeoverBoundary implements CredentialTakeoverBoundary {
@@ -29,7 +29,10 @@ export class WebRtcCredentialTakeoverBoundary implements CredentialTakeoverBound
     return this.handoff.start({
       intervention: { id: request.interventionId, epoch: request.epoch },
       principalBinding: request.principalBinding,
-      target: { processId: request.targetProcessId },
+      target: {
+        processId: request.targetProcessId,
+        ...(request.targetWindowId === undefined ? {} : { windowId: request.targetWindowId })
+      },
       // Credential-safe Maps interventions include sign-in/MFA/passkey-adjacent ceremonies where
       // the Human may need pointer, scroll, text, Backspace, and Enter. This is explicit rather
       // than inheriting a transport default; Handoff binds and enforces it for the session.

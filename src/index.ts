@@ -2,6 +2,7 @@
 
 import { once } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import {
@@ -13,6 +14,7 @@ import {
   buildServer,
   config,
   handleTakeoverHttpRequest,
+  handleTakeoverUpgradeRequest,
   isTakeoverHttpPath,
   probeBrowserReady,
   shutdownRuntime
@@ -49,6 +51,42 @@ function reject(res: ServerResponse, status: number, message: string): void {
   setPrivateResponseHeaders(res);
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify({ error: message }));
+}
+
+function rejectUpgrade(socket: Duplex, status: number): void {
+  if (socket.destroyed) return;
+  const statusText = status === 401 ? "Unauthorized"
+    : status === 403 ? "Forbidden"
+    : status === 404 ? "Not Found"
+    : status === 503 ? "Service Unavailable"
+    : "Bad Request";
+  socket.end(
+    `HTTP/1.1 ${status} ${statusText}\r\n`
+    + "Connection: close\r\n"
+    + "Cache-Control: no-store\r\n"
+    + "Content-Length: 0\r\n\r\n"
+  );
+}
+
+async function authorizeUpgradeRequest(
+  authProvider: HttpAuthProvider,
+  req: IncomingMessage,
+  requestUrl: URL
+): Promise<AuthPrincipal | undefined> {
+  try {
+    const decision = await authProvider.authorize({
+      method: req.method ?? "GET",
+      url: requestUrl,
+      headers: req.headers
+    });
+    if (decision.allowed) return decision.principal;
+    rejectUpgrade(req.socket, decision.status);
+    return undefined;
+  } catch {
+    console.error("[maps-browser-mcp] WebSocket auth provider failed");
+    rejectUpgrade(req.socket, 503);
+    return undefined;
+  }
 }
 
 function validateProbeMethod(req: IncomingMessage, res: ServerResponse): boolean {
@@ -300,6 +338,30 @@ async function startHttp(): Promise<void> {
         reject(res, 500, "mcp_handler_error");
       }
     })();
+  });
+
+  httpServer.on("upgrade", (req, socket, head) => {
+    void (async () => {
+      if (!hostAllowed(req.headers.host, config.http.allowedHosts)) {
+        rejectUpgrade(socket, 403);
+        return;
+      }
+      const requestUrl = new URL(req.url ?? "/", "http://localhost");
+      if (!isTakeoverHttpPath(requestUrl.pathname)) {
+        rejectUpgrade(socket, 404);
+        return;
+      }
+      const principal = await authorizeUpgradeRequest(authProvider, req, requestUrl);
+      if (!principal) return;
+      const handled = runWithRequestPrincipal(
+        principal,
+        () => handleTakeoverUpgradeRequest(req, socket, head)
+      );
+      if (!handled) rejectUpgrade(socket, 404);
+    })().catch(() => {
+      console.error("[maps-browser-mcp] takeover WebSocket upgrade failed");
+      rejectUpgrade(socket, 503);
+    });
   });
 
   httpServer.maxHeadersCount = 64;

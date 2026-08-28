@@ -5,9 +5,11 @@ import { MemoryExecutionAuditSink } from "mcp-execution-handoff/core";
 test("execution audit sink records bounded control-plane metadata only", () => {
   const sink = new MemoryExecutionAuditSink();
   sink.record({
+    version: 1,
     type: "checkpoint_written",
     adapterKind: "browser.maps",
     timestamp: 123,
+    interventionId: "intervention-123",
     epoch: 4,
     principalBinding: "principal-binding-hash",
     actionDigest: "action-digest-hash"
@@ -16,9 +18,11 @@ test("execution audit sink records bounded control-plane metadata only", () => {
   const events = sink.snapshot();
   assert.equal(events.length, 1);
   assert.deepEqual(events[0], {
+    version: 1,
     type: "checkpoint_written",
     adapterKind: "browser.maps",
     timestamp: 123,
+    interventionId: "intervention-123",
     epoch: 4,
     principalBinding: "principal-binding-hash",
     actionDigest: "action-digest-hash"

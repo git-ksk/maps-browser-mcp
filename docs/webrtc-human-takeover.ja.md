@@ -1,8 +1,8 @@
-# WebRTC Human Takeover — macOS/Linux + iPhone Safari
+# Managed Human Takeover — macOS/Linux + iPhone Safari
 
 [English](webrtc-human-takeover.md) | 日本語
 
-現在のsingle-user macOS / Linux-container構成向けbuilt-in **remote Human handoff**です。ただしV5自体にWebRTC / Cloudflare / TURN / remote takeoverは必須ではありません。最も単純なV5構成は、Humanがローカルで一度ログインしたpersistentなMaps専用Chrome profileを使う形です。WebRTCは、後からsign-in / re-authentication、consent、challenge対応が必要になり、Humanが遠隔操作したい場合のoptional transportです。`MAPS_CREDENTIAL_SAFE_HANDOFF=true` と `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` を設定しない限り通常のMaps automation経路は変わりません。
+現在のsingle-user macOS / Linux-container構成向けbuilt-in **remote Human handoff**です。ただしV5自体にWebRTC / WebSocket relay / TURN / remote takeoverは必須ではありません。Remote Human controlが必要な場合、legacyな設定名 `webrtc_takeover` はHandoff-managed Safari surfaceを選択し、そのtransport policyはdirect WebRTC -> WebSocket relay -> optional WebRTC/TURN relayです。Mapsはそのtransportを選択しません。`MAPS_CREDENTIAL_SAFE_HANDOFF=true` と `MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover` を設定しない限り通常のMaps automation経路は変わりません。
 
 物理Mac + iPhone Safariでsame-LAN direct WebRTC / cellular TURN / V5 Google sign-in recoveryまでacceptance済みです。LinuxもUbuntu/Xvfb acceptanceでnormal-browser exact-window capture/input、H.264/WebRTC、stdin経由focused text、Enter、teardownまでPASSし、Cloud Run production pathでは物理iPhone Safari relay + real Human-only Google sign-inまで完了しています。このproduction evidenceは、未完の明示Done後checkpoint / fresh restore lifecycle（#135）やmobile keyboard / CJK最終UX regression（#134）まで完了したとはclaimしません。Humanが操作するのはdedicated normal-Chrome windowだけで、Maps自体はframebuffer、raw Human input、SDP/ICE candidate、TURN credential、Google credential、MFA値、cookie、account identityを受け取りません。
 
@@ -18,7 +18,7 @@
 
 現行single-userのpublic auth / private core構成はversioned [reference OAuth gateway](../reference/oauth-gateway/README.ja.md) がrepository内のreferenceです。独自gatewayでもsame principalとtakeover security boundaryを維持してください。
 
-Built-in WebRTC runtimeはsame Handoff protocolの背後にmacOS / Linux別helperを持ちます。Windowsは未対応です。Linux/container詳細は [Container / headless Linux](container.ja.md) を参照してください。
+Built-in Handoff runtimeはsame browser/session protocolの背後にmacOS / Linux別helperを持ちます。Windowsは未対応です。Linux/container詳細は [Container / headless Linux](container.ja.md) を参照してください。
 
 ## 2. Pin済みHandoff helperをbuild
 
@@ -75,11 +75,13 @@ Public operator originはHTTPSかつ認証必須です。V5の現行reference to
 
 Public gateway / private-core bearer設定は [Reference OAuth gateway](../reference/oauth-gateway/README.ja.md) を参照してください。
 
-## 4. Cellular / 外部network向けoptional TURN
+## 4. Managed fallbackとoptional TURN
 
-Same-LAN sessionはdirect WebRTCを優先します。WAN、cellular、CGNAT、制約Wi-Fiではrelayが必要になることがあります。
+Same-LAN sessionはdirect WebRTCを優先します。Direct establishmentが使えない場合、Handoffはそのgenerationを先にfenceして、same HTTPS operator origin上のauthenticated WebSocket relayへ切り替えます。TURNはoptionalで、WebSocket generationをfenceした後にだけ候補になります。Maps側にWebSocket選択やrelay provider選択用の環境変数は追加しません。
 
-TURN設定はMapsではなく **mcp-execution-handoff** の責務です。現在のCloudflare Realtime TURN adapterはserver-sideで次のpairを読みます。
+WebSocket bootstrapはprincipal/generation-boundなshort-lived Handoff ticketを返し、SafariはWebSocket subprotocol handshakeだけに載せます。Public gatewayはoperator sessionを認証し、public OAuth/cookie materialを除去し、bounded Handoff handshakeと独立private-core bearerだけを転送します。GatewayはWebSocket payloadやticketをlog/persistしません。
+
+Optional TURN設定はMapsではなく **mcp-execution-handoff** の責務です。現在のCloudflare Realtime TURN adapterはserver-sideで次のpairを読みます。
 
 ```bash
 export MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID=...
@@ -88,7 +90,7 @@ export MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN=...
 
 両方設定するか、両方未設定にします。片方だけならfail closedです。Long-lived tokenはserver secret boundaryだけに置き、locator、browser profile、MCP args/result、log、repositoryへ入れません。
 
-TURN設定時もHandoffは `iceTransportPolicy: all` を維持し、direct優先・relay fallback-onlyです。別vendorへsilent failoverしません。Provider-neutral relayはupstream `mcp-execution-handoff` #19で追跡します。
+TURN設定時もcomplete staged planはHandoffが所有します。TURNがWebSocket fallbackより前に移動することはなく、Mapsにprovider-specific TURN/WebSocket branchはありません。Fallback / Done / revoke後にstale direct/WSS generationがinput authorityを取り戻すこともありません。
 
 ## 5. Human sign-inを使う
 
@@ -105,12 +107,13 @@ TURN設定時もHandoffは `iceTransportPolicy: all` を維持し、direct優先
 
 ## 6. 期待するnetwork動作
 
-- Same LAN: 通常は `direct` pathを選択。
-- Cellular / 外部network + TURN設定: direct不可時に `relay` を選択可能。
+- Same LAN: 通常はdirect WebRTCを維持。
+- Cloud Run / WANでdirect WebRTC不可: Handoffがdirectをfenceして、TURNなしでもWebSocket relayを選択。
+- Optional TURN: WebSocket generationをfenceした後にだけHandoffがWebRTC/TURNを利用可能。
 - Capture/input対象はexact dedicated Chrome windowだけ。Target windowがmissing/ambiguousならdesktopへ広げずfail closed。
 - 別Mac appがfrontmostでも、Human input前にcaptured target windowを一意に解決・activateする。
 
-Connectivity debugのためraw candidate、SDP、address、framebuffer、Human inputをlogしないでください。Supported diagnosticはcandidate type/count、peer state、selected direct/relay path、bounded timingだけです。
+Connectivity debugのためraw candidate、SDP、address、framebuffer、WebSocket payload/capability、Human inputをlogしないでください。Supported diagnosticはtarget/account identityを含まないbounded transport/state categoryとtimingだけです。
 
 ## 7. 現在の制約
 
@@ -131,9 +134,9 @@ Maps/Handoffを起動するTerminal / service / launcherへ画面収録とアク
 
 Protected public originでは正常です。Operator authorizationはHandoff surface保護用で、Google認証とは別です。
 
-### Wi-Fiでは動くがcellularで動かない
+### Cloud Run / cellularでdirect WebRTCが使えない
 
-Server processにHandoff TURN変数が2つとも入っているか、review済みHTTPS operator originへ到達できるかを確認してください。TURN secretをMaps configやbrowserへコピーしないでください。
+まずreview済みHTTPS operator originでauthenticated `/takeover/*` HTTPSとWebSocket upgradeが通ることを確認してください。Managed WebSocket fallbackはTURNなしで動作する設計です。TURNはHandoffのoptionalな後段fallbackとしてだけ設定し、TURN secretをMaps configやbrowserへコピーしないでください。
 
 ### Safari reload後にcontrolできない
 

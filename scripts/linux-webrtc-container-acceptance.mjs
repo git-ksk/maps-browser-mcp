@@ -212,7 +212,8 @@ async function main() {
       clientBinding: "acceptance-client-binding-1234567890",
       clientGeneration: 1,
       expiresAt: Date.now() + 6e4,
-      targetProcessId: chromePid
+      targetProcessId: chromePid,
+      targetWindowId: Number(windowId)
     };
     process.stdout.write("LINUX_WEBRTC_STAGE provider-prepare\n");
     await provider.prepare(binding);
@@ -220,16 +221,23 @@ async function main() {
     await client.setLocalDescription(offer);
     assert.ok(client.localDescription?.sdp);
     process.stdout.write("LINUX_WEBRTC_STAGE provider-start\n");
-    const answer = await provider.start(binding, { type: "offer", sdp: client.localDescription.sdp }, {
-      beginInput() {
-        inputUses += 1;
-        return () => {
-          endedUses += 1;
-        };
-      },
-      disconnected() {
-      }
-    });
+    let answer;
+    try {
+      answer = await provider.start(binding, { type: "offer", sdp: client.localDescription.sdp }, {
+        beginInput() {
+          inputUses += 1;
+          return () => {
+            endedUses += 1;
+          };
+        },
+        disconnected() {
+        }
+      });
+    } catch (error) {
+      const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage).join(",");
+      process.stderr.write(`LINUX_WEBRTC_HOST_DIAG stages=${stages || "none"}\n`);
+      throw error;
+    }
     process.stdout.write("LINUX_WEBRTC_STAGE client-remote-description\n");
     await client.setRemoteDescription(answer);
     await waitFor("webrtc-connected", () => client.connectionState === "connected" && critical.readyState === "open" && realtime.readyState === "open");
@@ -303,7 +311,12 @@ async function main() {
 main().then(() => {
   process.exit(0);
 }).catch((error) => {
-  process.stderr.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_FAIL ${error instanceof Error ? error.message : "unknown"}
-`);
+  const code = typeof error?.code === "string" ? error.code : "unknown";
+  const stage = typeof error?.startStage === "string" ? error.startStage : "unknown";
+  const reason = typeof error?.startReason === "string" ? error.startReason : "unknown";
+  const endCause = typeof error?.startEndCause === "string" ? error.startEndCause : "none";
+  process.stderr.write(
+    `LINUX_WEBRTC_HOST_ACCEPTANCE_FAIL code=${code} stage=${stage} reason=${reason} end=${endCause}\n`
+  );
   process.exit(1);
 });

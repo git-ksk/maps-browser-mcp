@@ -4,10 +4,12 @@ import type { CredentialTakeoverBoundary } from "../src/browser/credential-takeo
 import { CredentialTakeoverHumanProvider } from "../src/browser/credential-takeover-human-provider.js";
 import type { SystemBrowserCredentialSession } from "../src/browser/system-browser-credential-session.js";
 
-function fakeBrowser(calls: string[]): SystemBrowserCredentialSession {
+function fakeBrowser(calls: string[], windowId?: number): SystemBrowserCredentialSession {
   return {
     async start() { calls.push("browser:start"); },
-    getPid() { return 4242; },
+    async getTakeoverTarget() {
+      return { processId: 4242, ...(windowId === undefined ? {} : { windowId }) };
+    },
     async close() { calls.push("browser:close"); }
   } as unknown as SystemBrowserCredentialSession;
 }
@@ -15,7 +17,10 @@ function fakeBrowser(calls: string[]): SystemBrowserCredentialSession {
 function fakeTakeover(calls: string[], startError?: Error): CredentialTakeoverBoundary {
   return {
     start(request) {
-      calls.push(`takeover:start:${request.interventionId}:${request.epoch}:${request.principalBinding}:${request.targetProcessId}`);
+      calls.push(
+        `takeover:start:${request.interventionId}:${request.epoch}:${request.principalBinding}`
+        + `:${request.targetProcessId}:${request.targetWindowId ?? "none"}`
+      );
       if (startError) throw startError;
       return "https://handoff.example/takeover/session/public-locator";
     },
@@ -37,13 +42,13 @@ for (const kind of ["thin-takeover", "webrtc-takeover"] as const) {
     assert.match(grant.sessionId, /^[0-9a-f-]{36}$/i);
     assert.deepEqual(calls, [
       "browser:start",
-      "takeover:start:int-1:5:principal-a:4242"
+      "takeover:start:int-1:5:principal-a:4242:none"
     ]);
 
     await provider.revoke(grant.sessionId);
     assert.deepEqual(calls, [
       "browser:start",
-      "takeover:start:int-1:5:principal-a:4242",
+      "takeover:start:int-1:5:principal-a:4242:none",
       "takeover:revoke:int-1",
       "browser:close"
     ]);
@@ -64,7 +69,7 @@ test("credential takeover closes normal Chrome if Handoff locator creation fails
   );
   assert.deepEqual(calls, [
     "browser:start",
-    "takeover:start:int-2:6:principal-b:4242",
+    "takeover:start:int-2:6:principal-b:4242:none",
     "takeover:revoke:int-2",
     "browser:close"
   ]);
@@ -75,7 +80,9 @@ test("credential takeover fails closed when normal Chrome PID is unavailable", a
   const calls: string[] = [];
   const browser = {
     async start() { calls.push("browser:start"); },
-    getPid() { return undefined; },
+    async getTakeoverTarget() {
+      throw new Error("Credential-safe normal Chrome process is unavailable");
+    },
     async close() { calls.push("browser:close"); }
   } as unknown as SystemBrowserCredentialSession;
   const provider = new CredentialTakeoverHumanProvider("webrtc-takeover", browser, fakeTakeover(calls));
@@ -84,4 +91,20 @@ test("credential takeover fails closed when normal Chrome PID is unavailable", a
     /normal Chrome process is unavailable/
   );
   assert.deepEqual(calls, ["browser:start", "takeover:revoke:int-3", "browser:close"]);
+});
+
+test("credential takeover forwards a bounded exact window when the normal browser resolves one", async () => {
+  const calls: string[] = [];
+  const provider = new CredentialTakeoverHumanProvider(
+    "webrtc-takeover",
+    fakeBrowser(calls, 9001),
+    fakeTakeover(calls)
+  );
+  const grant = await provider.begin({ interventionId: "int-window", epoch: 9, principalBinding: "principal-w" });
+  assert.match(grant.sessionId, /^[0-9a-f-]{36}$/i);
+  assert.deepEqual(calls, [
+    "browser:start",
+    "takeover:start:int-window:9:principal-w:4242:9001"
+  ]);
+  await provider.revoke(grant.sessionId);
 });

@@ -2,7 +2,13 @@ import http from "node:http";
 import { Readable } from "node:stream";
 import { createOAuthBoundary } from "./oauth.mjs";
 import { createTakeoverOperatorBoundary } from "./operator-auth.mjs";
-import { assertPrivateBearer, proxyMcpRequest, proxyTakeoverRequest, safeCoreUrl } from "./proxy.mjs";
+import {
+  assertPrivateBearer,
+  proxyMcpRequest,
+  proxyTakeoverRequest,
+  proxyTakeoverUpgrade,
+  safeCoreUrl
+} from "./proxy.mjs";
 
 function env(name) {
   const value = process.env[name]?.trim();
@@ -57,6 +63,19 @@ function json(status, error) {
 
 function headResponse(response) {
   return new Response(null, { status: response.status, headers: response.headers });
+}
+
+function rejectUpgrade(socket, status) {
+  if (socket.destroyed) return;
+  const statusText = status === 401 ? "Unauthorized"
+    : status === 404 ? "Not Found"
+    : "Bad Request";
+  socket.end(
+    `HTTP/1.1 ${status} ${statusText}\r\n`
+    + "Connection: close\r\n"
+    + "Cache-Control: no-store\r\n"
+    + "Content-Length: 0\r\n\r\n"
+  );
 }
 
 const coreUrl = safeCoreUrl(env("MCP_CORE_URL"));
@@ -136,6 +155,29 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("content-type", "application/json; charset=utf-8");
     res.setHeader("cache-control", "no-store");
     res.end(JSON.stringify({ error: "gateway_error" }));
+  }
+});
+
+
+server.on("upgrade", (req, socket, head) => {
+  try {
+    const request = requestFromNode(req);
+    const path = new URL(request.url).pathname;
+    if (!path.startsWith("/takeover/") || !takeoverOperator) {
+      rejectUpgrade(socket, 404);
+      return;
+    }
+    if (!takeoverOperator.isAuthorized(request)) {
+      rejectUpgrade(socket, 401);
+      return;
+    }
+    proxyTakeoverUpgrade(req, socket, head, {
+      coreUrl,
+      privateBearer,
+      publicBaseUrl: env("MCP_PUBLIC_BASE_URL")
+    });
+  } catch {
+    rejectUpgrade(socket, 400);
   }
 });
 

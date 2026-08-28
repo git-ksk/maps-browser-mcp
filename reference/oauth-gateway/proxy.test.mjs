@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
+import http from "node:http";
+import net from "node:net";
+import { once } from "node:events";
 import test from "node:test";
 import {
   assertPrivateBearer,
   buildCoreRequestHeaders,
   buildPublicResponseHeaders,
   buildTakeoverCoreRequestHeaders,
+  buildTakeoverCoreUpgradeHeaders,
   buildTakeoverPublicResponseHeaders,
   proxyMcpRequest,
   proxyTakeoverRequest,
+  proxyTakeoverUpgrade,
   safeCoreUrl,
   takeoverCoreUrl
 } from "./proxy.mjs";
@@ -74,6 +79,7 @@ test("takeover proxy strips public cookie/auth and preserves bounded broker head
     origin: "https://public.example",
     "sec-fetch-site": "same-origin",
     "x-takeover-client": "abcdefghijklmnopqrstuvwxyz123456",
+    "x-mcp-handoff-fallback": "abcdefghijklmnopqrstuvwxyz1234567890ABCDEF",
     "x-mcp-takeover-capability": "abcdefghijklmnopqrstuvwxyz1234567890ABCDEF",
     "x-forwarded-for": "203.0.113.4"
   }), "0123456789abcdefghijklmn");
@@ -82,7 +88,110 @@ test("takeover proxy strips public cookie/auth and preserves bounded broker head
   assert.equal(headers.get("origin"), "https://public.example");
   assert.equal(headers.get("sec-fetch-site"), "same-origin");
   assert.equal(headers.get("x-takeover-client"), "abcdefghijklmnopqrstuvwxyz123456");
+  assert.equal(headers.get("x-mcp-handoff-fallback"), "abcdefghijklmnopqrstuvwxyz1234567890ABCDEF");
   assert.equal(headers.get("x-forwarded-for"), null);
+});
+
+
+test("takeover WebSocket upgrade strips public credentials and injects only the private core bearer", () => {
+  const headers = buildTakeoverCoreUpgradeHeaders(new Headers({
+    authorization: "Bearer public-oauth-token",
+    cookie: "mbm_takeover_operator=public-cookie",
+    origin: "https://public.example",
+    upgrade: "websocket",
+    connection: "Upgrade",
+    "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    "sec-websocket-version": "13",
+    "sec-websocket-protocol": "mcp-handoff-wss.v1, mcp-handoff-ticket.abc",
+    "x-forwarded-for": "203.0.113.5"
+  }), "0123456789abcdefghijklmn");
+  assert.equal(headers.get("authorization"), "Bearer 0123456789abcdefghijklmn");
+  assert.equal(headers.get("cookie"), null);
+  assert.equal(headers.get("x-forwarded-for"), null);
+  assert.equal(headers.get("origin"), "https://public.example");
+  assert.equal(headers.get("upgrade"), "websocket");
+  assert.equal(headers.get("connection"), "Upgrade");
+  assert.match(headers.get("sec-websocket-protocol"), /mcp-handoff-ticket/);
+});
+
+test("takeover WebSocket proxy tunnels only an authenticated public-origin handshake to private core", async () => {
+  let seenHeaders;
+  let corePeer;
+  const core = http.createServer();
+  core.on("upgrade", (req, socket) => {
+    seenHeaders = req.headers;
+    corePeer = socket;
+    socket.write(
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      + "Upgrade: websocket\r\n"
+      + "Connection: Upgrade\r\n"
+      + "Sec-WebSocket-Accept: test-accept\r\n"
+      + "Sec-WebSocket-Protocol: mcp-handoff-wss.v1\r\n\r\n"
+    );
+    socket.on("data", (chunk) => socket.write(chunk));
+  });
+  core.listen(0, "127.0.0.1");
+  await once(core, "listening");
+  const coreAddress = core.address();
+  assert.ok(coreAddress && typeof coreAddress === "object");
+
+  const gateway = http.createServer();
+  gateway.on("upgrade", (req, socket, head) => {
+    proxyTakeoverUpgrade(req, socket, head, {
+      coreUrl: `http://127.0.0.1:${coreAddress.port}/mcp`,
+      privateBearer: "0123456789abcdefghijklmn",
+      publicBaseUrl: "https://public.example"
+    });
+  });
+  gateway.listen(0, "127.0.0.1");
+  await once(gateway, "listening");
+  const gatewayAddress = gateway.address();
+  assert.ok(gatewayAddress && typeof gatewayAddress === "object");
+
+  const client = net.connect(gatewayAddress.port, "127.0.0.1");
+  await once(client, "connect");
+  client.write(
+    "GET /takeover/ws/abc12345 HTTP/1.1\r\n"
+    + `Host: 127.0.0.1:${gatewayAddress.port}\r\n`
+    + "Upgrade: websocket\r\n"
+    + "Connection: Upgrade\r\n"
+    + "Origin: https://public.example\r\n"
+    + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+    + "Sec-WebSocket-Version: 13\r\n"
+    + "Sec-WebSocket-Protocol: mcp-handoff-wss.v1, mcp-handoff-ticket.abcdefghijklmnopqrstuvwxyz123456\r\n"
+    + "Cookie: mbm_takeover_operator=must-not-reach-core\r\n"
+    + "Authorization: Bearer public-must-not-reach-core\r\n\r\n"
+  );
+
+  let buffer = Buffer.alloc(0);
+  const handshake = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("upgrade timeout")), 2_000);
+    client.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      if (buffer.includes(Buffer.from("\r\n\r\n"))) {
+        clearTimeout(timer);
+        resolve(buffer.toString("utf8"));
+      }
+    });
+  });
+  assert.match(handshake, /^HTTP\/1\.1 101 Switching Protocols/m);
+  assert.equal(seenHeaders.authorization, "Bearer 0123456789abcdefghijklmn");
+  assert.equal(seenHeaders.cookie, undefined);
+  assert.equal(seenHeaders.origin, "https://public.example");
+
+  const echoed = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("tunnel echo timeout")), 2_000);
+    client.once("data", (chunk) => { clearTimeout(timer); resolve(chunk.toString("utf8")); });
+  });
+  client.write("PING");
+  assert.equal(await echoed, "PING");
+
+  client.destroy();
+  corePeer?.destroy();
+  await Promise.all([
+    new Promise((resolve) => gateway.close(resolve)),
+    new Promise((resolve) => core.close(resolve))
+  ]);
 });
 
 test("takeover response exposes frame/stream/CSP headers but no core secrets", () => {
