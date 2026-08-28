@@ -212,7 +212,8 @@ async function main() {
       clientBinding: "acceptance-client-binding-1234567890",
       clientGeneration: 1,
       expiresAt: Date.now() + 6e4,
-      targetProcessId: chromePid
+      targetProcessId: chromePid,
+      targetWindowId: Number(windowId)
     };
     process.stdout.write("LINUX_WEBRTC_STAGE provider-prepare\n");
     await provider.prepare(binding);
