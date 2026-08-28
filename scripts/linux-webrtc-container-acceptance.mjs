@@ -221,16 +221,23 @@ async function main() {
     await client.setLocalDescription(offer);
     assert.ok(client.localDescription?.sdp);
     process.stdout.write("LINUX_WEBRTC_STAGE provider-start\n");
-    const answer = await provider.start(binding, { type: "offer", sdp: client.localDescription.sdp }, {
-      beginInput() {
-        inputUses += 1;
-        return () => {
-          endedUses += 1;
-        };
-      },
-      disconnected() {
-      }
-    });
+    let answer;
+    try {
+      answer = await provider.start(binding, { type: "offer", sdp: client.localDescription.sdp }, {
+        beginInput() {
+          inputUses += 1;
+          return () => {
+            endedUses += 1;
+          };
+        },
+        disconnected() {
+        }
+      });
+    } catch (error) {
+      const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage).join(",");
+      process.stderr.write(`LINUX_WEBRTC_HOST_DIAG stages=${stages || "none"}\n`);
+      throw error;
+    }
     process.stdout.write("LINUX_WEBRTC_STAGE client-remote-description\n");
     await client.setRemoteDescription(answer);
     await waitFor("webrtc-connected", () => client.connectionState === "connected" && critical.readyState === "open" && realtime.readyState === "open");
