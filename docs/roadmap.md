@@ -8,6 +8,8 @@ This roadmap records likely directions for `maps-browser-mcp`. It is not a commi
 
 The current stable source release is **v0.3.3**. The product baseline now includes the completed V4 unauthenticated semantic coverage, V5-A through V5-D bounded authenticated workflows, and the optional credential-safe Human Handoff path used for later sign-in/re-authentication when a dedicated profile is not already signed in.
 
+`main` is now on the **v0.4.0 release train** and contains post-v0.3.3 Handoff/production hardening including first-class managed WebSocket fallback for Cloud Run, bounded operator diagnostics, iPhone Safari keyboard/focus diagnostics, and stopped-profile durability work. These changes are not yet a stable release; they graduate together only after the physical-acceptance and distribution gates below pass.
+
 V5 does **not** require WebRTC, Cloudflare, TURN, or any remote takeover product. The simplest deployment remains a persistent dedicated Chrome profile that a Human signs into locally. WebRTC Handoff is an optional recovery/credential ceremony transport, not a prerequisite for authenticated Maps tools.
 
 The current server intentionally separates two operating modes:
@@ -150,35 +152,50 @@ See [MCP Apps portability and deployment](mcp-apps.md) for the canonical contrac
 
 ## Pre-v1 release progression
 
-The roadmap is now organized around completed capability baselines and the next evidence-driven release themes. Version labels are planning targets rather than promises; scope may move when live Google Maps Web behavior, MCP host support, or safety constraints require it.
+The roadmap is organized around completed capability baselines and evidence-driven release themes. Version labels are planning targets rather than promises; scope may move when live Google Maps Web behavior, MCP host support, or safety constraints require it.
 
 ### Completed — v0.3.x capability baseline
 
 - **V4 unauthenticated semantic coverage** — complete through V4-F closeout.
 - **V5-A through V5-D authenticated workflows** — implemented behind fail-closed opt-in / Interactive Assist boundaries; V5-E History remains intentionally blocked/evaluated rather than silently broadened.
 - **Clean remote-auth / OAuth reference boundary** — complete; the isolated Maps-specific OAuth gateway and loopback private hop are established and the historical derived service was retired.
-- **Credential-safe Human Handoff** — v0.3.3 adds the optional Safari WebRTC path with physical same-LAN direct and cellular TURN acceptance, exact-window fencing, revoke/stale-locator rejection, and real Human-only Google sign-in recovery through fresh `signed_in` + bounded V5-B read.
+- **Credential-safe Human Handoff baseline** — v0.3.3 physically accepted same-LAN direct and cellular TURN, exact-window fencing, and real Human-only Google sign-in recovery through fresh `signed_in` plus a bounded V5-B read.
 
-### Next patch — v0.3.4: Linux/Cloud Run Handoff and first-distribution closeout
+### Next — v0.4.0: managed WSS Cloud Run and distribution closeout
 
-- Ship the already-merged Linux/Cloud Run normal-browser WebRTC hardening: packaged Handoff helper, restricted-runtime sandbox opt-in, stopped-profile Cloud Storage snapshotting, Cloudflare TURN production path, iOS/CJK fixes, and the checked-in Linux container acceptance gate.
-- Complete #135 before claiming Cloud Run post-Done durability: explicit Done, Human revoke/stale-client fencing, fresh identity-free `signed_in`, stopped-profile checkpoint, and fresh Cloud Run restore with no DOM/page/action/intervention-state replay.
-- Complete #134's focused iPhone Safari keyboard/Backspace/CJK regression before describing the mobile takeover UX as fully accepted.
-- Resolve #117's pre-meter usage-liability boundary before the first broad package/Registry publication so proven pre-meter precondition refusals are not silently billed as completed browser work.
-- Finish #141's first-publication gate only with explicit maintainer authorization: synchronized v0.3.4 metadata, inspected packed artifact, clean-consumer stdio smoke, npm verification, Official MCP Registry verification, and repository discovery metadata.
-- #143 is a CI-efficiency follow-up, not a v0.3.4 runtime/release blocker; required contexts and branch protection must remain intact.
+v0.4.0 graduates the Cloud Run/Handoff work accumulated after v0.3.3 from “implemented” to “reproducibly accepted in production.” It is not intended to widen the Maps semantic scope.
 
-### Next — v0.4.0: MCP Apps production portability
+Release blockers:
+
+1. **#161 Cloud Run startup contract** — fix the managed WSS candidate revision failing startup because no effective remote-takeover HTTP auth provider is observed. Keep the existing production revision serving traffic until the candidate is `Ready=True`.
+2. **#156 managed WSS session stability** — root-cause and fix the physical iPhone path that reaches WSS 101 and later becomes `Session unavailable`, using content-free diagnostics. Coordinate any generic recoverable-input/session-liveness fix with `mcp-execution-handoff` #172.
+3. **#134 iPhone keyboard acceptance** — physically accept editable tap -> automatic iOS keyboard -> text / Backspace / Enter / CJK / scroll in Safari. Handoff owns keyboard/focus implementation; Maps owns consumer acceptance.
+4. **#135 post-Done durability** — accept Done -> stale Human-client fencing -> verifying -> fresh identity-free `signed_in` -> stopped-profile checkpoint -> fresh restore -> Agent resume without replaying DOM/page/action/intervention state.
+5. **#117 usage-liability boundary** — ensure proven pre-meter precondition refusals are not silently charged as completed browser work.
+6. **#141 first broad distribution** — only with explicit maintainer authorization, validate synchronized version metadata, packed artifact, clean-consumer smoke, npm publication, Official MCP Registry publication, and repository discovery metadata.
+
+Production invariants for v0.4.0:
+
+- Preserve `concurrency=1` and `maxScale=1` for the single interactive browser authority model.
+- Do not weaken remote-takeover authentication; startup misconfiguration remains fail-closed.
+- Keep Handoff diagnostics bounded, enum-based, and content-free: no credentials, Human-entered text, browser/frame content, account identity, or session/transport secrets.
+- Never auto-replay failed Human input or create duplicate side effects.
+- Keep Maps transport-blind and do not widen it into a generic browser/desktop MCP.
+
+**#143 docs-only CI efficiency is not a v0.4.0 release blocker.** Improve it only if required check names and branch protection remain intact.
+
+### Next — v0.5.0: MCP Apps production portability
 
 - Re-validate the existing host-neutral MCP Apps surface on a suitable **second production host** with a real restricted Google Maps Embed key.
 - Verify the real render path, CSP/sandbox behavior, lifecycle, and text/structured fallback without making rich UI a core requirement.
 - Reconsider the `experimental` UI label only after production-host evidence is recorded.
 
-### Then — v0.5.0: reliability, UI-change resilience, and observability
+### Then — v0.6.0: reliability, UI-change resilience, and observability
 
 - Strengthen detection and diagnosis of Google Maps Web UI drift while preserving fail-closed behavior.
 - Improve shared semantic identity/postcondition machinery, failure classification, live compatibility evidence, and locale/A-B-variation resilience.
 - Keep diagnostics bounded and privacy-safe; do not widen the MCP surface into generic browser automation.
+- Absorb #143 CI-efficiency work in this hardening lane if it can be done without weakening required checks.
 
 ### Toward v1.0.0
 
@@ -202,16 +219,15 @@ The MCP authorization principal and the Google Account active in the dedicated b
 
 See [V5 authenticated workflows — design baseline](v5-authenticated-workflows.md) for the entry gate, proposed semantic shapes, logging/privacy rules, test plan, and explicit deferrals.
 
-## Cross-repository Handoff follow-ups — not Maps release blockers
+## Cross-repository Handoff follow-ups — Maps release-blocker boundary
 
-The remaining Handoff work belongs upstream unless it creates a new Maps-specific semantic requirement. Maps should consume these improvements through the narrow start/revoke lifecycle rather than reimplement transport logic locally.
+Maps consumes `mcp-execution-handoff` through the narrow start/revoke/diagnostics lifecycle rather than reimplementing transport logic. For v0.4.0, only upstream defects that actually block Maps consumer acceptance belong on the release train; provider-neutral architecture work stays in a separate lane.
 
-- [`mcp-execution-handoff` #17](https://github.com/git-ksk/mcp-execution-handoff/issues/17) — adaptive mobile viewport, keyboard-aware composition, and safe reload/reconnect. This is the highest-value WebRTC usability follow-up after the v0.3.3 physical baseline.
-- [`mcp-execution-handoff` #19](https://github.com/git-ksk/mcp-execution-handoff/issues/19) — provider-neutral relay ownership. Cloudflare Realtime TURN is the physically accepted reference path today, but Maps must remain unaware of relay providers.
-- [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane/private execution-worker topology. Linux/Cloud Run can now be the constrained co-located Maps execution host; this upstream issue is about separating a hosted control plane from private execution workers without weakening authority ownership, not about missing Linux capture/input support.
-- [`mcp-execution-handoff` #13](https://github.com/git-ksk/mcp-execution-handoff/issues/13) — optional Native/Thin Takeover transport and reconnect path. Native remains a sibling/experimental option and is not required for the accepted Safari WebRTC path.
+- [`mcp-execution-handoff` #172](https://github.com/git-ksk/mcp-execution-handoff/issues/172) — generic managed-WSS liveness after recoverable Human input failure. Its symptoms overlap Maps #156; consume an upstream fix only where the same root cause is confirmed, and do not close #172 merely because a Maps symptom disappears.
+- [`mcp-execution-handoff` #19](https://github.com/git-ksk/mcp-execution-handoff/issues/19) — provider-neutral relay ownership. Cloudflare Realtime TURN is a reference path, but Maps must remain unaware of relay providers. Not a v0.4.0 blocker.
+- [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane/private execution-worker topology. This is future topology separation, not a prerequisite for the current Cloud Run Maps deployment.
 
-These upstream items do not reopen V5-A through V5-D or block the v0.3.3 Maps baseline. Re-run Maps consumer acceptance only when an upstream change materially affects the Maps-owned lifecycle or browser authority boundary.
+The earlier adaptive-mobile/safe-reconnect and Thin Takeover issues are already closed upstream. The roadmap should not retain closed historical issue numbers as unfinished work; release-blocker decisions use current open issues.
 
 ## Explicit non-goals for the roadmap
 
