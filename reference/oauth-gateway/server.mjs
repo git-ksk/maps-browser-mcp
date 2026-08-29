@@ -2,6 +2,7 @@ import http from "node:http";
 import { Readable } from "node:stream";
 import { createOAuthBoundary } from "./oauth.mjs";
 import { createTakeoverOperatorBoundary } from "./operator-auth.mjs";
+import { normalizedTopLevelTakeoverUrl } from "./takeover-url.mjs";
 import {
   assertPrivateBearer,
   proxyMcpRequest,
@@ -63,6 +64,11 @@ function json(status, error) {
 
 function headResponse(response) {
   return new Response(null, { status: response.status, headers: response.headers });
+}
+
+function normalizedTopLevelTakeoverRequest(request, path) {
+  const normalizedUrl = normalizedTopLevelTakeoverUrl(request.url, path);
+  return normalizedUrl === request.url ? request : new Request(normalizedUrl, request);
 }
 
 function rejectUpgrade(socket, status) {
@@ -134,10 +140,11 @@ const server = http.createServer(async (req, res) => {
       if (!takeoverOperator.isAuthorized(request)) {
         const page = /^\/takeover\/[A-Za-z0-9-]{8,100}$/.test(path);
         if (page && (request.method === "GET" || request.method === "HEAD")) {
-          const probe = await proxyTakeoverRequest(new Request(request.url, {
+          const normalized = normalizedTopLevelTakeoverRequest(request, path);
+          const probe = await proxyTakeoverRequest(new Request(normalized.url, {
             method: "HEAD",
-            headers: request.headers,
-            signal: request.signal
+            headers: normalized.headers,
+            signal: normalized.signal
           }), { coreUrl, privateBearer });
           if (probe.status !== 200) return await writeNodeResponse(res, probe);
           const response = takeoverOperator.loginPage();
@@ -145,7 +152,8 @@ const server = http.createServer(async (req, res) => {
         }
         return await writeNodeResponse(res, json(401, "operator_auth_required"));
       }
-      return await writeNodeResponse(res, await proxyTakeoverRequest(request, { coreUrl, privateBearer }));
+      const normalized = normalizedTopLevelTakeoverRequest(request, path);
+      return await writeNodeResponse(res, await proxyTakeoverRequest(normalized, { coreUrl, privateBearer }));
     }
 
     return await writeNodeResponse(res, json(404, "not_found"));
