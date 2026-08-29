@@ -65,6 +65,10 @@ import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provi
 import { CredentialTakeoverHumanProvider } from "./browser/credential-takeover-human-provider.js";
 import { NativeCredentialTakeoverBoundary } from "./browser/native-credential-takeover-boundary.js";
 import { WebRtcCredentialTakeoverBoundary } from "./browser/webrtc-credential-takeover-boundary.js";
+import {
+  formatManagedHandoffDiagnosticsCheckpointLog,
+  formatManagedHandoffDiagnosticsLog
+} from "./browser/handoff-diagnostics-log.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
@@ -98,7 +102,8 @@ const nativeTakeoverRuntime = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.nativeRuntime
   ? new InheritedFdNativeRuntimeProvider(config.credentialSafeHandoff.nativeRuntime)
   : undefined;
-const browserHandoffAdapter = config.credentialSafeHandoff.enabled &&
+let browserHandoffAdapter: BrowserHandoffAdapter | undefined;
+browserHandoffAdapter = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.transport === "webrtc_takeover" &&
   config.credentialSafeHandoff.webRtcRuntime
   ? new BrowserHandoffAdapter({
@@ -106,7 +111,12 @@ const browserHandoffAdapter = config.credentialSafeHandoff.enabled &&
       runtime: config.credentialSafeHandoff.webRtcRuntime,
       ...(config.credentialSafeHandoff.managedFallback
         ? { managedFallback: config.credentialSafeHandoff.managedFallback }
-        : {})
+        : {}),
+      onManagedOperatorDiagnosticEvent: (event) => {
+        const snapshot = browserHandoffAdapter?.managedOperatorDiagnosticsSnapshot();
+        if (!snapshot) return;
+        console.error(`[maps-browser-mcp] ${formatManagedHandoffDiagnosticsLog(event, snapshot)}`);
+      }
     })
   : undefined;
 const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime);
@@ -130,7 +140,15 @@ const nativeCredentialTakeover = nativeTakeoverRuntime
   ? new NativeCredentialTakeoverBoundary(takeoverBroker)
   : undefined;
 const webRtcCredentialTakeover = browserHandoffAdapter
-  ? new WebRtcCredentialTakeoverBoundary(browserHandoffAdapter)
+  ? new WebRtcCredentialTakeoverBoundary(
+      browserHandoffAdapter,
+      process.platform,
+      (checkpoint, snapshot) => {
+        console.error(
+          `[maps-browser-mcp] ${formatManagedHandoffDiagnosticsCheckpointLog(checkpoint, snapshot)}`
+        );
+      }
+    )
   : undefined;
 const credentialSafeBrowser = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.transport !== "hosted_cdp"

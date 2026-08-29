@@ -115,6 +115,8 @@ With TURN configured, Handoff still owns the complete staged plan. TURN never mo
 
 Do not enable raw candidate, SDP, address, framebuffer, WebSocket payload/capability, or Human-input logging to debug connectivity. The supported diagnostics stay bounded to transport/state categories and timings without target or account identity.
 
+Managed fallback also emits one automatic `managed_handoff_diagnostics` operator record whenever Handoff reports a bounded transition/failure event. The record is built only from Handoff's strict `ManagedOperatorDiagnosticsSnapshot`; unknown or extra fields are rejected before logging. Physical acceptance should capture this same snapshot before takeover, after fallback, immediately after failure, and after completion. This log path exists specifically so production diagnosis does not depend on the MCP client discovering a newly added diagnostic tool.
+
 ## 7. Current limitations
 
 - macOS and Linux are supported by separate Handoff helpers; Windows is not supported;
