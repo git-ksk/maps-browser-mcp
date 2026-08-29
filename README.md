@@ -210,6 +210,7 @@ These tools are registered only when `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` pass
 - `maps_request_human_sign_in` — credential-safe Human-only sign-in ceremony; registered only when both V5 and `MAPS_CREDENTIAL_SAFE_HANDOFF=true` are enabled; form-elicitation clients use MRTR, while clients without form elicitation receive only a short-lived authenticated takeover locator and must finish with the explicit completion tool; never enters credentials or selects an account
 - `maps_complete_human_sign_in` — completes only the explicit non-MRTR sign-in fallback, revokes Human authority first, verifies `signed_in` from a fresh Agent connection, then runs the stopped-profile checkpoint hook when configured
 - `maps_cancel_human_sign_in` — cancels only the explicit non-MRTR sign-in fallback and revokes its Human surface without creating a signed-in profile checkpoint
+- `maps_read_handoff_diagnostics` — read-only, content-free managed Handoff transport diagnostics for physical acceptance; no session/principal/target identity, browser content, Human input payload, credential/session material, or network candidates
 - `maps_read_authenticated_readiness` — V5-A, identity-free `signed_in | signed_out | unknown` readiness only
 - `maps_read_place_save_state` — V5-B, bounded existing-list membership for the revalidated selected place
 - `maps_save_place_to_list` — V5-C, save one revalidated selected place to one exact existing list; no create/unsave/remove

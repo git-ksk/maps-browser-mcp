@@ -6,6 +6,7 @@ This project is pre-1.0. Until the public API stabilizes, minor and patch releas
 
 ## [Unreleased]
 
+- Add `maps_read_handoff_diagnostics` as a read-only, content-free operator view for managed Human-takeover transport acceptance; it excludes session/principal/target identity, browser content, Human input payloads, credentials/session material, and network candidates (#154).
 ### Added
 
 - Add the Linux/container normal-browser `webrtc_takeover` host path for credential-safe Human control, including isolated Xvfb/Openbox/xdotool/ffmpeg runtime wiring, exact-window/PID binding, packaged Handoff helper execution, and a checked-in Linux container acceptance harness.
