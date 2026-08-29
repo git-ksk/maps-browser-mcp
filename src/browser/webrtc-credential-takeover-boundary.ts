@@ -1,4 +1,7 @@
-import type { BrowserHandoffAdapter } from "mcp-execution-handoff/browser-takeover";
+import type {
+  BrowserHandoffAdapter,
+  ManagedOperatorDiagnosticsSnapshot
+} from "mcp-execution-handoff/browser-takeover";
 import type { CredentialTakeoverBoundary, CredentialTakeoverStartRequest } from "./credential-takeover-boundary.js";
 
 const CREDENTIAL_SAFE_INPUT_POLICY = Object.freeze({
@@ -15,10 +18,16 @@ const CREDENTIAL_SAFE_INPUT_POLICY = Object.freeze({
  * owns direct/WSS/optional TURN selection, reconnect/generation fencing, exact target binding,
  * and server-enforced Human input policy.
  */
+export type WebRtcTakeoverDiagnosticsCheckpoint = "before_takeover";
+
 export class WebRtcCredentialTakeoverBoundary implements CredentialTakeoverBoundary {
   constructor(
     private readonly handoff: BrowserHandoffAdapter,
-    platform: NodeJS.Platform = process.platform
+    platform: NodeJS.Platform = process.platform,
+    private readonly onDiagnosticsCheckpoint?: (
+      checkpoint: WebRtcTakeoverDiagnosticsCheckpoint,
+      snapshot: ManagedOperatorDiagnosticsSnapshot
+    ) => void
   ) {
     if (platform !== "darwin" && platform !== "linux") {
       throw new Error("WebRTC credential takeover requires a macOS or Linux host runtime");
@@ -26,6 +35,11 @@ export class WebRtcCredentialTakeoverBoundary implements CredentialTakeoverBound
   }
 
   start(request: CredentialTakeoverStartRequest): string {
+    // This checkpoint is observe-only and uses the same strict Handoff snapshot API as the
+    // event-triggered production path. Logging failure must never change takeover authority.
+    try {
+      this.onDiagnosticsCheckpoint?.("before_takeover", this.handoff.managedOperatorDiagnosticsSnapshot());
+    } catch { /* diagnostics are observe-only */ }
     return this.handoff.start({
       intervention: { id: request.interventionId, epoch: request.epoch },
       principalBinding: request.principalBinding,
@@ -41,7 +55,7 @@ export class WebRtcCredentialTakeoverBoundary implements CredentialTakeoverBound
   }
 
   operatorDiagnosticsSnapshot() {
-    return this.handoff.operatorDiagnosticsSnapshot();
+    return this.handoff.managedOperatorDiagnosticsSnapshot();
   }
 
   async revoke(interventionId: string): Promise<void> {

@@ -50,7 +50,7 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
   assert.match(server, /new InheritedFdNativeRuntimeProvider\(config\.credentialSafeHandoff\.nativeRuntime\)/);
   assert.match(server, /new BrowserHandoffAdapter\(\{[\s\S]*runtime: config\.credentialSafeHandoff\.webRtcRuntime/);
   assert.match(server, /new NativeCredentialTakeoverBoundary\(takeoverBroker\)/);
-  assert.match(server, /new WebRtcCredentialTakeoverBoundary\(browserHandoffAdapter\)/);
+  assert.match(server, /new WebRtcCredentialTakeoverBoundary\(\s*browserHandoffAdapter,/);
   assert.match(provider, /SystemBrowserCredentialSession/);
   assert.match(provider, /await this\.browser\.start\(\)/);
   assert.match(provider, /await this\.browser\.getTakeoverTarget\(\)/);

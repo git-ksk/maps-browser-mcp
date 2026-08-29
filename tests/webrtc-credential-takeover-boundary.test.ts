@@ -12,19 +12,47 @@ function fakeHandoff(calls: string[]): BrowserHandoffAdapter {
       );
       return "https://takeover.example/takeover/webrtc-locator";
     },
-    operatorDiagnosticsSnapshot() {
-      calls.push("diagnostics");
+    managedOperatorDiagnosticsSnapshot() {
+      calls.push("managed-diagnostics");
       return {
         version: 1,
         source: "browser_handoff",
-        health: "available",
-        transport: {
-          namespace: "managed_handoff",
-          currentTransport: "websocket_relay",
-          lastTransport: "websocket_relay",
-          generation: 2,
-          transitionCount: 1
-        }
+        namespace: "managed_handoff",
+        health: "degraded",
+        currentTransport: "websocket_relay",
+        previousTransport: "webrtc_direct",
+        generation: 2,
+        transitionCount: 1,
+        fallbackReason: "transport_unavailable",
+        wss: {
+          namespace: "managed_wss",
+          channelState: "failed",
+          channelFailure: "transport_failure",
+          disconnectKind: "channel_failure",
+          framesObserved: 4,
+          framesSent: 3,
+          framesDropped: 1,
+          surfaceFailure: "input_timeout",
+          inputAttempts: 1,
+          lastInputStage: "pointer_down_sent",
+          lastInputBoundaryStage: "command_sent",
+          helperStopReason: "input_failure",
+          helperCrashReason: "none",
+          helperExitKind: "none",
+          helperCrashClass: "none",
+          helperCrashOrigin: "none",
+          helperCrashErrorKind: "none",
+          helperCrashMessageClass: "xtest_helper_ack_timeout",
+          authorityBoundary: "valid",
+          sessionDisposition: "retained"
+        },
+        events: [
+          { kind: "transport_transition" },
+          { kind: "wss_open" },
+          { kind: "input_dispatch_failure" },
+          { kind: "wss_failed" },
+          { kind: "session_retained" }
+        ]
       };
     },
     async revoke(interventionId: string) {
@@ -78,14 +106,76 @@ test("WebRTC credential boundary exposes only Handoff operator diagnostics", () 
   assert.deepEqual(boundary.operatorDiagnosticsSnapshot(), {
     version: 1,
     source: "browser_handoff",
-    health: "available",
-    transport: {
-      namespace: "managed_handoff",
-      currentTransport: "websocket_relay",
-      lastTransport: "websocket_relay",
-      generation: 2,
-      transitionCount: 1
-    }
+    namespace: "managed_handoff",
+    health: "degraded",
+    currentTransport: "websocket_relay",
+    previousTransport: "webrtc_direct",
+    generation: 2,
+    transitionCount: 1,
+    fallbackReason: "transport_unavailable",
+    wss: {
+      namespace: "managed_wss",
+      channelState: "failed",
+      channelFailure: "transport_failure",
+      disconnectKind: "channel_failure",
+      framesObserved: 4,
+      framesSent: 3,
+      framesDropped: 1,
+      surfaceFailure: "input_timeout",
+      inputAttempts: 1,
+      lastInputStage: "pointer_down_sent",
+      lastInputBoundaryStage: "command_sent",
+      helperStopReason: "input_failure",
+      helperCrashReason: "none",
+      helperExitKind: "none",
+      helperCrashClass: "none",
+      helperCrashOrigin: "none",
+      helperCrashErrorKind: "none",
+      helperCrashMessageClass: "xtest_helper_ack_timeout",
+      authorityBoundary: "valid",
+      sessionDisposition: "retained"
+    },
+    events: [
+      { kind: "transport_transition" },
+      { kind: "wss_open" },
+      { kind: "input_dispatch_failure" },
+      { kind: "wss_failed" },
+      { kind: "session_retained" }
+    ]
   });
-  assert.deepEqual(calls, ["diagnostics"]);
+  assert.deepEqual(calls, ["managed-diagnostics"]);
+});
+
+
+test("WebRTC credential boundary records a content-free pre-takeover checkpoint without making diagnostics authoritative", () => {
+  const calls: string[] = [];
+  const checkpoints: Array<{ checkpoint: string; currentTransport: string }> = [];
+  const boundary = new WebRtcCredentialTakeoverBoundary(
+    fakeHandoff(calls),
+    "linux",
+    (checkpoint, snapshot) => checkpoints.push({ checkpoint, currentTransport: snapshot.currentTransport })
+  );
+  boundary.start({
+    interventionId: "int-checkpoint",
+    epoch: 11,
+    principalBinding: "principal-checkpoint",
+    targetProcessId: 7272,
+    targetWindowId: 9090
+  });
+  assert.deepEqual(checkpoints, [{ checkpoint: "before_takeover", currentTransport: "websocket_relay" }]);
+  assert.equal(calls[0], "managed-diagnostics");
+  assert.match(calls[1] ?? "", /^start:/);
+
+  const throwing = new WebRtcCredentialTakeoverBoundary(
+    fakeHandoff([]),
+    "linux",
+    () => { throw new Error("operator log unavailable"); }
+  );
+  assert.doesNotThrow(() => throwing.start({
+    interventionId: "int-observe-only",
+    epoch: 12,
+    principalBinding: "principal-observe-only",
+    targetProcessId: 7373,
+    targetWindowId: 9191
+  }));
 });

@@ -115,6 +115,8 @@ TURN設定時もcomplete staged planはHandoffが所有します。TURNがWebSoc
 
 Connectivity debugのためraw candidate、SDP、address、framebuffer、WebSocket payload/capability、Human inputをlogしないでください。Supported diagnosticはtarget/account identityを含まないbounded transport/state categoryとtimingだけです。
 
+Managed fallbackでは、Handoffがbounded transition / failure eventを出した時に `managed_handoff_diagnostics` operator recordも自動出力します。RecordはHandoffのstrict `ManagedOperatorDiagnosticsSnapshot` だけから構築し、unknown / extra fieldはlog前にrejectします。Physical acceptanceでは takeover開始前、fallback後、failure直後、completion後の同じsnapshotを取得します。このlog pathにより、MCP clientが新しいdiagnostic tool schemaをまだcacheしていない場合でもproduction diagnosisを継続できます。
+
 ## 7. 現在の制約
 
 - macOS / Linuxは別Handoff helperで対応。Windowsは未対応;
