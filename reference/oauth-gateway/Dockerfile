@@ -7,7 +7,8 @@ RUN apt-get update \
 COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci --ignore-scripts \
     && node_modules/mcp-execution-handoff/scripts/build-linux-xtest-helper.sh \
-    && node_modules/mcp-execution-handoff/scripts/build-linux-atspi-helper.sh
+    && node_modules/mcp-execution-handoff/scripts/build-linux-atspi-helper.sh \
+    && node_modules/mcp-execution-handoff/scripts/build-linux-window-authority-helper.sh
 COPY src ./src
 COPY scripts/clean-dist.mjs ./scripts/clean-dist.mjs
 RUN npm run build
@@ -48,6 +49,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=build /app/node_modules/mcp-execution-handoff/dist/native/mcp-handoff-linux-xtest-helper /app/node_modules/mcp-execution-handoff/dist/native/mcp-handoff-linux-xtest-helper
 COPY --from=build /app/node_modules/mcp-execution-handoff/dist/native/mcp-handoff-linux-atspi-helper /app/node_modules/mcp-execution-handoff/dist/native/mcp-handoff-linux-atspi-helper
+COPY --from=build /app/node_modules/mcp-execution-handoff/dist/native/mcp-handoff-linux-window-authority-helper /app/node_modules/mcp-execution-handoff/dist/native/mcp-handoff-linux-window-authority-helper
+RUN test -x /app/node_modules/mcp-execution-handoff/dist/native/mcp-handoff-linux-xtest-helper \
+    && test -x /app/node_modules/mcp-execution-handoff/dist/native/mcp-handoff-linux-atspi-helper \
+    && test -x /app/node_modules/mcp-execution-handoff/dist/native/mcp-handoff-linux-window-authority-helper
 COPY --from=build /app/dist ./dist
 COPY scripts/linux-webrtc-container-acceptance.mjs ./scripts/linux-webrtc-container-acceptance.mjs
 

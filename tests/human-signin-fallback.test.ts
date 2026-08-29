@@ -35,11 +35,11 @@ test("explicit completion revokes Human authority before fresh verification and 
   const source = server.slice(start, end);
   const brokerRevoke = source.indexOf("takeoverBroker.revokeForIntervention");
   const surfaceRevoke = source.indexOf("revokeCredentialSafeSurface");
-  const markComplete = source.indexOf("runtime.markHumanControlComplete");
+  const release = source.indexOf("handoffLifecycleBridge.ensureVerifying");
   const verify = source.indexOf("runtime.verifyCredentialSafeHumanIntervention");
   const options = source.indexOf("credentialSafeVerificationOptions(active.id)");
   assert.ok(brokerRevoke >= 0 && surfaceRevoke > brokerRevoke);
-  assert.ok(markComplete > surfaceRevoke && verify > markComplete && options > verify);
+  assert.ok(release > surfaceRevoke && verify > release && options > verify);
 
   const helperStart = server.indexOf("function credentialSafeVerificationOptions");
   const helperEnd = server.indexOf("const nativeCredentialTakeover", helperStart);
@@ -83,4 +83,25 @@ test("credential-safe Human control has no hosted-CDP automation-browser excepti
 
 test("access challenges use the same credential-safe Human boundary as sign-in and consent", () => {
   assert.match(server, /CREDENTIAL_SAFE_REASONS[^\n]*"sign_in"[^\n]*"consent"[^\n]*"access_challenge"/);
+});
+
+
+test("Handoff authority release only advances Maps to verifying and never verifies or resumes by callback", () => {
+  assert.match(server, /onAuthorityReleased: handleBrowserHandoffAuthorityReleased/);
+  const start = server.indexOf("function handleBrowserHandoffAuthorityReleased");
+  const end = server.indexOf("function consumeMatchingRecovery", start);
+  assert.ok(start >= 0 && end > start);
+  const source = server.slice(start, end);
+  assert.match(source, /handoffLifecycleBridge\.onAuthorityReleased\(event\)/);
+  assert.doesNotMatch(source, /verifyCredentialSafeHumanIntervention|verifyHumanIntervention|resumeAfterHumanIntervention/);
+});
+
+test("consumer cancellation never masquerades as Human Done", () => {
+  const start = server.indexOf("async function cancelIntervention");
+  const end = server.indexOf("async function explicitHumanSignInRequired", start);
+  assert.ok(start >= 0 && end > start);
+  const source = server.slice(start, end);
+  assert.match(source, /takeoverBroker\.revokeForIntervention/);
+  assert.match(source, /runtime\.cancelHumanIntervention/);
+  assert.doesNotMatch(source, /ensureVerifying|releaseHumanAuthorityForVerification|markHumanControlComplete/);
 });

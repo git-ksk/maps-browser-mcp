@@ -272,6 +272,23 @@ export class MapsBrowserRuntime {
     return this.handoff.markHumanComplete(interventionId);
   }
 
+  releaseHumanAuthorityForVerification(interventionId: string, expectedEpoch: number): MapsIntervention {
+    const active = this.handoff.getActive();
+    if (
+      !active ||
+      active.id !== interventionId ||
+      active.epoch !== expectedEpoch ||
+      active.status !== "human_active" ||
+      active.authority !== "human"
+    ) {
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Human authority no longer matches the active intervention and resource epoch"
+      );
+    }
+    return this.handoff.markHumanComplete(interventionId);
+  }
+
   async verifyHumanIntervention(interventionId: string): Promise<MapsIntervention> {
     const active = this.handoff.getActive();
     if (!active || active.id !== interventionId) {

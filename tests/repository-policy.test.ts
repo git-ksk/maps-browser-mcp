@@ -105,7 +105,7 @@ test("execution handoff upstream Browser Handoff integration is pinned to an imm
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(
     pkg.dependencies?.["mcp-execution-handoff"],
-    "https://github.com/git-ksk/mcp-execution-handoff/archive/cae605d44892f779dd54245f05a0e035fa277220.tar.gz"
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/8522948f3bb41b769639dabe6ac815e269b8d7a5.tar.gz"
   );
 });
 
@@ -223,8 +223,11 @@ test("reference Cloud Run image provisions the bounded Linux normal-browser WebR
   assert.match(dockerfile, /fonts-noto-cjk/);
   assert.match(dockerfile, /build-linux-xtest-helper\.sh/);
   assert.match(dockerfile, /build-linux-atspi-helper\.sh/);
+  assert.match(dockerfile, /build-linux-window-authority-helper\.sh/);
   assert.match(dockerfile, /dist\/native\/mcp-handoff-linux-xtest-helper/);
   assert.match(dockerfile, /dist\/native\/mcp-handoff-linux-atspi-helper/);
+  assert.match(dockerfile, /dist\/native\/mcp-handoff-linux-window-authority-helper/);
+  assert.match(dockerfile, /test -x \/app\/node_modules\/mcp-execution-handoff\/dist\/native\/mcp-handoff-linux-window-authority-helper/);
   assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME=:99/);
   assert.match(dockerfile, /MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=\/app\/node_modules\/\.bin\/handoff-linux-webrtc-host/);
   assert.match(dockerfile, /XDG_RUNTIME_DIR=\/tmp\/maps-browser-mcp\/xdg-runtime/);
