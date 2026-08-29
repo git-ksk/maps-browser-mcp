@@ -65,6 +65,7 @@ import { SystemBrowserHumanProvider } from "./browser/system-browser-human-provi
 import { CredentialTakeoverHumanProvider } from "./browser/credential-takeover-human-provider.js";
 import { NativeCredentialTakeoverBoundary } from "./browser/native-credential-takeover-boundary.js";
 import { WebRtcCredentialTakeoverBoundary } from "./browser/webrtc-credential-takeover-boundary.js";
+import { MapsHandoffLifecycleBridge } from "./browser/handoff-lifecycle-bridge.js";
 import {
   formatManagedHandoffDiagnosticsCheckpointLog,
   formatManagedHandoffDiagnosticsLog
@@ -78,7 +79,7 @@ import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { resolveFreshRouteSendTarget, type RouteSendActionInput } from "./browser/route-send.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import { createStoppedBrowserProfileCheckpointHook } from "./browser-profile-checkpoint.js";
-import { BrowserHandoffAdapter, HostedBrowserTakeoverProvider, InheritedFdNativeRuntimeProvider, TakeoverBroker, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
+import { BrowserHandoffAdapter, HostedBrowserTakeoverProvider, InheritedFdNativeRuntimeProvider, TakeoverBroker, type TakeoverAuthorityReleaseEvent, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.3.3";
@@ -91,6 +92,7 @@ const policy = new PolicyEngine({
 });
 const localChrome = new ChromeProcess(config.browser);
 const runtime = new MapsBrowserRuntime(localChrome, policy);
+const handoffLifecycleBridge = new MapsHandoffLifecycleBridge(runtime);
 const credentialSafeCuaAdapter = config.credentialSafeHandoff.enabled && config.credentialSafeHandoff.transport === "cua_takeover"
   ? new CuaHumanTakeoverAdapter(() => new CuaMcpClient(config.credentialSafeHandoff.cuaCommand))
   : undefined;
@@ -116,7 +118,8 @@ browserHandoffAdapter = config.credentialSafeHandoff.enabled &&
         const snapshot = browserHandoffAdapter?.managedOperatorDiagnosticsSnapshot();
         if (!snapshot) return;
         console.error(`[maps-browser-mcp] ${formatManagedHandoffDiagnosticsLog(event, snapshot)}`);
-      }
+      },
+      onAuthorityReleased: handleBrowserHandoffAuthorityReleased
     })
   : undefined;
 const takeoverBroker = new TakeoverBroker(takeoverAdapter, config.takeover, nativeTakeoverRuntime);
@@ -261,6 +264,18 @@ function checkpointHumanHandoff(owner: HandoffOwner): void {
 
 function clearHandoffCheckpoint(owner?: HandoffOwner): void {
   v3Handoff?.clearCheckpoint(owner?.principalBinding ?? activePrincipalBinding());
+}
+
+function handleBrowserHandoffAuthorityReleased(event: TakeoverAuthorityReleaseEvent): void {
+  const transitioned = handoffLifecycleBridge.onAuthorityReleased(event);
+  if (!transitioned) return;
+  const owner = handoffOwners.get(event.interventionId);
+  if (!owner) return;
+  try {
+    checkpointHumanHandoff(owner);
+  } catch {
+    console.error("[maps-browser-mcp] handoff lifecycle checkpoint update failed");
+  }
 }
 
 function consumeMatchingRecovery(toolName: string, args: unknown): void {
@@ -454,6 +469,7 @@ async function cancelIntervention(interventionId: string, owner: HandoffOwner): 
   await revokeCredentialSafeSurface(interventionId, owner);
   const active = runtime.getActiveIntervention();
   if (active?.id === interventionId) runtime.cancelHumanIntervention(interventionId);
+  handoffLifecycleBridge.clear(interventionId);
   handoffOwners.delete(interventionId);
   clearHandoffCheckpoint(owner);
   return jsonResult({ cancelled: true, reason: "human_intervention_cancelled" });
@@ -581,8 +597,9 @@ async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
     takeoverBroker.revokeForIntervention(active.id);
     const currentSurface = credentialSafeSurface?.getActive();
     const usedCredentialSafeSurface = currentSurface?.interventionId === active.id;
+    const humanEpoch = usedCredentialSafeSurface ? currentSurface.epoch : active.epoch;
     await revokeCredentialSafeSurface(active.id, owner);
-    runtime.markHumanControlComplete(active.id);
+    handoffLifecycleBridge.ensureVerifying(active.id, humanEpoch);
     await operationQueue.run(() => usedCredentialSafeSurface
       ? runtime.verifyCredentialSafeHumanIntervention(
           active.id,
@@ -597,10 +614,12 @@ async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
       stillActive?.id === active.id &&
       stillActive.status === "verifying"
     ) {
+      handoffLifecycleBridge.clear(active.id);
       const returned = runtime.claimHumanControl(active.id);
       return explicitHumanSignInRequired(returned, owner);
     }
     if (stillActive?.id === active.id) runtime.cancelHumanIntervention(active.id);
+    handoffLifecycleBridge.clear(active.id);
     handoffOwners.delete(active.id);
     explicitHumanSignInInterventions.delete(active.id);
     clearHandoffCheckpoint(owner);
@@ -609,6 +628,7 @@ async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
 
   runtime.resumeAfterHumanIntervention(active.id);
   takeoverBroker.revokeForIntervention(active.id);
+  handoffLifecycleBridge.clear(active.id);
   handoffOwners.delete(active.id);
   explicitHumanSignInInterventions.delete(active.id);
   clearHandoffCheckpoint(owner);
@@ -720,7 +740,19 @@ async function runToolWithHandoff<T>(input: {
   }
 
   const active = runtime.getActiveIntervention();
-  if (!active || active.id !== state.interventionId || active.epoch !== state.epoch) {
+  const sameHumanGeneration = Boolean(
+    active &&
+    active.id === state.interventionId &&
+    active.epoch === state.epoch &&
+    active.status === "human_active" &&
+    active.authority === "human"
+  );
+  const releasedContinuation = handoffLifecycleBridge.matchesReleasedContinuation(
+    state.interventionId,
+    state.epoch
+  );
+  if (!active || (!sameHumanGeneration && !releasedContinuation)) {
+    handoffLifecycleBridge.clear(state.interventionId);
     handoffOwners.delete(state.interventionId);
     takeoverBroker.revokeForIntervention(state.interventionId);
     clearHandoffCheckpoint(owner);
@@ -732,6 +764,12 @@ async function runToolWithHandoff<T>(input: {
 
   const response = inputResponse(input.ctx.mcpReq.inputResponses, HANDOFF_INPUT_KEY);
   if (response.kind === "missing") {
+    if (releasedContinuation) {
+      return errorResult(new BrowserRuntimeError(
+        "HUMAN_INTERVENTION_REQUIRED",
+        "Human authority is already released. Complete the original Human response before fresh verification."
+      ));
+    }
     return humanInputRequired(active, owner, input.args);
   }
   if (response.kind !== "elicit" || response.action !== "accept") {
@@ -744,6 +782,12 @@ async function runToolWithHandoff<T>(input: {
     handoffDecisionSchema
   );
   if (!content) {
+    if (releasedContinuation) {
+      return errorResult(new BrowserRuntimeError(
+        "HUMAN_INTERVENTION_REQUIRED",
+        "Human authority is already released. Complete the original Human response before fresh verification."
+      ));
+    }
     return humanInputRequired(active, owner, input.args);
   }
   if (content.decision === "cancel") {
@@ -754,8 +798,9 @@ async function runToolWithHandoff<T>(input: {
   const activeCredentialSafeSurface = credentialSafeSurface?.getActive();
   const usedCredentialSafeSurface = activeCredentialSafeSurface?.interventionId === state.interventionId;
   try {
+    const humanEpoch = usedCredentialSafeSurface ? activeCredentialSafeSurface.epoch : state.epoch;
     await revokeCredentialSafeSurface(state.interventionId, owner);
-    runtime.markHumanControlComplete(state.interventionId);
+    handoffLifecycleBridge.ensureVerifying(state.interventionId, humanEpoch);
     await operationQueue.run(() => usedCredentialSafeSurface
       ? runtime.verifyCredentialSafeHumanIntervention(
           state.interventionId,
@@ -770,12 +815,14 @@ async function runToolWithHandoff<T>(input: {
       stillActive?.id === state.interventionId &&
       stillActive.status === "verifying"
     ) {
+      handoffLifecycleBridge.clear(state.interventionId);
       const returned = runtime.claimHumanControl(state.interventionId);
       return humanInputRequired(returned, owner, input.args);
     }
     if (stillActive?.id === state.interventionId) {
       runtime.cancelHumanIntervention(state.interventionId);
     }
+    handoffLifecycleBridge.clear(state.interventionId);
     handoffOwners.delete(state.interventionId);
     clearHandoffCheckpoint(owner);
     return errorResult(error);
@@ -783,6 +830,7 @@ async function runToolWithHandoff<T>(input: {
 
   const decision = runtime.resumeAfterHumanIntervention(state.interventionId);
   takeoverBroker.revokeForIntervention(state.interventionId);
+  handoffLifecycleBridge.clear(state.interventionId);
   handoffOwners.delete(state.interventionId);
   clearHandoffCheckpoint(owner);
   if (decision.resumePolicy !== "replay_safe" || input.resumeStrategy === "require_fresh_semantic_action") {
