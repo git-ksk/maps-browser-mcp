@@ -8,6 +8,8 @@
 
 現在の安定source releaseは **v0.3.3** です。Product baselineには、V4未ログインsemantic coverageのcloseout、V5-A〜V5-Dのbounded authenticated workflow、さらにdedicated profileが未ログイン/再認証になった時だけ使うoptionalなcredential-safe Human Handoffまで含まれます。
 
+`main` は現在 **v0.4.0 release train** に入り、Cloud Run向けのfirst-class managed WebSocket fallback、bounded operator diagnostics、iPhone Safari keyboard/focus診断、stopped-profile durabilityなど、v0.3.3以降のHandoff/production hardeningを取り込んでいます。これらはまだstable releaseではなく、physical acceptanceとdistribution gateを通過してからv0.4.0としてまとめます。
+
 V5に **WebRTC / Cloudflare / TURN / remote takeover製品は必須ではありません**。最も単純な構成は、HumanがローカルでログインしたpersistentなMaps専用Chrome profileです。WebRTC Handoffはcredential ceremony / recoveryのoptional transportであり、authenticated Maps toolの前提条件ではありません。
 
 現在のserverは、意図的に2つの利用モードを分離しています。
@@ -159,28 +161,43 @@ Roadmapは、完了済みcapability baselineと次のevidence-driven release the
 - **V4未ログインsemantic coverage** — V4-F closeoutまで完了。
 - **V5-A〜V5-D authenticated workflow** — fail-closed Opt-in / Interactive Assist boundary配下で実装済み。V5-E Historyは意図的にevaluated / blockedのままで、scopeを暗黙に広げない。
 - **Clean remote-auth / OAuth reference boundary** — Maps専用OAuth gateway + loopback private hopを確立し、historical derived serviceもretire済み。
-- **Credential-safe Human Handoff** — v0.3.3でoptionalなSafari WebRTC pathを追加し、same-LAN direct / cellular TURN、exact-window fencing、revoke / stale-locator rejection、Human-only Google sign-in後のfresh `signed_in` + bounded V5-B readまで物理acceptance済み。
+- **Credential-safe Human Handoff baseline** — v0.3.3ではsame-LAN direct / cellular TURN、exact-window fencing、Human-only Google sign-in後のfresh `signed_in` + bounded V5-B readまで物理acceptance済み。
 
-### 次のpatch — v0.3.4: Linux / Cloud Run Handoff + first-distribution closeout
+### 次 — v0.4.0: Managed WSS Cloud Run + distribution closeout
 
-- すでにmerge済みのLinux / Cloud Run normal-browser WebRTC hardeningをreleaseする。Packaged Handoff helper、restricted-runtime sandbox Opt-in、stopped-profile Cloud Storage snapshot、Cloudflare TURN production path、iOS / CJK fix、checked-in Linux container acceptance gateを含む。
-- Cloud Run post-Done durabilityをclaimする前に#135を完了する。明示Done、Human revoke / stale-client fencing、fresh identity-free `signed_in`、stopped-profile checkpoint、DOM / page / action / intervention stateをreplayしないfresh Cloud Run restoreまで確認する。
-- Mobile takeover UXをfully acceptedと表現する前に#134のiPhone Safari keyboard / Backspace / CJK focused regressionを完了する。
-- 初回の広いpackage / Registry publication前に#117のpre-meter usage liability boundaryを解決し、proven pre-meter precondition refusalを完了browser workとして暗黙課金しない。
-- #141のfirst-publication gateはmaintainerが明示authorizeした場合だけ完了する。v0.3.4 metadata同期、packed artifact inspection、clean-consumer stdio smoke、npm verification、Official MCP Registry verification、repository discovery metadataを含む。
-- #143はCI efficiency follow-upでありv0.3.4 runtime / release blockerではない。Required contextとbranch protectionを維持する。
+v0.4.0は、v0.3.3以降に積み上がったCloud Run / Handoff改善を「実装済み」から「productionで再現可能に受入済み」へ上げるreleaseです。新しいMaps semantic scopeを広げるreleaseではありません。
 
-### 次 — v0.4.0: MCP Apps production portability
+Release blockers:
+
+1. **#161 Cloud Run startup contract** — managed WSS candidate revisionが、remote takeover auth providerを有効値として観測できずstartup health checkでfailする問題を解消する。既存production revisionへはtrafficを流したままにし、candidateが`Ready=True`になるまで切替しない。
+2. **#156 managed WSS session stability** — WSS 101成立後にphysical iPhone takeoverが`Session unavailable`へ落ちる経路を、content-free diagnosticsでroot-causeまで確定し修正する。generic recoverable-input/session-livenessの上流課題は `mcp-execution-handoff` #172と整合させる。
+3. **#134 iPhone keyboard acceptance** — editable tap → iOS keyboard auto-display → text / Backspace / Enter / CJK / scrollをphysical Safariでacceptする。keyboard/focus implementationはHandoff側、Mapsはconsumer acceptanceを所有する。
+4. **#135 post-Done durability** — Done → stale Human-client fencing → verifying → fresh identity-free `signed_in` → stopped-profile checkpoint → fresh restore → Agent resumeを、DOM/page/action/intervention stateのreplayなしでacceptする。
+5. **#117 usage liability boundary** — proven pre-meter precondition refusalをcompleted browser workとして暗黙課金しない境界を確定する。
+6. **#141 first broad distribution** — maintainerが明示authorizeした場合のみ、version metadata、packed artifact、clean-consumer smoke、npm、Official MCP Registry、repository discovery metadataを一括確認して公開する。
+
+v0.4.0で維持するproduction invariants:
+
+- Cloud Runはsingle interactive browser authorityを守るため `concurrency=1` / `maxScale=1` を維持する。
+- remote takeover authを弱めず、startup failureはfail closedのまま扱う。
+- Handoff diagnosticsはenum/bounded/content-freeとし、credential、Human-entered text、browser/frame content、account identity、session/transport secretを記録しない。
+- failed Human inputを自動replayせず、duplicate side effectを作らない。
+- Mapsはtransport-blindのまま、generic browser/desktop MCPへscopeを広げない。
+
+**#143 CI docs-only efficiencyはv0.4.0 release blockerではありません。** Required check名とbranch protectionを維持したまま、純docs変更の重いbrowser/container matrixを短絡できる時だけ改善します。
+
+### 次 — v0.5.0: MCP Apps production portability
 
 - 既存host-neutral MCP Apps surfaceを、適切な **second production host** + real restricted Google Maps Embed keyで再検証する。
 - Real render、CSP / sandbox、lifecycle、text / structured fallbackを確認し、rich UIをcore必須にしない。
 - Production-host evidenceが揃った後だけ `experimental` labelを再評価する。
 
-### その次 — v0.5.0: reliability / UI-change resilience / observability
+### その次 — v0.6.0: reliability / UI-change resilience / observability
 
 - fail-closed behaviorを維持したままGoogle Maps Web UI driftの検知・診断を強化する。
 - 共通semantic identity / postcondition、failure classification、live compatibility evidence、locale差・A/B variation耐性を改善する。
 - Diagnosticsはbounded / privacy-safeを維持し、generic browser automationへ広げない。
+- #143のCI効率化も、required checksを弱めず実施可能ならこのhardening laneで回収する。
 
 ### v1.0.0へ向けて
 
@@ -204,16 +221,15 @@ MCP authorization principalとdedicated browserでactiveなGoogle Accountは別i
 
 Entry gate、proposed semantic shape、logging/privacy rule、test plan、explicit deferralは [V5 authenticated workflows — design baseline](v5-authenticated-workflows.ja.md) を参照してください。
 
-## Cross-repository Handoff follow-up — Maps release blockerではない
+## Cross-repository Handoff follow-up — Maps release blockerとの境界
 
-残るHandoff workは、新しいMaps-specific semantic requirementが発生しない限りupstream側で扱います。Mapsはtransport logicを再実装せず、narrowなstart/revoke lifecycle経由で改善を取り込みます。
+Mapsはtransport logicを再実装せず、`mcp-execution-handoff` のnarrowなstart/revoke/diagnostics lifecycleをconsumerとして使います。v0.4.0では、Maps consumer acceptanceを止めるupstream defectだけをrelease trainへ反映し、provider-neutral architecture workは別laneに保ちます。
 
-- [`mcp-execution-handoff` #17](https://github.com/git-ksk/mcp-execution-handoff/issues/17) — adaptive mobile viewport、keyboard-aware composition、safe reload/reconnect。v0.3.3物理baseline後の最優先WebRTC usability follow-up。
-- [`mcp-execution-handoff` #19](https://github.com/git-ksk/mcp-execution-handoff/issues/19) — provider-neutral relay ownership。現時点の物理acceptance済みreferenceはCloudflare Realtime TURNだが、Mapsはrelay providerを知らないまま維持する。
-- [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane / private execution-worker topology。Linux / Cloud Runは現在constrainedなco-located Maps execution hostとして成立済みで、このupstream issueはLinux capture/input欠如ではなく、authority ownershipを弱めずhosted control planeとprivate execution workerを分離する課題。
-- [`mcp-execution-handoff` #13](https://github.com/git-ksk/mcp-execution-handoff/issues/13) — optional Native / Thin Takeover transportとreconnect path。Nativeはsibling / experimental optionで、acceptedなSafari WebRTC pathの前提ではない。
+- [`mcp-execution-handoff` #172](https://github.com/git-ksk/mcp-execution-handoff/issues/172) — recoverable Human input failure後もmanaged WSS sessionを生存させるgeneric liveness bug。Maps #156と症状が重なるため、root causeが同一と確認できた範囲だけupstream修正を取り込む。Maps側の症状だけで#172をcloseしない。
+- [`mcp-execution-handoff` #19](https://github.com/git-ksk/mcp-execution-handoff/issues/19) — provider-neutral relay ownership。Cloudflare Realtime TURNはreference pathだが、Mapsはrelay providerを知らないまま維持する。v0.4.0 blockerではない。
+- [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane / private execution-worker topology。現在のCloud Run Maps deploymentを成立させるための必須条件ではなく、将来のtopology分離課題。
 
-これらupstream itemはV5-A〜V5-Dをre-openせず、v0.3.3 Maps baselineのrelease blockerでもありません。Upstream変更がMaps-owned lifecycleまたはbrowser authority boundaryへmaterialな影響を与えた時だけMaps consumer acceptanceを再実行します。
+adaptive mobile viewport / safe reconnectとThin Takeoverの初期issueはすでにupstreamでclose済みです。今後は古いissue番号をroadmap上の未完了項目として残さず、現行open issueだけをrelease blocker判定に使います。
 
 ## ロードマップでも維持する非ゴール
 
