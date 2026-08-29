@@ -104,6 +104,15 @@ env \
   node dist/index.js --http &
 core_pid=$!
 
+if ! node reference/oauth-gateway/wait-for-core.mjs; then
+  echo "[maps-oauth-gateway] private core failed readiness before public startup" >&2
+  exit 1
+fi
+kill -0 "$core_pid" 2>/dev/null || {
+  echo "[maps-oauth-gateway] private core exited before public startup" >&2
+  exit 1
+}
+
 node reference/oauth-gateway/server.mjs &
 gateway_pid=$!
 

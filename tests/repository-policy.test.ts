@@ -239,6 +239,10 @@ test("reference Cloud Run image provisions the bounded Linux normal-browser WebR
   assert.match(entrypoint, /kill -0 "\$xvfb_pid"/);
   assert.match(entrypoint, /kill -0 "\$openbox_pid"/);
   assert.match(entrypoint, /cleanup_graphics/);
+  assert.match(entrypoint, /wait-for-core\.mjs/);
+  assert.match(entrypoint, /private core failed readiness before public startup/);
+  assert.match(entrypoint, /kill -0 "\$core_pid"/);
+  assert.ok(entrypoint.indexOf("wait-for-core.mjs") < entrypoint.indexOf("server.mjs &"));
   assert.doesNotMatch(entrypoint, /remote-debugging|enable-automation|headless=new/);
 });
 
