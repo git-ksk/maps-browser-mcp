@@ -12,6 +12,21 @@ function fakeHandoff(calls: string[]): BrowserHandoffAdapter {
       );
       return "https://takeover.example/takeover/webrtc-locator";
     },
+    operatorDiagnosticsSnapshot() {
+      calls.push("diagnostics");
+      return {
+        version: 1,
+        source: "browser_handoff",
+        health: "available",
+        transport: {
+          namespace: "managed_handoff",
+          currentTransport: "websocket_relay",
+          lastTransport: "websocket_relay",
+          generation: 2,
+          transitionCount: 1
+        }
+      };
+    },
     async revoke(interventionId: string) {
       calls.push(`revoke:${interventionId}`);
     }
@@ -55,4 +70,22 @@ test("WebRTC credential boundary forwards exact-window identity without transpor
   assert.deepEqual(calls, [
     'start:int-window:10:principal-window:6262:8080:{"tap":true,"scroll":true,"text":true,"key":true}'
   ]);
+});
+
+test("WebRTC credential boundary exposes only Handoff operator diagnostics", () => {
+  const calls: string[] = [];
+  const boundary = new WebRtcCredentialTakeoverBoundary(fakeHandoff(calls), "linux");
+  assert.deepEqual(boundary.operatorDiagnosticsSnapshot(), {
+    version: 1,
+    source: "browser_handoff",
+    health: "available",
+    transport: {
+      namespace: "managed_handoff",
+      currentTransport: "websocket_relay",
+      lastTransport: "websocket_relay",
+      generation: 2,
+      transitionCount: 1
+    }
+  });
+  assert.deepEqual(calls, ["diagnostics"]);
 });

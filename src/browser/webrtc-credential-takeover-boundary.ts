@@ -40,6 +40,10 @@ export class WebRtcCredentialTakeoverBoundary implements CredentialTakeoverBound
     });
   }
 
+  operatorDiagnosticsSnapshot() {
+    return this.handoff.operatorDiagnosticsSnapshot();
+  }
+
   async revoke(interventionId: string): Promise<void> {
     await this.handoff.revoke(interventionId);
   }

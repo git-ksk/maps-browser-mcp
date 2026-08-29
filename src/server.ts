@@ -992,6 +992,18 @@ export function buildServer(): McpServer {
     );
   }
 
+  if (webRtcCredentialTakeover) {
+    server.registerTool(
+      "maps_read_handoff_diagnostics",
+      {
+        description: "Return only bounded content-free Handoff operator diagnostics for the active credential-safe Human takeover transport. This never returns session/intervention/principal identifiers, target PID/window identity, browser content, Human input payload, credentials, cookies/tokens, or network candidate data.",
+        inputSchema: z.object({}),
+        annotations: { readOnlyHint: true, idempotentHint: true }
+      },
+      async () => jsonResult(webRtcCredentialTakeover.operatorDiagnosticsSnapshot())
+    );
+  }
+
   if (config.v5.authenticatedWorkflows) {
     server.registerTool(
       "maps_read_authenticated_readiness",
