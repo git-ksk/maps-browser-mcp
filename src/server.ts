@@ -114,6 +114,9 @@ browserHandoffAdapter = config.credentialSafeHandoff.enabled &&
       ...(config.credentialSafeHandoff.managedFallback
         ? { managedFallback: config.credentialSafeHandoff.managedFallback }
         : {}),
+      ...(config.credentialSafeHandoff.transportPolicy
+        ? { transportPolicy: config.credentialSafeHandoff.transportPolicy }
+        : {}),
       onManagedOperatorDiagnosticEvent: (event) => {
         const snapshot = browserHandoffAdapter?.managedOperatorDiagnosticsSnapshot();
         if (!snapshot) return;

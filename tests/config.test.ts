@@ -23,6 +23,7 @@ const KEYS = [
   "MAPS_TAKEOVER_TTL_SECONDS",
   "MAPS_CREDENTIAL_SAFE_HANDOFF",
   "MAPS_CREDENTIAL_SAFE_TRANSPORT",
+  "MAPS_HANDOFF_TRANSPORT_ORDER",
   "MAPS_CREDENTIAL_SAFE_OPERATOR_URL",
   "MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE",
   "MAPS_CUA_DRIVER_COMMAND",
@@ -504,6 +505,7 @@ test("WebRTC Takeover requires the authenticated broker and a Handoff-owned plat
     const config = loadConfig();
     assert.equal(config.credentialSafeHandoff.transport, "webrtc_takeover");
     assert.equal(config.credentialSafeHandoff.webRtcRuntime?.hostExecutable, "/opt/thin/takeover-webrtc-host");
+    assert.equal(config.credentialSafeHandoff.transportPolicy, undefined);
     if (process.platform === "linux") {
       assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayName, ":99");
       assert.equal(config.credentialSafeHandoff.webRtcRuntime?.displayId, undefined);
@@ -690,5 +692,45 @@ test("MCP Apps map embed is disabled unless an API key is configured", async () 
 
   await withEnv({ GOOGLE_MAPS_EMBED_API_KEY: "   " }, () => {
     assert.equal(loadConfig().mcpApps.googleMapsEmbedApiKey, undefined);
+  });
+});
+
+test("Handoff managed transport order is strict, exact, and WSS-only capable", async () => {
+  const platformDisplayEnv = process.platform === "linux"
+    ? { MAPS_WEBRTC_TAKEOVER_DISPLAY_NAME: ":99" }
+    : { MAPS_WEBRTC_TAKEOVER_DISPLAY_ID: "7" };
+  const base = {
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "webrtc_takeover",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE: "/opt/thin/takeover-webrtc-host",
+    ...platformDisplayEnv
+  } as const;
+
+  await withEnv({ ...base, MAPS_HANDOFF_TRANSPORT_ORDER: "websocket_relay" }, () => {
+    assert.deepEqual(loadConfig().credentialSafeHandoff.transportPolicy, { order: ["websocket_relay"] });
+  });
+  await withEnv({ ...base, MAPS_HANDOFF_TRANSPORT_ORDER: "websocket_relay,webrtc_direct" }, () => {
+    assert.deepEqual(loadConfig().credentialSafeHandoff.transportPolicy, { order: ["websocket_relay", "webrtc_direct"] });
+  });
+  for (const invalid of ["", "websocket_relay,", "websocket_relay,websocket_relay", "unknown"]) {
+    await withEnv({ ...base, MAPS_HANDOFF_TRANSPORT_ORDER: invalid }, () => {
+      assert.throws(() => loadConfig(), /MAPS_HANDOFF_TRANSPORT_ORDER/);
+    });
+  }
+  await withEnv({
+    MAPS_CREDENTIAL_SAFE_HANDOFF: "true",
+    MAPS_CREDENTIAL_SAFE_TRANSPORT: "cua_takeover",
+    MAPS_REMOTE_TAKEOVER: "true",
+    MAPS_TAKEOVER_PUBLIC_BASE_URL: "https://takeover.example",
+    MCP_BEARER_TOKEN: "0123456789abcdefghijklmn",
+    MAPS_CHROME_PROFILE_DIR: "/tmp/maps-credential-profile",
+    MAPS_CUA_DRIVER_COMMAND: "cua-driver",
+    MAPS_HANDOFF_TRANSPORT_ORDER: "websocket_relay"
+  }, () => {
+    assert.throws(() => loadConfig(), /requires MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover/);
   });
 });

@@ -87,6 +87,7 @@ Linux/container `webrtc_takeover` ではisolated local X11 displayとHandoff Lin
 ```bash
 MAPS_CREDENTIAL_SAFE_HANDOFF=true
 MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover
+MAPS_HANDOFF_TRANSPORT_ORDER=websocket_relay
 MAPS_REMOTE_TAKEOVER=true
 MAPS_TAKEOVER_PUBLIC_BASE_URL=https://maps-mcp.example.com
 MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE=$PWD/node_modules/.bin/handoff-linux-webrtc-host

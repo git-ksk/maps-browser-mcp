@@ -1,6 +1,34 @@
 import { isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import type { ManagedHandoffTransportPolicy } from "mcp-execution-handoff/browser-takeover";
+
+const HANDOFF_TRANSPORT_ATTEMPTS = new Set([
+  "webrtc_direct",
+  "websocket_relay",
+  "webrtc_relay"
+] as const);
+
+function handoffTransportPolicy(name: string): ManagedHandoffTransportPolicy | undefined {
+  const raw = process.env[name];
+  if (raw === undefined) return undefined;
+  if (!raw.trim()) throw new Error(`${name} must contain one to three Handoff transport attempts`);
+  const values = raw.split(",").map((value) => value.trim());
+  if (values.length < 1 || values.length > HANDOFF_TRANSPORT_ATTEMPTS.size || values.some((value) => !value)) {
+    throw new Error(`${name} must contain one to three comma-separated Handoff transport attempts`);
+  }
+  const order: Array<"webrtc_direct" | "websocket_relay" | "webrtc_relay"> = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (!HANDOFF_TRANSPORT_ATTEMPTS.has(value as "webrtc_direct" | "websocket_relay" | "webrtc_relay")) {
+      throw new Error(`${name} contains unsupported attempt: ${value}`);
+    }
+    if (seen.has(value)) throw new Error(`${name} cannot contain duplicate attempts`);
+    seen.add(value);
+    order.push(value as "webrtc_direct" | "websocket_relay" | "webrtc_relay");
+  }
+  return { order };
+}
 
 function envBool(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
@@ -208,6 +236,7 @@ export interface AppConfig {
       linuxHostScript: string;
       displayName: string;
     };
+    transportPolicy?: ManagedHandoffTransportPolicy;
     nativeRuntime?: {
       hostExecutable: string;
       revokeExecutable: string;
@@ -352,12 +381,16 @@ export function loadConfig(): AppConfig {
   let nativeRuntime: AppConfig["credentialSafeHandoff"]["nativeRuntime"];
   let webRtcRuntime: AppConfig["credentialSafeHandoff"]["webRtcRuntime"];
   let managedFallback: AppConfig["credentialSafeHandoff"]["managedFallback"];
+  const managedTransportPolicy = handoffTransportPolicy("MAPS_HANDOFF_TRANSPORT_ORDER");
 
   if (credentialSafeOperatorUrl && !credentialSafeHandoff) {
     throw new Error("MAPS_CREDENTIAL_SAFE_OPERATOR_URL requires MAPS_CREDENTIAL_SAFE_HANDOFF=true");
   }
   if (credentialSafeTransportMode !== "external" && !credentialSafeHandoff) {
     throw new Error("MAPS_CREDENTIAL_SAFE_TRANSPORT requires MAPS_CREDENTIAL_SAFE_HANDOFF=true when using cua_takeover, thin_takeover, webrtc_takeover, or hosted_cdp");
+  }
+  if (managedTransportPolicy && credentialSafeTransportMode !== "webrtc_takeover") {
+    throw new Error("MAPS_HANDOFF_TRANSPORT_ORDER requires MAPS_CREDENTIAL_SAFE_TRANSPORT=webrtc_takeover");
   }
   if (credentialSafeTransportMode === "hosted_cdp") {
     if (!remoteTakeover) {
@@ -509,7 +542,8 @@ export function loadConfig(): AppConfig {
       cuaCommand,
       nativeRuntime,
       webRtcRuntime,
-      managedFallback
+      managedFallback,
+      transportPolicy: managedTransportPolicy
     },
     browserProfileCheckpoint: {
       module: stoppedProfileCheckpointModuleRaw
