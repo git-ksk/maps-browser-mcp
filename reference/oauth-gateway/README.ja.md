@@ -145,6 +145,15 @@ docker build \
   -t maps-browser-mcp-oauth-reference .
 ```
 
+Managed Cloud Run buildでは、bareな `gcloud builds submit --tag ...` ではなくrepository固定のCloud Build configを使います。Root `Dockerfile` はprivate coreを直接起動するimageであり、public OAuth/WSS gateway imageではありません。`-f reference/oauth-gateway/Dockerfile` を落とすとgateway entrypointを通らず、remote takeoverのprincipal-bound HTTP auth guardで意図どおりfail closedします。
+
+```bash
+gcloud builds submit \
+  --config cloudbuild.managed.yaml \
+  --substitutions=_IMAGE=us-central1-docker.pkg.dev/mcp-runtime-ksk/mcp-runtime/maps-browser-mcp:<candidate-tag> \
+  .
+```
+
 Publicはgateway `8080` だけ。Coreはloopback `8081` + `static-bearer` に固定します。
 
 ## Cloud Run Dogfood

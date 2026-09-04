@@ -212,6 +212,22 @@ test("readiness, MCP, and takeover paths use the configured HTTP auth provider",
   assert.match(authSource, /createAuthProvider/);
 });
 
+test("managed Cloud Run builds cannot silently fall back to the private-core root image", () => {
+  const buildConfig = read("cloudbuild.managed.yaml");
+  const readme = read("reference/oauth-gateway/README.md");
+  const readmeJa = read("reference/oauth-gateway/README.ja.md");
+
+  assert.match(buildConfig, /reference\/oauth-gateway\/Dockerfile/);
+  assert.match(buildConfig, /\$\{_IMAGE\}/);
+  const dockerfileIndex = buildConfig.indexOf("reference/oauth-gateway/Dockerfile");
+  const imageIndex = buildConfig.indexOf("${_IMAGE}");
+  assert.ok(dockerfileIndex >= 0 && imageIndex > dockerfileIndex, "managed build must select the gateway Dockerfile before tagging the image");
+  for (const doc of [readme, readmeJa]) {
+    assert.match(doc, /cloudbuild\.managed\.yaml/);
+    assert.match(doc, /reference\/oauth-gateway\/Dockerfile/);
+  }
+});
+
 test("reference Cloud Run image provisions the bounded Linux normal-browser WebRTC surface", () => {
   const dockerfile = read("reference/oauth-gateway/Dockerfile");
   const entrypoint = read("reference/oauth-gateway/entrypoint.sh");
