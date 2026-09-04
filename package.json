@@ -33,7 +33,7 @@
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "check": "npm run typecheck && npm test && npm run check:acceptance-harness",
-    "check:acceptance-harness": "node --check scripts/live-google-sign-in-acceptance.mjs && node --check scripts/cloud-run-public-origin-preflight.mjs",
+    "check:acceptance-harness": "node --check scripts/live-google-sign-in-acceptance.mjs && node --check scripts/cloud-run-public-origin-preflight.mjs && node --check scripts/cloud-run-guarded-rollout.mjs",
     "smoke:stdio": "node scripts/smoke-stdio.mjs",
     "smoke:http": "node scripts/smoke-http.mjs",
     "smoke:browser": "node scripts/smoke-browser.mjs",
@@ -41,7 +41,8 @@
     "acceptance:local:google-sign-in": "node scripts/live-google-sign-in-acceptance.mjs",
     "acceptance:linux:webrtc:container": "node scripts/linux-webrtc-container-acceptance.mjs",
     "prepack": "npm run check && npm run build",
-    "preflight:cloud-run:public-origin": "node scripts/cloud-run-public-origin-preflight.mjs"
+    "preflight:cloud-run:public-origin": "node scripts/cloud-run-public-origin-preflight.mjs",
+    "rollout:cloud-run": "node scripts/cloud-run-guarded-rollout.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
