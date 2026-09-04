@@ -171,14 +171,29 @@ const credentialSafeProvider = !config.credentialSafeHandoff.enabled
     ? hostedBrowserCredentialTakeover
     : config.credentialSafeHandoff.transport === "thin_takeover"
     ? nativeCredentialTakeover && credentialSafeBrowser
-      ? new CredentialTakeoverHumanProvider("thin-takeover", credentialSafeBrowser, nativeCredentialTakeover)
+      ? new CredentialTakeoverHumanProvider(
+          "thin-takeover",
+          credentialSafeBrowser,
+          nativeCredentialTakeover,
+          config.takeover.ttlMs
+        )
       : undefined
     : config.credentialSafeHandoff.transport === "webrtc_takeover"
       ? webRtcCredentialTakeover && credentialSafeBrowser
-        ? new CredentialTakeoverHumanProvider("webrtc-takeover", credentialSafeBrowser, webRtcCredentialTakeover)
+        ? new CredentialTakeoverHumanProvider(
+            "webrtc-takeover",
+            credentialSafeBrowser,
+            webRtcCredentialTakeover,
+            config.takeover.ttlMs
+          )
         : undefined
     : credentialSafeBrowser && config.credentialSafeHandoff.transport === "cua_takeover" && credentialSafeCuaAdapter
-      ? new CuaTakeoverHumanProvider(credentialSafeBrowser, credentialSafeCuaAdapter, takeoverBroker)
+      ? new CuaTakeoverHumanProvider(
+          credentialSafeBrowser,
+          credentialSafeCuaAdapter,
+          takeoverBroker,
+          config.takeover.ttlMs
+        )
       : credentialSafeBrowser
         ? new SystemBrowserHumanProvider(
             credentialSafeBrowser,

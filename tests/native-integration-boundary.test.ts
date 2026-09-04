@@ -81,8 +81,8 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
 test("Native and WebRTC transports are siblings and neither instantiates CUA", () => {
   const server = read("src/server.ts");
   assert.match(server, /credentialSafeHandoff\.transport === "cua_takeover"\s*\? new CuaHumanTakeoverAdapter/);
-  assert.match(server, /credentialSafeHandoff\.transport === "thin_takeover"[\s\S]*?CredentialTakeoverHumanProvider\("thin-takeover"/);
-  assert.match(server, /credentialSafeHandoff\.transport === "webrtc_takeover"[\s\S]*?CredentialTakeoverHumanProvider\("webrtc-takeover"/);
+  assert.match(server, /credentialSafeHandoff\.transport === "thin_takeover"[\s\S]*?CredentialTakeoverHumanProvider\([\s\S]*?"thin-takeover"[\s\S]*?config\.takeover\.ttlMs/);
+  assert.match(server, /credentialSafeHandoff\.transport === "webrtc_takeover"[\s\S]*?CredentialTakeoverHumanProvider\([\s\S]*?"webrtc-takeover"[\s\S]*?config\.takeover\.ttlMs/);
   assert.doesNotMatch(read("src/browser/native-credential-takeover-boundary.ts"), /Cua|CUA|cua-driver/);
   assert.doesNotMatch(read("src/browser/webrtc-credential-takeover-boundary.ts"), /Cua|CUA|cua-driver/);
 });
