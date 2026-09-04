@@ -182,6 +182,15 @@ Tool名、description、input schemaを変更した場合:
 
 Schema変更直後だけtool callが失敗する場合、browser runtimeを疑う前にChatGPT側が古いtool definitionを使っていないか確認してください。
 
+現在のproduction V5 credential-safe Human sign-in構成では、cleanなChatGPT connectorが次のlifecycle subsetをまとめてdiscoverできることを期待します:
+
+- `maps_request_human_sign_in`
+- `maps_complete_human_sign_in`
+- `maps_cancel_human_sign_in`
+- WebRTC credential-safe takeover runtime有効時の `maps_read_handoff_diagnostics`
+
+`maps_request_human_sign_in` が `nextTool=maps_complete_human_sign_in` / `cancelTool=maps_cancel_human_sign_in` をadvertiseするのは、explicit fallbackとしてそのfollow-up tool群がsupported connector surfaceに存在する構成だけです。Request toolだけ見えてfollow-up toolのどちらかが見えない場合はconnector snapshotをstaleとして扱い、App定義をrefresh / rescanし、更新されたactionを確認してから新しいchatでceremonyを開始してください。Maps側のauthorityを広げたり、Handoff transport logicをconsumer側へ再実装して補償してはいけません。
+
 ## Browser境界
 
 CDP自体をChatGPTやpublic internetへ公開しないでください。

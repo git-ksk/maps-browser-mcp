@@ -16,6 +16,24 @@ test("Human sign-in keeps MRTR for form-elicitation clients and uses an explicit
   assert.match(server, /server\.registerTool\(\s*"maps_cancel_human_sign_in"/);
 });
 
+test("explicit Human lifecycle discovery stays symmetric with advertised follow-up tools", () => {
+  for (const toolName of [
+    "maps_request_human_sign_in",
+    "maps_complete_human_sign_in",
+    "maps_cancel_human_sign_in",
+    "maps_read_handoff_diagnostics"
+  ]) {
+    assert.match(server, new RegExp(`server\\.registerTool\\(\\s*"${toolName}"`));
+  }
+
+  const start = server.indexOf("async function explicitHumanSignInRequired");
+  const end = server.indexOf("async function beginExplicitHumanSignIn", start);
+  assert.ok(start >= 0 && end > start);
+  const source = server.slice(start, end);
+  assert.match(source, /nextTool: "maps_complete_human_sign_in"/);
+  assert.match(source, /cancelTool: "maps_cancel_human_sign_in"/);
+});
+
 test("explicit Human sign-in returns only the bounded locator surface and no control-plane identity", () => {
   const start = server.indexOf("async function explicitHumanSignInRequired");
   const end = server.indexOf("async function beginExplicitHumanSignIn", start);
