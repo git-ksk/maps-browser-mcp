@@ -78,7 +78,10 @@ import { TRANSIT_TIME_MODES } from "./browser/transit-time.js";
 import { VisibleStateReader } from "./browser/visible-state-reader.js";
 import { resolveFreshRouteSendTarget, type RouteSendActionInput } from "./browser/route-send.js";
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
-import { createStoppedBrowserProfileCheckpointHook } from "./browser-profile-checkpoint.js";
+import {
+  createStoppedBrowserProfileCheckpointHook,
+  createStoppedBrowserProfilePreparationHook
+} from "./browser-profile-checkpoint.js";
 import { BrowserHandoffAdapter, HostedBrowserTakeoverProvider, InheritedFdNativeRuntimeProvider, TakeoverBroker, type TakeoverAuthorityReleaseEvent, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
@@ -130,6 +133,7 @@ const hostedBrowserCredentialTakeover = config.credentialSafeHandoff.enabled &&
   config.credentialSafeHandoff.transport === "hosted_cdp"
   ? new HostedBrowserTakeoverProvider(takeoverBroker)
   : undefined;
+const stoppedProfilePreparation = createStoppedBrowserProfilePreparationHook(config.browserProfileCheckpoint.module);
 const stoppedProfileCheckpoint = createStoppedBrowserProfileCheckpointHook(config.browserProfileCheckpoint.module);
 const credentialSafeProfileCheckpointEnabled = Boolean(config.browserProfileCheckpoint.module);
 
@@ -142,6 +146,14 @@ function credentialSafeVerificationOptions(interventionId: string) {
     }
   };
 }
+async function verifyCredentialSafeHumanInterventionAfterStoppedProfile(interventionId: string) {
+  await stoppedProfilePreparation({ reason: "credential_safe_sign_in" });
+  return runtime.verifyCredentialSafeHumanIntervention(
+    interventionId,
+    credentialSafeVerificationOptions(interventionId)
+  );
+}
+
 const nativeCredentialTakeover = nativeTakeoverRuntime
   ? new NativeCredentialTakeoverBoundary(takeoverBroker)
   : undefined;
@@ -619,10 +631,7 @@ async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
     await revokeCredentialSafeSurface(active.id, owner);
     handoffLifecycleBridge.ensureVerifying(active.id, humanEpoch);
     await operationQueue.run(() => usedCredentialSafeSurface
-      ? runtime.verifyCredentialSafeHumanIntervention(
-          active.id,
-          credentialSafeVerificationOptions(active.id)
-        )
+      ? verifyCredentialSafeHumanInterventionAfterStoppedProfile(active.id)
       : runtime.verifyHumanIntervention(active.id));
   } catch (error) {
     const stillActive = runtime.getActiveIntervention();
@@ -820,10 +829,7 @@ async function runToolWithHandoff<T>(input: {
     await revokeCredentialSafeSurface(state.interventionId, owner);
     handoffLifecycleBridge.ensureVerifying(state.interventionId, humanEpoch);
     await operationQueue.run(() => usedCredentialSafeSurface
-      ? runtime.verifyCredentialSafeHumanIntervention(
-          state.interventionId,
-          credentialSafeVerificationOptions(state.interventionId)
-        )
+      ? verifyCredentialSafeHumanInterventionAfterStoppedProfile(state.interventionId)
       : runtime.verifyHumanIntervention(state.interventionId));
   } catch (error) {
     const stillActive = runtime.getActiveIntervention();

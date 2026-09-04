@@ -9,6 +9,7 @@ import {
   createProfileArchive,
   isExcludedProfilePath,
   loadProfileSnapshotConfig,
+  prepareProfileForFreshAgentVerification,
   restoreProfileArchive
 } from "./profile-snapshot.mjs";
 
@@ -77,6 +78,48 @@ test("restore rejects parent traversal and symlink entries", async () => {
   }
 });
 
+
+
+
+test("pre-verification profile preparation round-trips the stopped profile locally without cloud publication", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-prepare-test-"));
+  try {
+    const profileDir = path.join(root, "profile");
+    await mkdir(path.join(profileDir, "Default", "Local Storage"), { recursive: true });
+    await mkdir(path.join(profileDir, "Default", "Cache"), { recursive: true });
+    await writeFile(path.join(profileDir, "Default", "Cookies"), "opaque-cookie-db");
+    await writeFile(path.join(profileDir, "Default", "Local Storage", "state"), "opaque-auth-state");
+    await writeFile(path.join(profileDir, "Default", "Cache", "discard"), "cache");
+    await writeFile(path.join(profileDir, "SingletonLock"), "runtime-only");
+
+    const config = {
+      enabled: true,
+      bucket: "unused-for-local-stage",
+      prefix: "maps-browser-mcp/profile",
+      profileDir,
+      required: false,
+      maxBytes: 16 * 1024 * 1024,
+      keepSnapshots: 2
+    };
+    const messages = [];
+    const result = await prepareProfileForFreshAgentVerification(config, {
+      logger: { error(message) { messages.push(message); } }
+    });
+
+    assert.equal(result.status, "prepared");
+    assert.ok(result.bytes > 0);
+    assert.match(result.sha256, /^[a-f0-9]{64}$/);
+    assert.equal(await readFile(path.join(profileDir, "Default", "Cookies"), "utf8"), "opaque-cookie-db");
+    assert.equal(await readFile(path.join(profileDir, "Default", "Local Storage", "state"), "utf8"), "opaque-auth-state");
+    await assert.rejects(readFile(path.join(profileDir, "Default", "Cache", "discard")), /ENOENT/);
+    await assert.rejects(readFile(path.join(profileDir, "SingletonLock")), /ENOENT/);
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /prepared stopped dedicated Chrome profile/);
+    assert.doesNotMatch(messages[0], /opaque-cookie-db|opaque-auth-state/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("cloud checkpoint uploads the archive through Bucket.upload with an explicit object destination", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-cloud-checkpoint-test-"));

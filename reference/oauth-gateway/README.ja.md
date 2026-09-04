@@ -250,7 +250,7 @@ MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
 
 `MAPS_PROFILE_SNAPSHOT_REQUIRED=false` がdefaultです。初回起動でsnapshotが無い場合は空の専用profileでsigned-out起動します。snapshot欠落/破損時に起動自体を止めたい運用だけ `true` にします。
 
-`MAPS_PROFILE_SNAPSHOT_BUCKET` 設定時、entrypointは `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` をreference checkpoint providerへ自動配線します。これはcredential-safe transport共通です。Human surfaceをrevokeしてnormal Human browserを閉じた後、fresh Agent CDPで `signed_in` を確認し、Agent browserをclean stopしてprofileをcheckpointした**後**にだけHandoffをresumableにします。checkpoint失敗時は未永続化sign-inを成功扱いせずfail closedします。legacy `hosted_cdp` はcredential-safe Human controlでは無効のままです。
+`MAPS_PROFILE_SNAPSHOT_BUCKET` 設定時、entrypointは `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` をreference checkpoint providerへ自動配線します。これはcredential-safe transport共通です。Human surfaceをrevokeしてnormal Human browserを閉じた後、reference providerはdurable Cloud Storage pointerを更新せずlocal opaque archive/restore round-tripを先に実施します。その後fresh Agent CDPで `signed_in` を確認し、Agent browserをclean stopしてverified profileをcheckpointした**後**にだけHandoffをresumableにします。checkpoint失敗時は未永続化sign-inを成功扱いせずfail closedします。legacy `hosted_cdp` はcredential-safe Human controlでは無効のままです。
 
 snapshot helperは以下を保証します。
 

@@ -110,7 +110,7 @@ The image defaults to an ephemeral dedicated profile:
 /tmp/maps-browser-mcp/chrome-profile
 ```
 
-Override it with `MAPS_CHROME_PROFILE_DIR` only when you have a specific single-user persistence requirement. Never point the server at an everyday browser profile, and never share one profile across concurrent users or instances. The reference OAuth gateway can restore/checkpoint this stopped profile through `MAPS_PROFILE_SNAPSHOT_BUCKET`; live Chromium still runs only against local ephemeral storage. When that snapshot layer is enabled, the entrypoint wires the deployment-only `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE`; after any credential-safe Human transport is revoked, a fresh Agent `signed_in` verification must succeed, then the automation browser is stopped and only that stopped profile may be checkpointed.
+Override it with `MAPS_CHROME_PROFILE_DIR` only when you have a specific single-user persistence requirement. Never point the server at an everyday browser profile, and never share one profile across concurrent users or instances. The reference OAuth gateway can restore/checkpoint this stopped profile through `MAPS_PROFILE_SNAPSHOT_BUCKET`; live Chromium still runs only against local ephemeral storage. When that snapshot layer is enabled, the entrypoint wires the deployment-only `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE`; after any credential-safe Human transport is revoked and the normal Human browser is stopped, the deployment may first round-trip the opaque stopped profile into a fresh local directory boundary. A fresh Agent `signed_in` verification must then succeed; only afterward is the automation browser stopped again and the verified stopped profile checkpointed durably.
 
 ## Health and readiness
 

@@ -54,25 +54,27 @@ test("explicit completion revokes Human authority before fresh verification and 
   const brokerRevoke = source.indexOf("takeoverBroker.revokeForIntervention");
   const surfaceRevoke = source.indexOf("revokeCredentialSafeSurface");
   const release = source.indexOf("handoffLifecycleBridge.ensureVerifying");
-  const verify = source.indexOf("runtime.verifyCredentialSafeHumanIntervention");
-  const options = source.indexOf("credentialSafeVerificationOptions(active.id)");
+  const stagedVerify = source.indexOf("verifyCredentialSafeHumanInterventionAfterStoppedProfile(active.id)");
   assert.ok(brokerRevoke >= 0 && surfaceRevoke > brokerRevoke);
-  assert.ok(release > surfaceRevoke && verify > release && options > verify);
+  assert.ok(release > surfaceRevoke && stagedVerify > release);
 
   const helperStart = server.indexOf("function credentialSafeVerificationOptions");
   const helperEnd = server.indexOf("const nativeCredentialTakeover", helperStart);
   assert.ok(helperStart >= 0 && helperEnd > helperStart);
   const helper = server.slice(helperStart, helperEnd);
+  const preparation = helper.indexOf("stoppedProfilePreparation");
+  const verify = helper.indexOf("runtime.verifyCredentialSafeHumanIntervention");
   const stop = helper.indexOf("runtime.stopBrowserForProfileCheckpoint");
   const checkpoint = helper.indexOf("stoppedProfileCheckpoint");
+  assert.ok(preparation >= 0 && verify > preparation);
   assert.ok(stop >= 0 && checkpoint > stop);
 });
 
 
 test("deployment profile checkpoint is credential-safe-transport agnostic", () => {
   assert.match(server, /credentialSafeProfileCheckpointEnabled = Boolean\(config\.browserProfileCheckpoint\.module\)/);
-  assert.match(server, /credentialSafeVerificationOptions\(active\.id\)/);
-  assert.match(server, /credentialSafeVerificationOptions\(state\.interventionId\)/);
+  assert.match(server, /verifyCredentialSafeHumanInterventionAfterStoppedProfile\(active\.id\)/);
+  assert.match(server, /verifyCredentialSafeHumanInterventionAfterStoppedProfile\(state\.interventionId\)/);
   assert.doesNotMatch(server, /usedHostedBrowserSurface/);
   assert.doesNotMatch(server, /providerKind === "hosted-browser-takeover"[\s\S]{0,400}stoppedProfileCheckpoint/);
 });
