@@ -156,6 +156,27 @@ gcloud builds submit \
 
 Publicはgateway `8080` だけ。Coreはloopback `8081` + `static-bearer` に固定します。
 
+Human locatorの発行またはproduction traffic切替の前に、advertiseする正確なpublic originへbounded preflightを実行します。
+
+```bash
+MCP_PUBLIC_BASE_URL=https://<public-gateway-origin> \
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://<public-gateway-origin> \
+npm run preflight:cloud-run:public-origin
+```
+
+このpreflightはpublic `/healthz` を前提にしません。Managed frontendによってはapplicationの `/mcp` が正しくrouteされていても `/healthz` がfrontend側で応答される場合があるためです。代わりに、同一originの `/mcp` で期待どおりOAuth boundaryがfail closedすることと、同一 `/takeover/*` originへのunauthenticated WebSocket upgradeがfail closedすることを確認します。最終Human acceptanceでは、fresh locatorをargvやlogではなくenvironmentで渡し、transport negotiationより前にoperator-auth surfaceへ到達することを必須にします。
+
+```bash
+MAPS_PREFLIGHT_TAKEOVER_URL='<fresh locator URL>' \
+MCP_PUBLIC_BASE_URL=https://<public-gateway-origin> \
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://<public-gateway-origin> \
+npm run preflight:cloud-run:public-origin
+```
+
+Stale/expired locatorは成功証跡として扱わずfailさせます。Scriptはboundedなpass/skip labelだけを出力し、locatorは出力しません。
+
+0% trafficのtagged candidateでは、`MCP_PUBLIC_BASE_URL` / `MAPS_TAKEOVER_PUBLIC_BASE_URL` はcanonicalなproduction advertised originのままにし、`MCP_PREFLIGHT_REQUEST_ORIGIN` にcandidate tag originを指定します。Probe trafficだけcandidateへ送り、OAuth challengeのresource metadataはcanonical originのままであることを検証します。
+
 ## Cloud Run Dogfood
 
 Historical `map-browser-mcp-test` は更新せず、**別serviceとして並行deploy**します。

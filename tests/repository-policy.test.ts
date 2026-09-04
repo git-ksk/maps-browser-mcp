@@ -212,6 +212,28 @@ test("readiness, MCP, and takeover paths use the configured HTTP auth provider",
   assert.match(authSource, /createAuthProvider/);
 });
 
+test("managed public-origin preflight stays same-origin, fail-closed, and locator-redacted", () => {
+  const source = read("scripts/cloud-run-public-origin-preflight.mjs");
+  const packageJson = JSON.parse(read("package.json")) as { scripts?: Record<string, string> };
+  for (const required of [
+    "MCP_PUBLIC_BASE_URL",
+    "MAPS_TAKEOVER_PUBLIC_BASE_URL",
+    "MAPS_PREFLIGHT_TAKEOVER_URL",
+    "/mcp",
+    "/takeover/ws/preflight",
+    "invalid_token"
+  ]) {
+    assert.ok(source.includes(required), `public-origin preflight must retain ${required}`);
+  }
+  assert.match(source, /takeoverOrigin,\s*mcpOrigin/);
+  assert.match(source, /response\.status, 401/);
+  assert.match(source, /status, 401/);
+  assert.match(source, /response\.status, 200/);
+  assert.match(source, /console\.log\("Fresh takeover operator-auth surface: ok"\)/);
+  assert.doesNotMatch(source, /console\.log\([^\n]*(freshTakeoverUrl|takeoverUrlValue|takeoverUrl\.)/);
+  assert.equal(packageJson.scripts?.["preflight:cloud-run:public-origin"], "node scripts/cloud-run-public-origin-preflight.mjs");
+});
+
 test("managed Cloud Run builds cannot silently fall back to the private-core root image", () => {
   const buildConfig = read("cloudbuild.managed.yaml");
   const readme = read("reference/oauth-gateway/README.md");
