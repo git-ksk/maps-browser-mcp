@@ -48,7 +48,7 @@ V4 was delivered in reviewable slices:
 
 Login-required capability stays out of V4 and moves to V5. Consent, sign-in, CAPTCHA, or access challenges that occur naturally continue to stop at the existing Human Intervention boundary; they are never bypassed and completing human intervention does not approve a different semantic action.
 
-Maps consumes the extracted `mcp-execution-handoff` upstream through an immutable dependency pin. The v0.3.3 baseline includes the physically accepted Handoff-owned Safari WebRTC path for same-LAN direct and cellular TURN relay, while Maps itself remains transport-blind and owns only the Maps-specific Human-intervention lifecycle. The two-real-adapter validation with Japan Cinema is complete. This integration does not generalize the Maps server into a browser/desktop/shell MCP.
+Maps consumes the extracted `mcp-execution-handoff` upstream through an immutable dependency pin. The v0.3.3 baseline includes the physically accepted Handoff-owned Safari WebRTC path for same-LAN direct and cellular TURN relay, while Maps itself remains transport-blind and owns only the Maps-specific Human-intervention lifecycle. The current v0.4.0 release train pins the Handoff **v0.4.1 source release** (`19692aba691249dbff6e09c39da0e8cde4b803b6`), which includes the upstream mobile-input convergence, recoverable managed-WSS session liveness, deterministic completion/authority cleanup, and Desktop Session display-boundary work. The two-real-adapter validation with Japan Cinema remains complete. This integration does not generalize the Maps server into a browser/desktop/shell MCP.
 
 ### Initial V4 implementation slice (completed)
 
@@ -168,8 +168,8 @@ v0.4.0 graduates the Cloud Run/Handoff work accumulated after v0.3.3 from “imp
 Release blockers:
 
 1. **#161 Cloud Run startup contract** — fix the managed WSS candidate revision failing startup because no effective remote-takeover HTTP auth provider is observed. Keep the existing production revision serving traffic until the candidate is `Ready=True`.
-2. **#156 managed WSS session stability** — root-cause and fix the physical iPhone path that reaches WSS 101 and later becomes `Session unavailable`, using content-free diagnostics. Coordinate any generic recoverable-input/session-liveness fix with `mcp-execution-handoff` #172.
-3. **#134 iPhone keyboard acceptance** — physically accept editable tap -> automatic iOS keyboard -> text / Backspace / Enter / CJK / scroll in Safari. Handoff owns keyboard/focus implementation; Maps owns consumer acceptance.
+2. **#156 managed WSS session stability** — repeat the physical iPhone path on the Handoff v0.4.1 pin and close only when the prior post-WSS-101 `Session unavailable` symptom is physically disproved or a remaining Maps-specific root cause is identified. Upstream `mcp-execution-handoff` #172 is already fixed/closed and included in this pin, so it is no longer an upstream implementation blocker.
+3. **#134 iPhone keyboard acceptance** — physically accept editable tap -> automatic iOS keyboard -> text / Backspace / Enter / CJK / scroll in Safari against the v0.4.1 pin. Upstream Handoff #143 is closed; Maps now owns only the consumer-side physical acceptance and any Maps-specific regression evidence.
 4. **#135 post-Done durability** — accept Done -> stale Human-client fencing -> verifying -> fresh identity-free `signed_in` -> stopped-profile checkpoint -> fresh restore -> Agent resume without replaying DOM/page/action/intervention state.
 5. **#117 usage-liability boundary** — ensure proven pre-meter precondition refusals are not silently charged as completed browser work.
 6. **#141 first broad distribution** — only with explicit maintainer authorization, validate synchronized version metadata, packed artifact, clean-consumer smoke, npm publication, Official MCP Registry publication, and repository discovery metadata.
@@ -203,7 +203,7 @@ Later pre-v1 releases remain intentionally open for evidence-driven semantic cap
 
 ## V5 — authenticated Google Maps Web workflows
 
-V5 is defined as **bounded authenticated Google Maps Web workflows, starting with read-oriented and low-consequence reversible account state**. V5-A through V5-D are implemented behind the existing fail-closed opt-in/Interactive Assist boundaries; V5-E has been evaluated as a privacy/browser-surface gate and intentionally adds no history tool. The physical V5 sign-in acceptance is complete through the Handoff-owned Safari WebRTC path (direct and cellular TURN): fresh `signed_out` -> Human-only Google sign-in -> revoke/stale-locator fencing -> fresh `signed_in` readiness -> bounded V5-B read. Remaining mobile viewport/reload polish is generic Handoff work tracked in `mcp-execution-handoff` #17, not a Maps semantic capability gap.
+V5 is defined as **bounded authenticated Google Maps Web workflows, starting with read-oriented and low-consequence reversible account state**. V5-A through V5-D are implemented behind the existing fail-closed opt-in/Interactive Assist boundaries; V5-E has been evaluated as a privacy/browser-surface gate and intentionally adds no history tool. The physical V5 sign-in acceptance is complete through the Handoff-owned Safari WebRTC path (direct and cellular TURN): fresh `signed_out` -> Human-only Google sign-in -> revoke/stale-locator fencing -> fresh `signed_in` readiness -> bounded V5-B read. Generic mobile input/session-liveness work that was previously tracked upstream has been absorbed into the Handoff v0.4.1 baseline; remaining Maps work is consumer acceptance such as #134/#156, not a new Maps semantic capability gap.
 
 Current ordering/status:
 
@@ -223,7 +223,7 @@ See [V5 authenticated workflows — design baseline](v5-authenticated-workflows.
 
 Maps consumes `mcp-execution-handoff` through the narrow start/revoke/diagnostics lifecycle rather than reimplementing transport logic. For v0.4.0, only upstream defects that actually block Maps consumer acceptance belong on the release train; provider-neutral architecture work stays in a separate lane.
 
-- [`mcp-execution-handoff` #172](https://github.com/git-ksk/mcp-execution-handoff/issues/172) — generic managed-WSS liveness after recoverable Human input failure. Its symptoms overlap Maps #156; consume an upstream fix only where the same root cause is confirmed, and do not close #172 merely because a Maps symptom disappears.
+- **Resolved upstream baseline:** [`mcp-execution-handoff` #172](https://github.com/git-ksk/mcp-execution-handoff/issues/172), #143, and #177 are closed and included in the pinned v0.4.1 source release. Maps #134/#156 remain open only for consumer-side physical acceptance or a newly demonstrated Maps-specific defect.
 - [`mcp-execution-handoff` #19](https://github.com/git-ksk/mcp-execution-handoff/issues/19) — provider-neutral relay ownership. Cloudflare Realtime TURN is a reference path, but Maps must remain unaware of relay providers. Not a v0.4.0 blocker.
 - [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane/private execution-worker topology. This is future topology separation, not a prerequisite for the current Cloud Run Maps deployment.
 
