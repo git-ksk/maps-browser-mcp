@@ -50,7 +50,7 @@ V4は小さくreview可能なsliceとして実装・closeoutしました。
 
 ログイン必須capabilityはV4へ入れずV5へ送ります。利用中にconsent / sign-in / CAPTCHA / access challengeが自然発生した場合は既存Human Interventionで停止し、突破しません。Human Intervention完了を別semantic actionのapprovalとはみなしません。
 
-Mapsは抽出済み `mcp-execution-handoff` upstreamをimmutable dependency pinでconsumerとして組み込みます。v0.3.3 baselineでは、same-LAN direct / cellular TURN relayのHandoff-owned Safari WebRTC pathまで物理acceptance済みですが、Maps自身はtransport-blindのままMaps-specificなHuman-intervention lifecycleだけを所有します。現在のv0.4.0 release trainではHandoff **v0.4.1 source release** (`19692aba691249dbff6e09c39da0e8cde4b803b6`) をpinし、upstreamのmobile input収束、recoverable managed-WSS session liveness、deterministic completion/authority cleanup、Desktop Session display boundaryまで取り込みます。Japan Cinemaを含むtwo-real-adapter validationも完了済みで、この統合でMaps serverをgeneric browser / desktop / shell MCPへ広げません。
+Mapsは抽出済み `mcp-execution-handoff` upstreamをimmutable dependency pinでconsumerとして組み込みます。v0.3.3 baselineでは、same-LAN direct / cellular TURN relayのHandoff-owned Safari WebRTC pathまで物理acceptance済みですが、Maps自身はtransport-blindのままMaps-specificなHuman-intervention lifecycleだけを所有します。現在のv0.4.0 release trainではHandoff **v0.4.2 source release** (`7ada84749af85bf98cdf6fa2a8b244804683120d`) をpinし、upstreamのmobile input収束、recoverable managed-WSS session liveness、deterministic completion/authority cleanup、Desktop Session display boundary、さらに#226のexpired external-surface fencing修正まで取り込みます。Japan Cinemaを含むtwo-real-adapter validationも完了済みで、この統合でMaps serverをgeneric browser / desktop / shell MCPへ広げません。
 
 ### V4最初の実装slice（完了済み）
 
@@ -170,8 +170,8 @@ v0.4.0は、v0.3.3以降に積み上がったCloud Run / Handoff改善を「実�
 Release blockers:
 
 1. **#161 Cloud Run startup contract** — managed WSS candidate revisionが、remote takeover auth providerを有効値として観測できずstartup health checkでfailする問題を解消する。既存production revisionへはtrafficを流したままにし、candidateが`Ready=True`になるまで切替しない。
-2. **#156 managed WSS session stability** — Handoff v0.4.1 pinでphysical iPhone pathを再実行し、従来のWSS 101後 `Session unavailable` 症状が物理的に再現しないこと、または残るMaps固有root causeを確定できた場合だけcloseする。Upstream `mcp-execution-handoff` #172はすでにfix/close済みでこのpinに含まれるため、上流implementation blockerではありません。
-3. **#134 iPhone keyboard acceptance** — v0.4.1 pinに対してeditable tap → iOS keyboard auto-display → text / Backspace / Enter / CJK / scrollをphysical Safariでacceptする。Upstream Handoff #143はclose済みで、Mapsはconsumer側の物理acceptanceとMaps固有regression evidenceだけを所有します。
+2. **#156 managed WSS session stability** — Handoff v0.4.2 pinでphysical iPhone pathを再実行し、従来のWSS 101後 `Session unavailable` 症状が物理的に再現しないこと、または残るMaps固有root causeを確定できた場合だけcloseする。Upstream `mcp-execution-handoff` #172と#226はfix/close済みでこのpinに含まれるため、どちらも上流implementation blockerではありません。
+3. **#134 iPhone keyboard acceptance** — v0.4.2 pinに対してeditable tap → iOS keyboard auto-display → text / Backspace / Enter / CJK / scrollをphysical Safariでacceptする。Upstream Handoff #143はclose済みで、Mapsはconsumer側の物理acceptanceとMaps固有regression evidenceだけを所有します。
 4. **#135 post-Done durability** — Done → stale Human-client fencing → verifying → fresh identity-free `signed_in` → stopped-profile checkpoint → fresh restore → Agent resumeを、DOM/page/action/intervention stateのreplayなしでacceptする。
 5. **#117 usage liability boundary** — proven pre-meter precondition refusalをcompleted browser workとして暗黙課金しない境界を確定する。
 6. **#141 first broad distribution** — maintainerが明示authorizeした場合のみ、version metadata、packed artifact、clean-consumer smoke、npm、Official MCP Registry、repository discovery metadataを一括確認して公開する。
@@ -205,7 +205,7 @@ v0.4.0で維持するproduction invariants:
 
 ## V5 — Authenticated Google Maps Web Workflows
 
-V5は **bounded authenticated Google Maps Web workflow。最初はread-orientedかつlow-consequenceなreversible account stateを優先** と定義します。V5-A〜V5-Dは既存のfail-closed Opt-in / Interactive Assist boundary配下で実装済み、V5-Eはprivacy/browser-surface gateとして評価完了しhistory toolは意図的に追加していません。物理V5 sign-in acceptanceもHandoff-owned Safari WebRTC経路（direct / cellular TURN）で、fresh `signed_out` → Human-only Google sign-in → revoke / stale-locator fencing → fresh `signed_in` readiness → bounded V5-B readまで完了済みです。以前upstreamで追跡していたgeneric mobile input / session-liveness workはHandoff v0.4.1 baselineへ取り込み済みで、残るMaps作業は#134/#156のconsumer acceptanceであり、新しいMaps semantic capability gapではありません。
+V5は **bounded authenticated Google Maps Web workflow。最初はread-orientedかつlow-consequenceなreversible account stateを優先** と定義します。V5-A〜V5-Dは既存のfail-closed Opt-in / Interactive Assist boundary配下で実装済み、V5-Eはprivacy/browser-surface gateとして評価完了しhistory toolは意図的に追加していません。物理V5 sign-in acceptanceもHandoff-owned Safari WebRTC経路（direct / cellular TURN）で、fresh `signed_out` → Human-only Google sign-in → revoke / stale-locator fencing → fresh `signed_in` readiness → bounded V5-B readまで完了済みです。以前upstreamで追跡していたgeneric mobile input / session-liveness workはHandoff v0.4.2 baselineへ取り込み済みで、残るMaps作業は#134/#156のconsumer acceptanceであり、新しいMaps semantic capability gapではありません。
 
 Current ordering / status:
 
@@ -225,7 +225,7 @@ Entry gate、proposed semantic shape、logging/privacy rule、test plan、explic
 
 Mapsはtransport logicを再実装せず、`mcp-execution-handoff` のnarrowなstart/revoke/diagnostics lifecycleをconsumerとして使います。v0.4.0では、Maps consumer acceptanceを止めるupstream defectだけをrelease trainへ反映し、provider-neutral architecture workは別laneに保ちます。
 
-- **解決済みupstream baseline:** [`mcp-execution-handoff` #172](https://github.com/git-ksk/mcp-execution-handoff/issues/172)、#143、#177はclose済みで、pin済みv0.4.1 source releaseに含まれます。Maps #134/#156はconsumer側の物理acceptance、または新たに実証されたMaps固有defectだけを対象にOPENのまま維持します。
+- **解決済みupstream baseline:** [`mcp-execution-handoff` #172](https://github.com/git-ksk/mcp-execution-handoff/issues/172)、#143、#177、#226はclose済みで、pin済みv0.4.2 source releaseに含まれます。Maps #134/#156はconsumer側の物理acceptance、または新たに実証されたMaps固有defectだけを対象にOPENのまま維持します。
 - [`mcp-execution-handoff` #19](https://github.com/git-ksk/mcp-execution-handoff/issues/19) — provider-neutral relay ownership。Cloudflare Realtime TURNはreference pathだが、Mapsはrelay providerを知らないまま維持する。v0.4.0 blockerではない。
 - [`mcp-execution-handoff` #12](https://github.com/git-ksk/mcp-execution-handoff/issues/12) — provider-neutral hosted control-plane / private execution-worker topology。現在のCloud Run Maps deploymentを成立させるための必須条件ではなく、将来のtopology分離課題。
 
