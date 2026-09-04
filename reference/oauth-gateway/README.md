@@ -167,6 +167,27 @@ gcloud builds submit \
 
 The image exposes only gateway port `8080`. The core is forced to loopback port `8081` with `static-bearer` auth.
 
+Before issuing a Human locator or switching production traffic, run the bounded public-origin preflight against the exact advertised origin:
+
+```bash
+MCP_PUBLIC_BASE_URL=https://<public-gateway-origin> \
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://<public-gateway-origin> \
+npm run preflight:cloud-run:public-origin
+```
+
+The preflight does **not** depend on public `/healthz`: some managed frontends can answer that path before the application route while `/mcp` is still correctly routed. Instead it verifies the expected fail-closed OAuth boundary on `/mcp` and an unauthenticated WebSocket upgrade rejection on the same `/takeover/*` origin. For the final Human acceptance, pass a newly issued locator through the environment (never argv or logs) and require the operator-auth surface before transport negotiation:
+
+```bash
+MAPS_PREFLIGHT_TAKEOVER_URL='<fresh locator URL>' \
+MCP_PUBLIC_BASE_URL=https://<public-gateway-origin> \
+MAPS_TAKEOVER_PUBLIC_BASE_URL=https://<public-gateway-origin> \
+npm run preflight:cloud-run:public-origin
+```
+
+A stale/expired locator must fail rather than being treated as evidence. The script prints only bounded pass/skip labels and never prints the locator.
+
+For a 0%-traffic tagged candidate, keep `MCP_PUBLIC_BASE_URL` / `MAPS_TAKEOVER_PUBLIC_BASE_URL` set to the canonical advertised production origin and set `MCP_PREFLIGHT_REQUEST_ORIGIN` to the candidate tag origin. The probe then sends traffic to the candidate while still requiring the OAuth challenge to advertise canonical resource metadata.
+
 ## Cloud Run dogfood
 
 Deploy this image as a **new service alongside** the historical `map-browser-mcp-test`. Do not update that service in place while clients may still hold refresh tokens for it.
