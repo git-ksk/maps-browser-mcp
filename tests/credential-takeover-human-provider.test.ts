@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { CredentialSafeHumanSurfaceRuntime, ExternalHumanSurfaceError } from "mcp-execution-handoff/core";
 import type { CredentialTakeoverBoundary } from "../src/browser/credential-takeover-boundary.js";
 import { CredentialTakeoverHumanProvider } from "../src/browser/credential-takeover-human-provider.js";
 import type { SystemBrowserCredentialSession } from "../src/browser/system-browser-credential-session.js";
@@ -33,13 +34,14 @@ function fakeTakeover(calls: string[], startError?: Error): CredentialTakeoverBo
 for (const kind of ["thin-takeover", "webrtc-takeover"] as const) {
   test(`${kind} opens normal Chrome before issuing the Handoff locator and closes it after revoke`, async () => {
     const calls: string[] = [];
-    const provider = new CredentialTakeoverHumanProvider(kind, fakeBrowser(calls), fakeTakeover(calls));
+    const provider = new CredentialTakeoverHumanProvider(kind, fakeBrowser(calls), fakeTakeover(calls), 5_000, () => 10_000);
     const grant = await provider.begin({ interventionId: "int-1", epoch: 5, principalBinding: "principal-a" });
 
     assert.equal(provider.kind, kind);
     assert.equal(grant.locator, "https://handoff.example/takeover/session/public-locator");
     assert.doesNotMatch(grant.locator, /apiKey|steel|rootKey|sdp|ice/i);
     assert.match(grant.sessionId, /^[0-9a-f-]{36}$/i);
+    assert.equal(grant.expiresAt, 15_000);
     assert.deepEqual(calls, [
       "browser:start",
       "takeover:start:int-1:5:principal-a:4242:none"
@@ -60,7 +62,8 @@ test("credential takeover closes normal Chrome if Handoff locator creation fails
   const provider = new CredentialTakeoverHumanProvider(
     "webrtc-takeover",
     fakeBrowser(calls),
-    fakeTakeover(calls, new Error("takeover unavailable"))
+    fakeTakeover(calls, new Error("takeover unavailable")),
+    5_000
   );
 
   await assert.rejects(
@@ -85,7 +88,7 @@ test("credential takeover fails closed when normal Chrome PID is unavailable", a
     },
     async close() { calls.push("browser:close"); }
   } as unknown as SystemBrowserCredentialSession;
-  const provider = new CredentialTakeoverHumanProvider("webrtc-takeover", browser, fakeTakeover(calls));
+  const provider = new CredentialTakeoverHumanProvider("webrtc-takeover", browser, fakeTakeover(calls), 5_000);
   await assert.rejects(
     provider.begin({ interventionId: "int-3", epoch: 7, principalBinding: "principal-c" }),
     /normal Chrome process is unavailable/
@@ -98,7 +101,8 @@ test("credential takeover forwards a bounded exact window when the normal browse
   const provider = new CredentialTakeoverHumanProvider(
     "webrtc-takeover",
     fakeBrowser(calls, 9001),
-    fakeTakeover(calls)
+    fakeTakeover(calls),
+    5_000
   );
   const grant = await provider.begin({ interventionId: "int-window", epoch: 9, principalBinding: "principal-w" });
   assert.match(grant.sessionId, /^[0-9a-f-]{36}$/i);
@@ -107,4 +111,54 @@ test("credential takeover forwards a bounded exact window when the normal browse
     "takeover:start:int-window:9:principal-w:4242:9001"
   ]);
   await provider.revoke(grant.sessionId);
+});
+
+
+test("credential takeover rejects an invalid cache TTL before opening normal Chrome", () => {
+  const calls: string[] = [];
+  assert.throws(
+    () => new CredentialTakeoverHumanProvider(
+      "webrtc-takeover",
+      fakeBrowser(calls),
+      fakeTakeover(calls),
+      999
+    ),
+    /bounded positive takeover TTL/
+  );
+  assert.deepEqual(calls, []);
+});
+
+
+test("Handoff runtime rejects an expired cached Maps locator and requires a fresh begin", async () => {
+  const calls: string[] = [];
+  let now = 10_000;
+  const provider = new CredentialTakeoverHumanProvider(
+    "webrtc-takeover",
+    fakeBrowser(calls),
+    fakeTakeover(calls),
+    5_000,
+    () => now
+  );
+  const surface = new CredentialSafeHumanSurfaceRuntime(provider, () => now);
+  const intervention = {
+    id: "int-expiry",
+    epoch: 11,
+    status: "human_active" as const,
+    authority: "human" as const
+  };
+
+  const first = await surface.begin(intervention, "principal-expiry");
+  assert.equal(first.expiresAt, 15_000);
+
+  now = 15_000;
+  await assert.rejects(
+    surface.begin(intervention, "principal-expiry"),
+    (error: unknown) => error instanceof ExternalHumanSurfaceError && error.code === "EXTERNAL_SURFACE_EXPIRED"
+  );
+  assert.equal(surface.getActive(), undefined);
+  assert.deepEqual(calls.slice(-2), ["takeover:revoke:int-expiry", "browser:close"]);
+
+  const second = await surface.begin(intervention, "principal-expiry");
+  assert.equal(second.expiresAt, 20_000);
+  assert.notEqual(second.sessionId, first.sessionId);
 });

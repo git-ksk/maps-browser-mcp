@@ -25,10 +25,11 @@ test("Cua Human provider starts normal Chrome, binds exact intervention and retu
     revokeForIntervention(id: string) { calls.push(`broker:revoke:${id}`); }
   } as unknown as TakeoverBroker;
 
-  const provider = new CuaTakeoverHumanProvider(browser, adapter, broker);
+  const provider = new CuaTakeoverHumanProvider(browser, adapter, broker, 5_000, () => 20_000);
   const grant = await provider.begin({ interventionId: "int-1", epoch: 5, principalBinding: "principal-a" });
   assert.equal(grant.locator, "https://takeover.example/session/abc");
   assert.match(grant.sessionId, /^[0-9a-f-]{36}$/i);
+  assert.equal(grant.expiresAt, 25_000);
   assert.deepEqual(calls.slice(0, 3), [
     "browser:start",
     "adapter:begin:int-1:5:4321",

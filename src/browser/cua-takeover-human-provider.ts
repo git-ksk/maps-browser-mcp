@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ExternalHumanSurfaceProvider, ExternalHumanSurfaceRequest } from "mcp-execution-handoff/core";
+import type { ExternalHumanSurfaceGrant, ExternalHumanSurfaceProvider, ExternalHumanSurfaceRequest } from "mcp-execution-handoff/core";
 import type { TakeoverBroker } from "mcp-execution-handoff/browser-takeover";
 import { CuaHumanTakeoverAdapter } from "./cua-human-takeover-adapter.js";
 import { SystemBrowserCredentialSession } from "./system-browser-credential-session.js";
@@ -17,10 +17,16 @@ export class CuaTakeoverHumanProvider implements ExternalHumanSurfaceProvider {
   constructor(
     private readonly browser: SystemBrowserCredentialSession,
     private readonly adapter: CuaHumanTakeoverAdapter,
-    private readonly broker: TakeoverBroker
-  ) {}
+    private readonly broker: TakeoverBroker,
+    private readonly takeoverTtlMs: number,
+    private readonly now: () => number = Date.now
+  ) {
+    if (!Number.isSafeInteger(takeoverTtlMs) || takeoverTtlMs < 1_000) {
+      throw new Error("Credential-safe Cua Human provider requires a bounded positive takeover TTL");
+    }
+  }
 
-  async begin(request: ExternalHumanSurfaceRequest): Promise<{ sessionId: string; locator: string }> {
+  async begin(request: ExternalHumanSurfaceRequest): Promise<ExternalHumanSurfaceGrant> {
     if (this.active) throw new Error("Credential-safe Cua Human provider is already active");
     await this.browser.start();
     const pid = this.browser.getPid();
@@ -30,6 +36,11 @@ export class CuaTakeoverHumanProvider implements ExternalHumanSurfaceProvider {
     }
     try {
       await this.adapter.begin(request.interventionId, request.epoch, pid);
+      // Keep the consumer cache lifetime no longer than the broker authority lifetime.
+      const expiresAt = this.now() + this.takeoverTtlMs;
+      if (!Number.isSafeInteger(expiresAt)) {
+        throw new Error("Credential-safe Cua Human provider expiry is outside the safe integer range");
+      }
       const locator = this.broker.createLink(
         { id: request.interventionId, epoch: request.epoch },
         request.principalBinding
@@ -37,7 +48,7 @@ export class CuaTakeoverHumanProvider implements ExternalHumanSurfaceProvider {
       if (!locator) throw new Error("Credential-safe Cua takeover link is unavailable");
       const sessionId = randomUUID();
       this.active = { sessionId, interventionId: request.interventionId, epoch: request.epoch };
-      return { sessionId, locator };
+      return { sessionId, locator, expiresAt };
     } catch (error) {
       this.broker.revokeForIntervention(request.interventionId);
       await this.adapter.close().catch(() => undefined);

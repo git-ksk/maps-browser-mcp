@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ExternalHumanSurfaceProvider, ExternalHumanSurfaceRequest } from "mcp-execution-handoff/core";
+import type { ExternalHumanSurfaceGrant, ExternalHumanSurfaceProvider, ExternalHumanSurfaceRequest } from "mcp-execution-handoff/core";
 import type { CredentialTakeoverBoundary } from "./credential-takeover-boundary.js";
 import { SystemBrowserCredentialSession } from "./system-browser-credential-session.js";
 
@@ -25,16 +25,28 @@ export class CredentialTakeoverHumanProvider implements ExternalHumanSurfaceProv
   constructor(
     kind: CredentialTakeoverProviderKind,
     private readonly browser: SystemBrowserCredentialSession,
-    private readonly takeover: CredentialTakeoverBoundary
+    private readonly takeover: CredentialTakeoverBoundary,
+    private readonly takeoverTtlMs: number,
+    private readonly now: () => number = Date.now
   ) {
     this.kind = kind;
+    if (!Number.isSafeInteger(takeoverTtlMs) || takeoverTtlMs < 1_000) {
+      throw new Error("Credential Takeover Human provider requires a bounded positive takeover TTL");
+    }
   }
 
-  async begin(request: ExternalHumanSurfaceRequest): Promise<{ sessionId: string; locator: string }> {
+  async begin(request: ExternalHumanSurfaceRequest): Promise<ExternalHumanSurfaceGrant> {
     if (this.active) throw new Error("Credential Takeover Human provider is already active");
     await this.browser.start();
     try {
       const target = await this.browser.getTakeoverTarget();
+      // Compute the consumer-visible expiry immediately before Handoff issues its own locator.
+      // This is intentionally conservative: Maps' cached Human surface may expire slightly before,
+      // but never after, the provider-owned takeover authority created by the same configured TTL.
+      const expiresAt = this.now() + this.takeoverTtlMs;
+      if (!Number.isSafeInteger(expiresAt)) {
+        throw new Error("Credential Takeover Human provider expiry is outside the safe integer range");
+      }
       const locator = this.takeover.start({
         interventionId: request.interventionId,
         epoch: request.epoch,
@@ -44,7 +56,7 @@ export class CredentialTakeoverHumanProvider implements ExternalHumanSurfaceProv
       });
       const sessionId = randomUUID();
       this.active = { sessionId, interventionId: request.interventionId, epoch: request.epoch };
-      return { sessionId, locator };
+      return { sessionId, locator, expiresAt };
     } catch (error) {
       await this.takeover.revoke(request.interventionId).catch(() => undefined);
       await this.browser.close().catch(() => undefined);
