@@ -105,7 +105,7 @@ test("execution handoff upstream Browser Handoff integration is pinned to an imm
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(
     pkg.dependencies?.["mcp-execution-handoff"],
-    "https://github.com/git-ksk/mcp-execution-handoff/archive/19692aba691249dbff6e09c39da0e8cde4b803b6.tar.gz"
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/7ada84749af85bf98cdf6fa2a8b244804683120d.tar.gz"
   );
 });
 
