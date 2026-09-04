@@ -184,6 +184,15 @@ Prefer backward-compatible changes such as adding optional fields over breaking 
 
 If a tool call starts failing immediately after a schema change, check whether ChatGPT is still using the previous tool definition before debugging the browser runtime.
 
+For the current production V5 credential-safe Human sign-in configuration, a clean ChatGPT connector must discover this lifecycle subset together:
+
+- `maps_request_human_sign_in`
+- `maps_complete_human_sign_in`
+- `maps_cancel_human_sign_in`
+- `maps_read_handoff_diagnostics` when the WebRTC credential-safe takeover runtime is enabled
+
+`maps_request_human_sign_in` may advertise `nextTool=maps_complete_human_sign_in` and `cancelTool=maps_cancel_human_sign_in` only in the explicit fallback shape where those follow-up tools are part of the supported connector surface. If the request tool is visible but either follow-up tool is missing, treat the connector snapshot as stale: refresh/rescan the App definitions, review the refreshed actions, and start the ceremony in a new chat. Do not compensate by widening Maps authority or reimplementing Handoff transport logic in the consumer.
+
 ## Browser boundary
 
 Never expose CDP itself to ChatGPT or the public internet.
