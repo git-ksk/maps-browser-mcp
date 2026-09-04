@@ -16,7 +16,7 @@
 
 ### 変更
 
-- Pin済み `mcp-execution-handoff` integrationをLinux host readiness、packaged helper launch fix、provider-owned TURN、iOS keyboard editing、persistent touch keyboard mode、bounded WebRTC diagnosticsまで更新します。
+- Pin済み `mcp-execution-handoff` integrationをv0.4.1 source release (`19692aba691249dbff6e09c39da0e8cde4b803b6`) へ更新し、Linux host readiness、packaged helper修正、mobile input収束、recoverable managed-WSS session liveness、deterministic completion/authority cleanup、Desktop Session display boundaryまで取り込みます。
 - Mapsの `webrtc_takeover` をconsumer-localな `TakeoverBroker + SpawnedWebRtcRuntimeProvider + createWebRtcLink()` compositionから、Handoff first-class `BrowserHandoffAdapter` へ移行します。Mapsが渡すのはintervention / principal、normal Chrome PID、明示的なcredential-safe input policyだけとし、WebRTC runtime composition、route ownership、exact-window / focus fencing、disconnect / reload後のcompletion-only recovery、transport teardownはHandoffが所有します。
 - Reference Cloud Run pathをlocal / container Linux WebRTC evidenceからproduction physical acceptanceまで進め、Cloudflare Realtime TURN、物理iPhone Safari `Live · relay`、real Human-only Google sign-inを確認しました。明示Done/revoke -> fresh `signed_in` -> stopped-profile checkpoint -> fresh restoreは#135で別追跡し、ここでは完了claimしません。
 - Managed automation browserがphysical Google sign-inで拒否されたため、legacy `hosted_cdp` はcredential / consent / challenge Human controlでfail-closedを維持します。
