@@ -311,6 +311,19 @@ async function pruneSnapshots(bucket, config, keepObjects) {
   await Promise.all(stale.map((name) => bucket.file(name).delete({ ignoreNotFound: true })));
 }
 
+export async function prepareProfileForFreshAgentVerification(config, { logger = console } = {}) {
+  const workDir = await mkdtemp(path.join(os.tmpdir(), "maps-profile-prepare-"));
+  const archivePath = path.join(workDir, "profile.tar.gz");
+  try {
+    const archive = await createProfileArchive(config.profileDir, archivePath, { maxBytes: config.maxBytes });
+    await restoreProfileArchive(archivePath, config.profileDir, { maxBytes: config.maxBytes });
+    logger.error(`[maps-profile] prepared stopped dedicated Chrome profile for fresh Agent verification (${archive.bytes} bytes)`);
+    return { status: "prepared", bytes: archive.bytes, sha256: archive.sha256 };
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+
 export async function checkpointProfileToCloud(config, { storage = new Storage(), logger = console } = {}) {
   if (!config.enabled) return { status: "disabled" };
   const bucket = storage.bucket(config.bucket);
