@@ -156,6 +156,15 @@ docker build \
   -t maps-browser-mcp-oauth-reference .
 ```
 
+For managed Cloud Run builds, use the repository-pinned Cloud Build config rather than a bare `gcloud builds submit --tag ...`. The root `Dockerfile` starts the private core directly and is **not** the public OAuth/WSS gateway image. Omitting `-f reference/oauth-gateway/Dockerfile` bypasses the gateway entrypoint and intentionally fails closed when remote takeover requires principal-bound HTTP auth.
+
+```bash
+gcloud builds submit \
+  --config cloudbuild.managed.yaml \
+  --substitutions=_IMAGE=us-central1-docker.pkg.dev/mcp-runtime-ksk/mcp-runtime/maps-browser-mcp:<candidate-tag> \
+  .
+```
+
 The image exposes only gateway port `8080`. The core is forced to loopback port `8081` with `static-bearer` auth.
 
 ## Cloud Run dogfood
