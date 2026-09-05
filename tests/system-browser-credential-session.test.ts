@@ -4,6 +4,7 @@ import {
   buildCredentialSafeChromeArgs,
   parseLinuxWindowIds,
   parseLocalLinuxSingletonLockPid,
+  requestLinuxGracefulWindowClose,
   resolveLinuxExactWindowId,
   SystemBrowserCredentialSession
 } from "../src/browser/system-browser-credential-session.js";
@@ -62,6 +63,36 @@ test("Linux exact-window lookup requires one stable visible window owned by the 
     "getwindowpid 9001::99"
   ]);
   assert.equal(calls.some((call) => call.includes("getwindowname")), false);
+});
+
+test("Linux graceful close targets only the exact window still owned by the normal Chrome PID", async () => {
+  const calls: string[] = [];
+  const closed = await requestLinuxGracefulWindowClose(4242, 9001, ":99", {
+    runCommand: async (_executable, args, env) => {
+      calls.push(`${args.join(" ")}:${env.DISPLAY}`);
+      if (args[0] === "getwindowpid") return "4242\n";
+      if (args[0] === "windowclose") return "";
+      throw new Error("unexpected xdotool operation");
+    }
+  });
+  assert.equal(closed, true);
+  assert.deepEqual(calls, [
+    "getwindowpid 9001::99",
+    "windowclose 9001::99"
+  ]);
+});
+
+test("Linux graceful close refuses a stale or re-owned exact window", async () => {
+  const calls: string[] = [];
+  const closed = await requestLinuxGracefulWindowClose(4242, 9001, ":99", {
+    runCommand: async (_executable, args) => {
+      calls.push(args.join(" "));
+      if (args[0] === "getwindowpid") return "7777\n";
+      throw new Error("windowclose must not be attempted for a different owner");
+    }
+  });
+  assert.equal(closed, false);
+  assert.deepEqual(calls, ["getwindowpid 9001"]);
 });
 
 test("Linux exact-window lookup strips sensitive parent environment from xdotool", async () => {
