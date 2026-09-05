@@ -170,9 +170,10 @@ Release blockers:
 1. **#161 Cloud Run startup contract** — restore the effective remote-takeover HTTP auth-provider contract for fresh candidate revisions and keep production fail-safe until a candidate is `Ready=True`.
 2. **#181 WSS-only managed transport policy** — stage the explicit `websocket_relay`-only candidate from PR #182, pass public-origin/WSS preflight, and physically accept the iPhone Human sign-in path before guarded cutover.
 3. **#183 / #135 post-Human profile lifecycle** — land the stopped-profile staging boundary from PR #184, then accept Done -> Human fencing -> fresh identity-free `signed_in` -> stopped-profile checkpoint -> fresh restore -> Agent resume without replaying DOM/page/action/intervention state.
-4. **#170 guarded Cloud Run rollout** — make the 0%-traffic candidate health/cutover/rollback procedure canonical before production promotion.
-5. **#117 usage-liability boundary** — ensure proven pre-meter precondition refusals are not silently charged as completed browser work.
-6. **#141 first broad distribution** — only with explicit maintainer authorization, validate synchronized version metadata, packed artifact, clean-consumer smoke, npm publication, Official MCP Registry publication, and repository discovery metadata.
+4. **#189 browser/CDP self-recovery** — recover expired/cancelled Human teardown and recoverable Chrome/CDP loss inside the same service instance, preserve fail-closed profile ownership, and require a separate fresh MCP invocation instead of replaying the failed action or redeploying Cloud Run.
+5. **#170 guarded Cloud Run rollout** — make the 0%-traffic candidate health/cutover/rollback procedure canonical before production promotion.
+6. **#117 usage-liability boundary** — ensure proven pre-meter precondition refusals are not silently charged as completed browser work.
+7. **#141 first broad distribution** — only with explicit maintainer authorization, validate synchronized version metadata, packed artifact, clean-consumer smoke, npm publication, Official MCP Registry publication, and repository discovery metadata.
 
 **Non-blocking UX follow-up:** #134 tracks generic Handoff mobile keyboard/CJK/scroll polish observed through the Maps consumer. It is not a Maps v0.4 release blocker unless a generic input defect prevents the real Google authentication flow itself. Ordinary Maps search, scroll, zoom, place selection, and authenticated actions remain Agent-owned MCP operations.
 

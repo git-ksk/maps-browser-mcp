@@ -35,6 +35,10 @@ Recovery:
 4. set `MAPS_CHROME_EXECUTABLE` only if auto-detection still fails,
 5. avoid `MAPS_CDP_PORT` unless you intentionally manage that Chrome instance yourself.
 
+For a process/CDP connection loss that the runtime explicitly classifies as recoverable, Maps Browser MCP now fences stale browser state, reconstructs the same dedicated-profile automation Chrome/CDP inside the existing service instance, and returns `UI_STATE_CHANGED`. Re-run the intended Maps tool as a fresh invocation; the failed action is never replayed automatically. Structural fail-closed cases such as multiple Maps tabs are **not** auto-recovered by restarting Chrome.
+
+Expired explicit Human sign-in surfaces follow the same rule for the same authenticated principal: the stale Human generation is revoked/cancelled, the browser runtime is reconstructed, and a fresh readiness/tool invocation is required. Cloud Run revision replacement is an operational fallback, not the normal browser-recovery mechanism.
+
 ## `MAPS_NOT_OPEN`
 
 The controlled tab is blank or no longer on the expected Maps surface.

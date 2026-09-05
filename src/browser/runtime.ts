@@ -193,7 +193,8 @@ export class BrowserRuntimeError extends Error {
       | "UI_ELEMENT_NOT_FOUND"
       | "UI_STATE_CHANGED",
     message: string,
-    public readonly intervention?: MapsIntervention
+    public readonly intervention?: MapsIntervention,
+    public readonly recoveryHint?: "reconstruct_browser"
   ) {
     super(message);
     this.name = "BrowserRuntimeError";
@@ -374,6 +375,35 @@ export class MapsBrowserRuntime {
 
   cancelHumanIntervention(interventionId: string): void {
     this.handoff.cancel(interventionId);
+  }
+
+  /**
+   * Reconstruct the consumer-owned automation browser after a Human lifecycle has been fully
+   * fenced/cancelled. This never resumes or replays the interrupted Maps action: it only clears
+   * stale browser/CDP/semantic state, starts a fresh process-owned browser, and establishes a
+   * fresh automation CDP attachment for the next explicit MCP invocation.
+   */
+  async reconstructAutomationBrowserAfterHumanTeardown(): Promise<void> {
+    if (this.handoff.getActive()) {
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Automation browser reconstruction requires the Human intervention to be fenced and cancelled first"
+      );
+    }
+
+    await this.resetClient();
+    this.endpoint = undefined;
+    this.invalidateSemanticState();
+    await this.chrome.close();
+
+    try {
+      await this.ensureConnected("automation");
+    } catch (error) {
+      await this.resetClient();
+      this.endpoint = undefined;
+      await this.chrome.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   async captureHumanTakeoverFrame(interventionId: string, epoch: number): Promise<{
@@ -889,7 +919,9 @@ export class MapsBrowserRuntime {
       console.error("[maps-browser-mcp] Chrome/CDP connection failed");
       throw new BrowserRuntimeError(
         "BROWSER_UNAVAILABLE",
-        "Unable to connect to the dedicated process-owned browser session."
+        "Unable to connect to the dedicated process-owned browser session.",
+        undefined,
+        "reconstruct_browser"
       );
     }
   }

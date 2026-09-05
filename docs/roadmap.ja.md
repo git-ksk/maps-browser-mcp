@@ -172,9 +172,10 @@ Release blockers:
 1. **#161 Cloud Run startup contract** — fresh candidate revisionでremote takeover HTTP auth-provider contractを復元し、candidateが`Ready=True`になるまでproductionをfail-safeに維持する。
 2. **#181 WSS-only managed transport policy** — PR #182の明示`websocket_relay`-only candidateをstageし、public-origin / WSS preflightと物理iPhone Human sign-in acceptanceを通してからguarded cutoverする。
 3. **#183 / #135 post-Human profile lifecycle** — PR #184のstopped-profile staging boundaryを取り込み、Done → Human fencing → fresh identity-free `signed_in` → stopped-profile checkpoint → fresh restore → Agent resumeをDOM/page/action/intervention stateのreplayなしでacceptする。
-4. **#170 guarded Cloud Run rollout** — 0%-traffic candidate health / cutover / rollback手順をproduction昇格前のcanonical procedureにする。
-5. **#117 usage liability boundary** — proven pre-meter precondition refusalをcompleted browser workとして暗黙課金しない境界を確定する。
-6. **#141 first broad distribution** — maintainerが明示authorizeした場合のみ、version metadata、packed artifact、clean-consumer smoke、npm、Official MCP Registry、repository discovery metadataを一括確認して公開する。
+4. **#189 browser / CDP self-recovery** — expired / cancelled Human teardownやrecoverableなChrome / CDP接続断を同じservice instance内で復旧し、profile ownershipはfail-closedのまま維持する。失敗actionをreplayしたりCloud Run revisionを差し替えたりせず、別のfresh MCP invocationを必須にする。
+5. **#170 guarded Cloud Run rollout** — 0%-traffic candidate health / cutover / rollback手順をproduction昇格前のcanonical procedureにする。
+6. **#117 usage liability boundary** — proven pre-meter precondition refusalをcompleted browser workとして暗黙課金しない境界を確定する。
+7. **#141 first broad distribution** — maintainerが明示authorizeした場合のみ、version metadata、packed artifact、clean-consumer smoke、npm、Official MCP Registry、repository discovery metadataを一括確認して公開する。
 
 **非blockerのUX follow-up:** #134はMaps consumerで観測したgeneric Handoff mobile keyboard / CJK / scroll polishを追跡します。Generic input defectが実際のGoogle認証フロー自体を止めない限り、Maps v0.4 blockerにはしません。通常のMaps検索、scroll、zoom、place selection、ログイン後actionはAgent-owned MCP operationのままです。
 
