@@ -361,6 +361,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MAPS_V5_AUTHENTICATED_WORKFLOWS` | `false` | fail-closedなbounded V5 authenticated toolを有効化。Interactive Assistと専用single-user profile gateも必須 |
 | `MAPS_CREDENTIAL_SAFE_HANDOFF` | `false` | Google sign-in / consent / challenge向けHuman-only handoff |
 | `MAPS_CREDENTIAL_SAFE_TRANSPORT` | `external` | `external` はlocal OS-level surface、`cua_takeover` はlocal Cua、`thin_takeover` はNative Thin Takeover runtime、`webrtc_takeover` はHandoff-ownedなSafari surfaceを選択し、transport policyはdirect WebRTC -> WebSocket relay -> optional TURN。legacy `hosted_cdp` はHuman credential / consent / challenge controlではfail closed |
+| `MAPS_HANDOFF_TRANSPORT_ORDER` | unset | `webrtc_takeover` でHandoffへ渡す厳密なtransport順序。`webrtc_direct` / `websocket_relay` / `webrtc_relay` を重複なしのカンマ区切りで指定し、1要素 `websocket_relay` でWSS-only。未設定時はHandoff既定順序を維持 |
 | `MAPS_CREDENTIAL_SAFE_OPERATOR_URL` | unset | local `external` transport専用fixed HTTPS locator。credential/query/fragment付きURLは拒否 |
 | `MAPS_CUA_DRIVER_COMMAND` | `cua-driver` | `cua_takeover` 専用Cua Driver executable。Human transport用の固定7 tool allowlist以外は呼ばない |
 | `MAPS_WEBRTC_TAKEOVER_HOST_EXECUTABLE` | unset | Handoff WebRTC host executableの絶対path。macOSは `takeover-webrtc-host`、Linuxはpin済みLinux normal-browser helper/wrapperを使用 |

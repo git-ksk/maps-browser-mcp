@@ -75,6 +75,7 @@ test("Maps Handoff integration remains a thin transport lifecycle boundary", () 
   assert.match(server, /browserHandoffAdapter\?\.ownsPath\(pathname\)/);
   assert.match(server, /browserHandoffAdapter\.handle\(request, boundPrincipal\)/);
   assert.match(server, /managedFallback: config\.credentialSafeHandoff\.managedFallback/);
+  assert.match(server, /transportPolicy: config\.credentialSafeHandoff\.transportPolicy/);
   assert.match(server, /browserHandoffAdapter\?\.handleUpgrade\(request, socket, head\)/);
 });
 
