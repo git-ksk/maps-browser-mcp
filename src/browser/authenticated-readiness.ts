@@ -41,3 +41,26 @@ export function parseAuthenticatedReadiness(value: unknown): AuthenticatedMapsRe
   if (hasSignInLink && !hasAccountControl) return "signed_out";
   return "unknown";
 }
+
+export async function waitForAuthenticatedReadinessAfterHuman(
+  read: () => Promise<AuthenticatedMapsReadiness>,
+  options: {
+    timeoutMs?: number;
+    pollMs?: number;
+    now?: () => number;
+    wait?: (ms: number) => Promise<void>;
+  } = {}
+): Promise<AuthenticatedMapsReadiness> {
+  const timeoutMs = options.timeoutMs ?? 8_000;
+  const pollMs = options.pollMs ?? 100;
+  const now = options.now ?? Date.now;
+  const wait = options.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const deadline = now() + timeoutMs;
+  let last: AuthenticatedMapsReadiness = "unknown";
+  for (;;) {
+    last = await read();
+    if (last === "signed_in") return last;
+    if (now() >= deadline) return last;
+    await wait(pollMs);
+  }
+}
