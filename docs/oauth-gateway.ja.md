@@ -100,6 +100,8 @@ Core runtimeはOAuth scopeとは独立してbrowser safety、operation policy、
 
 ChatGPTをRemote MCP clientとしてOAuth接続する場合、現在のOpenAI guidanceではaccess-token expiry後も接続を維持できるよう、OAuth / OpenID Connect providerがrefresh tokenを発行する構成が推奨されています。OIDC providerでは、providerが対応しdiscovery metadataでadvertiseしている場合に `offline_access` を使う方式が案内されています。
 
+Reference gatewayではaccess tokenを1時間、rotating refresh tokenを30日にしています。このgatewayはOIDC providerではなくOAuth Authorization Serverなので、clientがoptionalな `offline_access` scopeを省略しても通常の `maps:use` authorization-code grantでrefresh tokenを発行します。`offline_access` は互換性のためadvertise/acceptしますが、renewableなconnector authorizationの前提条件にはしません。
+
 OAuth metadataやtool definitionを変更した後は、browser runtimeをdebugする前に必要に応じてChatGPT Appを再作成またはrescanしてください。ChatGPT側に以前scanしたtool definitionやOAuth metadataが残る場合があります。
 
 参照: [ChatGPT のデベロッパーモードと MCP アプリ](https://help.openai.com/ja-jp/articles/12584461)

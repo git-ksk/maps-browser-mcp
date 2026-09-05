@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ACCESS_TTL_MS,
+  REFRESH_TTL_MS,
   accountMatchesDecodedToken,
   bearerFromRequest,
+  buildAuthorizationCodeTokenPayload,
   buildFirebasePasswordLoginPage,
+  createOAuthCollections,
   buildMetadata,
   buildRefreshTokenRecord,
   parseAllowedAccountConfig,
@@ -66,6 +70,29 @@ test("OAuth browser transaction cookie is integrity protected", () => {
 });
 
 
+test("maps:use authorization-code exchange is renewable even when the client omits offline_access", () => {
+  const payload = buildAuthorizationCodeTokenPayload({
+    accessToken: "access-1",
+    refreshToken: "refresh-1",
+    scopes: ["maps:use"]
+  });
+  assert.equal(payload.expires_in, 60 * 60);
+  assert.equal(payload.refresh_token, "refresh-1");
+  assert.equal(payload.scope, "maps:use");
+  assert.equal(ACCESS_TTL_MS, 60 * 60 * 1000);
+  assert.equal(REFRESH_TTL_MS, 30 * 24 * 60 * 60 * 1000);
+});
+
+test("offline_access remains compatible without becoming a refresh-token prerequisite", () => {
+  const payload = buildAuthorizationCodeTokenPayload({
+    accessToken: "access-2",
+    refreshToken: "refresh-2",
+    scopes: ["maps:use", "offline_access"]
+  });
+  assert.equal(payload.refresh_token, "refresh-2");
+  assert.equal(payload.scope, "maps:use offline_access");
+});
+
 test("metadata keeps offline_access at the authorization server, not the Maps resource", () => {
   const m = buildMetadata({
     baseUrl: "https://maps.example.com",
@@ -79,6 +106,22 @@ test("metadata keeps offline_access at the authorization server, not the Maps re
   assert.equal("registration_endpoint" in m.authorizationServer, false);
 });
 
+
+test("OAuth access, refresh and family state is wired to stable Firestore collections", () => {
+  const observed = [];
+  const db = { collection(name) { observed.push(name); return { name }; } };
+  const collections = createOAuthCollections(db);
+  assert.deepEqual(observed, [
+    "_mapsBrowserMcpRefOAuthCodes",
+    "_mapsBrowserMcpRefOAuthAccessTokens",
+    "_mapsBrowserMcpRefOAuthRefreshTokens",
+    "_mapsBrowserMcpRefOAuthTokenFamilies",
+    "_mapsBrowserMcpRefOAuthClientAssertions"
+  ]);
+  assert.equal(collections.access.name, "_mapsBrowserMcpRefOAuthAccessTokens");
+  assert.equal(collections.refresh.name, "_mapsBrowserMcpRefOAuthRefreshTokens");
+  assert.equal(collections.families.name, "_mapsBrowserMcpRefOAuthTokenFamilies");
+});
 
 test("public OAuth bearer is read from Web Request Headers", () => {
   const request = new Request("https://maps.example.com/mcp", {
