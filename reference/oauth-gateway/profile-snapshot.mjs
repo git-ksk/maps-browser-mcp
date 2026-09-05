@@ -55,7 +55,9 @@ function cleanPrefix(value) {
 
 export function loadProfileSnapshotConfig(env = process.env) {
   const bucket = env.MAPS_PROFILE_SNAPSHOT_BUCKET?.trim() || undefined;
-  const profileDir = path.resolve(env.MAPS_CHROME_PROFILE_DIR?.trim() || "/tmp/maps-browser-mcp/chrome-profile");
+  const profileDir = path.resolve(
+    env.MAPS_CHROME_PROFILE_DIR?.trim() || path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile")
+  );
   return {
     enabled: Boolean(bucket),
     bucket,
