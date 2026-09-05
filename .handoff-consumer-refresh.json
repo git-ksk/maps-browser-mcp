@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "dependency": {
+    "kind": "npm-github-archive",
+    "packageName": "mcp-execution-handoff",
+    "packageJson": "package.json",
+    "packageLock": "package-lock.json"
+  },
+  "pinPolicies": [],
+  "nativeHelpers": {
+    "mode": "none"
+  }
+}

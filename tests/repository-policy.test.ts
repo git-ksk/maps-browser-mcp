@@ -105,8 +105,26 @@ test("execution handoff upstream Browser Handoff integration is pinned to an imm
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
   assert.equal(
     pkg.dependencies?.["mcp-execution-handoff"],
-    "https://github.com/git-ksk/mcp-execution-handoff/archive/7ada84749af85bf98cdf6fa2a8b244804683120d.tar.gz"
+    "https://github.com/git-ksk/mcp-execution-handoff/archive/57e4941a5cea9111b5618ce22d5281bd739b49ab.tar.gz"
   );
+});
+
+test("execution handoff consumer refresh contract stays deterministic", () => {
+  const config = JSON.parse(fs.readFileSync(path.join(root, ".handoff-consumer-refresh.json"), "utf8")) as {
+    schemaVersion?: number;
+    dependency?: { kind?: string; packageName?: string; packageJson?: string; packageLock?: string };
+    pinPolicies?: unknown[];
+    nativeHelpers?: { mode?: string };
+  };
+  assert.equal(config.schemaVersion, 1);
+  assert.deepEqual(config.dependency, {
+    kind: "npm-github-archive",
+    packageName: "mcp-execution-handoff",
+    packageJson: "package.json",
+    packageLock: "package-lock.json"
+  });
+  assert.deepEqual(config.pinPolicies, []);
+  assert.equal(config.nativeHelpers?.mode, "none");
 });
 
 test("local Google sign-in acceptance proxy keeps the Handoff WebRTC route and upstream destination explicitly bounded", () => {
