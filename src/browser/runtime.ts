@@ -11,6 +11,7 @@ import { PolicyEngine, PolicyError } from "../policy/policy-engine.js";
 import {
   AUTHENTICATED_READINESS_EXPRESSION,
   parseAuthenticatedReadiness,
+  waitForAuthenticatedReadinessAfterHuman,
   type AuthenticatedMapsReadiness
 } from "./authenticated-readiness.js";
 import { classifyGoogleInterventionSurface } from "./intervention-surface.js";
@@ -330,7 +331,9 @@ export class MapsBrowserRuntime {
     const url = await this.currentUrlUnchecked(client);
     this.assertAllowedCurrentUrl(url);
     await this.assertNoInlineChallenge(undefined, client);
-    const readiness = await this.readAuthenticatedReadinessUnchecked(client);
+    const readiness = await waitForAuthenticatedReadinessAfterHuman(
+      () => this.readAuthenticatedReadinessProbe(client)
+    );
     if (readiness === "signed_out") {
       throw new BrowserRuntimeError(
         "HUMAN_INTERVENTION_REQUIRED",
@@ -767,15 +770,19 @@ export class MapsBrowserRuntime {
     }
   }
 
+  private async readAuthenticatedReadinessProbe(client: CdpClient): Promise<AuthenticatedMapsReadiness> {
+    const result = await client.Runtime.evaluate({
+      expression: AUTHENTICATED_READINESS_EXPRESSION,
+      returnByValue: true,
+      awaitPromise: true
+    });
+    return parseAuthenticatedReadiness(result.result.value);
+  }
+
   private async readAuthenticatedReadinessUnchecked(client: CdpClient): Promise<AuthenticatedMapsReadiness> {
     const deadline = Date.now() + 1_500;
     for (;;) {
-      const result = await client.Runtime.evaluate({
-        expression: AUTHENTICATED_READINESS_EXPRESSION,
-        returnByValue: true,
-        awaitPromise: true
-      });
-      const readiness = parseAuthenticatedReadiness(result.result.value);
+      const readiness = await this.readAuthenticatedReadinessProbe(client);
       if (readiness !== "unknown" || Date.now() >= deadline) return readiness;
       await sleep(100);
     }

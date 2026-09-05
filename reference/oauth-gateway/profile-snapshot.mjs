@@ -55,7 +55,9 @@ function cleanPrefix(value) {
 
 export function loadProfileSnapshotConfig(env = process.env) {
   const bucket = env.MAPS_PROFILE_SNAPSHOT_BUCKET?.trim() || undefined;
-  const profileDir = path.resolve(env.MAPS_CHROME_PROFILE_DIR?.trim() || "/tmp/maps-browser-mcp/chrome-profile");
+  const profileDir = path.resolve(
+    env.MAPS_CHROME_PROFILE_DIR?.trim() || path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile")
+  );
   return {
     enabled: Boolean(bucket),
     bucket,
@@ -309,6 +311,19 @@ async function pruneSnapshots(bucket, config, keepObjects) {
     .map((file) => file.name)
     .filter((name) => name.endsWith(".tar.gz") && !keep.has(name));
   await Promise.all(stale.map((name) => bucket.file(name).delete({ ignoreNotFound: true })));
+}
+
+export async function prepareProfileForFreshAgentVerification(config, { logger = console } = {}) {
+  const workDir = await mkdtemp(path.join(os.tmpdir(), "maps-profile-prepare-"));
+  const archivePath = path.join(workDir, "profile.tar.gz");
+  try {
+    const archive = await createProfileArchive(config.profileDir, archivePath, { maxBytes: config.maxBytes });
+    await restoreProfileArchive(archivePath, config.profileDir, { maxBytes: config.maxBytes });
+    logger.error(`[maps-profile] prepared stopped dedicated Chrome profile for fresh Agent verification (${archive.bytes} bytes)`);
+    return { status: "prepared", bytes: archive.bytes, sha256: archive.sha256 };
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
 }
 
 export async function checkpointProfileToCloud(config, { storage = new Storage(), logger = console } = {}) {
