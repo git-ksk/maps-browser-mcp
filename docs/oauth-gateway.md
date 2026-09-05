@@ -100,6 +100,8 @@ The core runtime continues to enforce browser safety, operation policy, principa
 
 If ChatGPT is the remote MCP client and OAuth is enabled, current OpenAI guidance says the OAuth/OpenID Connect provider should be configured to issue refresh tokens so connectivity can survive access-token expiry. For OIDC providers, OpenAI documents `offline_access` as the standard mechanism when the provider supports it and advertises it in discovery metadata.
 
+The reference gateway uses a 1-hour access token and a 30-day rotating refresh token. Because it is an OAuth Authorization Server rather than an OIDC provider, ordinary `maps:use` authorization-code grants receive a refresh token even when the client omits the optional `offline_access` scope. `offline_access` remains advertised and accepted for compatibility, but it is not a prerequisite for renewable connector authorization.
+
 After changing OAuth metadata or tool definitions, recreate or rescan the ChatGPT app as appropriate before debugging the browser runtime; ChatGPT can retain previously scanned tool definitions and OAuth metadata.
 
 Reference: [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461).

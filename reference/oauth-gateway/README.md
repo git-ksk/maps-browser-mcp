@@ -35,8 +35,8 @@ This is intentionally narrow:
 - Client ID Metadata Documents (CIMD), with exact client-host allowlisting and SSRF-resistant metadata/JWKS fetching;
 - `private_key_jwt` client authentication;
 - `maps:use` as the only Maps resource scope;
-- `offline_access` only as an Authorization Server scope for refresh-token requests;
-- rotating refresh tokens with family revocation on reuse;
+- `offline_access` as an advertised Authorization Server compatibility scope; authorization-code exchange also issues a refresh token for ordinary `maps:use` grants so clients that omit the optional scope can remain connected;
+- 1-hour access tokens plus 30-day rotating refresh tokens with family revocation on reuse;
 - `iss` in authorization responses;
 - `no-store` OAuth responses;
 - separate Firestore control-plane collections prefixed `_mapsBrowserMcpRefOAuth...`;
@@ -68,7 +68,7 @@ The reference follows the MCP 2026-07-28 authorization shape used by this projec
 - authorization and token requests must carry the exact `resource`;
 - PKCE `S256` is required;
 - CIMD is preferred and DCR is intentionally absent;
-- `offline_access` is advertised by the Authorization Server but not as a protected-resource requirement;
+- `offline_access` is advertised by the Authorization Server but is not a protected-resource requirement; the reference still issues rotating refresh tokens for `maps:use`-only authorization requests because OAuth authorization servers may issue refresh tokens from the authorization-code grant and ChatGPT connectivity depends on receiving one;
 - access tokens are audience/resource-bound and never transited to the private core.
 
 ## Required environment

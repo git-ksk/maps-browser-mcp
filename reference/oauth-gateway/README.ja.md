@@ -35,8 +35,8 @@ Reference imageではgatewayとcurrent checkoutのcoreを別processとして1つ
 - Client ID Metadata Documents (CIMD)、client host exact allowlist、SSRF-resistant metadata/JWKS fetch
 - `private_key_jwt` client authentication
 - Maps resource scopeは `maps:use` のみ
-- `offline_access` はrefresh token用Authorization Server scopeだけ
-- rotating refresh token + reuse時token-family revoke
+- `offline_access` はAuthorization Serverの互換scopeとして公開しつつ、optional scopeを送らないclientでも接続を維持できるよう通常の `maps:use` authorization-code exchangeでもrefresh tokenを発行
+- access tokenは1時間、refresh tokenは30日でrotationし、reuse時はtoken-family revoke
 - authorization responseの `iss`
 - OAuth responseは `no-store`
 - Firestore control-plane stateは `_mapsBrowserMcpRefOAuth...` prefix

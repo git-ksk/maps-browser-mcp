@@ -9,8 +9,8 @@ import {
 } from "./cimd.mjs";
 import { signOAuthTransaction, verifyOAuthTransaction } from "./oauth-state.mjs";
 
-const ACCESS_TTL_MS = 60 * 60 * 1000;
-const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const ACCESS_TTL_MS = 60 * 60 * 1000;
+export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CODE_TTL_MS = 5 * 60 * 1000;
 const TX_TTL_MS = 10 * 60 * 1000;
 const TX_COOKIE = "mbm_ref_oauth_tx";
@@ -137,6 +137,19 @@ export function accountMatchesDecodedToken(decoded, allowedAccount) {
     decoded.email.trim().toLowerCase() === allowedAccount.value;
 }
 
+export function buildAuthorizationCodeTokenPayload({ accessToken, refreshToken, scopes }) {
+  if (typeof accessToken !== "string" || !accessToken || typeof refreshToken !== "string" || !refreshToken || !Array.isArray(scopes) || !scopes.includes(REQUIRED_SCOPE)) {
+    throw new Error("invalid_authorization_code_token_payload");
+  }
+  return {
+    access_token: accessToken,
+    token_type: "Bearer",
+    expires_in: ACCESS_TTL_MS / 1000,
+    refresh_token: refreshToken,
+    scope: scopes.join(" ")
+  };
+}
+
 export function buildRefreshTokenRecord(input) {
   if (typeof input?.uid !== "string" || !input.uid ||
       typeof input?.accountBinding !== "string" || !input.accountBinding) {
@@ -243,6 +256,16 @@ function createGlobalRateLimiter(limit) {
   };
 }
 
+export function createOAuthCollections(db) {
+  return {
+    codes: db.collection("_mapsBrowserMcpRefOAuthCodes"),
+    access: db.collection("_mapsBrowserMcpRefOAuthAccessTokens"),
+    refresh: db.collection("_mapsBrowserMcpRefOAuthRefreshTokens"),
+    families: db.collection("_mapsBrowserMcpRefOAuthTokenFamilies"),
+    assertions: db.collection("_mapsBrowserMcpRefOAuthClientAssertions")
+  };
+}
+
 export async function createOAuthBoundary() {
   const config = readConfig();
   const app = getApps()[0] ?? initializeApp({ credential: applicationDefault(), projectId: config.projectId });
@@ -250,13 +273,7 @@ export async function createOAuthBoundary() {
   const db = getFirestore(app);
   const m = buildMetadata(config);
   const allowAuthRequest = createGlobalRateLimiter(config.maxAuthRequestsPerMinute);
-  const collections = {
-    codes: db.collection("_mapsBrowserMcpRefOAuthCodes"),
-    access: db.collection("_mapsBrowserMcpRefOAuthAccessTokens"),
-    refresh: db.collection("_mapsBrowserMcpRefOAuthRefreshTokens"),
-    families: db.collection("_mapsBrowserMcpRefOAuthTokenFamilies"),
-    assertions: db.collection("_mapsBrowserMcpRefOAuthClientAssertions")
-  };
+  const collections = createOAuthCollections(db);
 
   async function authorize(request) {
     const token = bearerFromRequest(request);
@@ -385,7 +402,7 @@ export async function createOAuthBoundary() {
       if (!data || data.usedAt || millis(data.expiresAt) <= now() || data.clientId !== client.clientId || data.redirectUri !== redirectUri || data.resource !== config.resource || data.accountBinding !== config.allowedAccount.binding || pkceChallenge(verifier) !== data.codeChallenge) {
         return null;
       }
-      const familyExpiresAt = now() + (data.scopes.includes(OPTIONAL_SCOPE) ? REFRESH_TTL_MS : ACCESS_TTL_MS);
+      const familyExpiresAt = now() + REFRESH_TTL_MS;
       transaction.update(codeRef, { usedAt: timestamp(now()) });
       transaction.create(collections.families.doc(familyId), {
         uid: data.uid,
@@ -404,29 +421,25 @@ export async function createOAuthBoundary() {
         familyId,
         expiresAt: timestamp(now() + ACCESS_TTL_MS)
       });
-      if (data.scopes.includes(OPTIONAL_SCOPE)) {
-        transaction.create(collections.refresh.doc(sha256(refreshToken)), buildRefreshTokenRecord({
-          uid: data.uid,
-          accountBinding: data.accountBinding,
-          clientId: client.clientId,
-          resource: config.resource,
-          scopes: data.scopes,
-          familyId,
-          generation: 0,
-          expiresAt: timestamp(now() + REFRESH_TTL_MS),
-          usedAt: null
-        }));
-      }
+      transaction.create(collections.refresh.doc(sha256(refreshToken)), buildRefreshTokenRecord({
+        uid: data.uid,
+        accountBinding: data.accountBinding,
+        clientId: client.clientId,
+        resource: config.resource,
+        scopes: data.scopes,
+        familyId,
+        generation: 0,
+        expiresAt: timestamp(now() + REFRESH_TTL_MS),
+        usedAt: null
+      }));
       return data;
     });
     if (!outcome) return oauthError("invalid_grant", "authorization code is invalid or expired");
-    return json(200, {
-      access_token: accessToken,
-      token_type: "Bearer",
-      expires_in: ACCESS_TTL_MS / 1000,
-      ...(outcome.scopes.includes(OPTIONAL_SCOPE) ? { refresh_token: refreshToken } : {}),
-      scope: outcome.scopes.join(" ")
-    });
+    return json(200, buildAuthorizationCodeTokenPayload({
+      accessToken,
+      refreshToken,
+      scopes: outcome.scopes
+    }));
   }
 
   async function issueFromRefresh(params, client) {
