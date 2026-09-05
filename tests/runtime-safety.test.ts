@@ -290,6 +290,83 @@ test("Thin Takeover release fails closed if Agent-owned CDP authority appears du
   );
 });
 
+test("post-Human browser reconstruction clears stale semantic/CDP state and prepares only a fresh automation connection", async () => {
+  let chromeClosed = 0;
+  const chrome = { async close() { chromeClosed += 1; } } as ChromeProcess;
+  const policy = {
+    isAllowedMapsUrl(value: string) {
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname === "www.google.com" &&
+          (url.pathname === "/maps" || url.pathname.startsWith("/maps/"));
+      } catch { return false; }
+    }
+  } as PolicyEngine;
+  const runtime = new MapsBrowserRuntime(chrome, policy);
+  let staleClientClosed = 0;
+  let freshConnections = 0;
+  const freshClient = { async close() {} };
+  const mutable = runtime as unknown as {
+    client?: { close(): Promise<void> };
+    clientOwner?: "automation" | "human";
+    endpoint?: unknown;
+    lastAction?: MapsAction;
+    viewState: "search" | "blank";
+    ensureConnected(owner: "automation" | "human"): Promise<void>;
+  };
+  mutable.client = { async close() { staleClientClosed += 1; } };
+  mutable.clientOwner = "automation";
+  mutable.endpoint = { kind: "local_port", port: 9222 };
+  mutable.lastAction = { kind: "search", query: "stale query" };
+  mutable.viewState = "search";
+  mutable.ensureConnected = async (owner) => {
+    assert.equal(owner, "automation");
+    freshConnections += 1;
+    mutable.client = freshClient;
+    mutable.clientOwner = "automation";
+    mutable.endpoint = { kind: "local_port", port: 9333 };
+  };
+  const before = runtime.getResourceEpoch();
+
+  await runtime.reconstructAutomationBrowserAfterHumanTeardown();
+
+  assert.equal(staleClientClosed, 1);
+  assert.equal(chromeClosed, 1);
+  assert.equal(freshConnections, 1);
+  assert.equal(mutable.client, freshClient);
+  assert.equal(mutable.clientOwner, "automation");
+  assert.equal(runtime.getLastAction(), undefined);
+  assert.equal(runtime.getViewState(), "blank");
+  assert.equal(runtime.getResourceEpoch(), before + 1);
+});
+
+test("browser reconstruction fails closed while any Human intervention remains active", async () => {
+  let chromeClosed = 0;
+  const chrome = { async close() { chromeClosed += 1; } } as ChromeProcess;
+  const policy = {
+    isAllowedMapsUrl(value: string) {
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname === "www.google.com" &&
+          (url.pathname === "/maps" || url.pathname.startsWith("/maps/"));
+      } catch { return false; }
+    }
+  } as PolicyEngine;
+  const runtime = new MapsBrowserRuntime(chrome, policy);
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+
+  await assert.rejects(
+    runtime.reconstructAutomationBrowserAfterHumanTeardown(),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "UI_STATE_CHANGED"
+  );
+  assert.equal(chromeClosed, 0);
+  assert.ok(runtime.getActiveIntervention());
+});
+
 test("verified hosted sign-in checkpoint stops Chromium only while the intervention is still verifying", async () => {
   let chromeClosed = 0;
   const chrome = { async close() { chromeClosed += 1; } } as ChromeProcess;
