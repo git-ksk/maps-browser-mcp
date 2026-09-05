@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCredentialSafeChromeArgs,
+  commandUsesChromeProfile,
   parseLinuxWindowIds,
   parseLocalLinuxSingletonLockPid,
   requestLinuxGracefulWindowClose,
   resolveLinuxExactWindowId,
+  waitForLinuxProfileProcessQuiescence,
   SystemBrowserCredentialSession
 } from "../src/browser/system-browser-credential-session.js";
 import { mkdtemp, symlink, rm } from "node:fs/promises";
@@ -41,6 +43,48 @@ test("credential-safe normal Chrome adds --no-sandbox only for explicit Linux op
 
 test("Linux exact-window parser keeps only unique positive safe integer ids", () => {
   assert.deepEqual(parseLinuxWindowIds("42\n42 77 invalid -1 0"), [42, 77]);
+});
+
+test("Linux profile-process matcher requires the exact dedicated user-data-dir argument", () => {
+  assert.equal(commandUsesChromeProfile([
+    "/usr/bin/chromium",
+    "--type=utility",
+    "--user-data-dir=/tmp/maps-profile"
+  ], "/tmp/maps-profile"), true);
+  assert.equal(commandUsesChromeProfile([
+    "/usr/bin/chromium",
+    "--user-data-dir=/tmp/maps-profile-other"
+  ], "/tmp/maps-profile"), false);
+});
+
+test("Linux profile-process quiescence waits for lingering Chromium children before returning", async () => {
+  const samples = [[91, 92], [92], []] as const;
+  let reads = 0;
+  let now = 0;
+  let waits = 0;
+  await waitForLinuxProfileProcessQuiescence("/tmp/maps-profile", {
+    timeoutMs: 1_000,
+    pollMs: 25,
+    readPids: async () => samples[Math.min(reads++, samples.length - 1)]!,
+    now: () => now,
+    wait: async (ms) => { now += ms; waits += 1; }
+  });
+  assert.equal(reads, 3);
+  assert.equal(waits, 2);
+});
+
+test("Linux profile-process quiescence fails closed when profile-bound Chromium never exits", async () => {
+  let now = 0;
+  await assert.rejects(
+    waitForLinuxProfileProcessQuiescence("/tmp/maps-profile", {
+      timeoutMs: 50,
+      pollMs: 25,
+      readPids: async () => [91],
+      now: () => now,
+      wait: async (ms) => { now += ms; }
+    }),
+    /still has Chromium processes/
+  );
 });
 
 test("Linux exact-window lookup requires one stable visible window owned by the normal Chrome PID", async () => {
