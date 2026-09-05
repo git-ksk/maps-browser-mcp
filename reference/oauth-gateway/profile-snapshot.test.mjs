@@ -20,6 +20,11 @@ test("profile snapshot config is disabled without a bucket", () => {
   assert.equal(config.keepSnapshots, 2);
 });
 
+test("profile snapshot default path matches the Maps runtime default", () => {
+  const config = loadProfileSnapshotConfig({});
+  assert.equal(config.profileDir, path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile"));
+});
+
 test("profile snapshot config validates integer and prefix bounds", () => {
   assert.throws(() => loadProfileSnapshotConfig({ MAPS_PROFILE_SNAPSHOT_PREFIX: "../bad" }), /dot segments/);
   assert.throws(() => loadProfileSnapshotConfig({ MAPS_PROFILE_SNAPSHOT_KEEP: "1" }), /between 2 and 10/);
