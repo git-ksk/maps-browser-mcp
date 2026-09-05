@@ -439,6 +439,81 @@ async function revokeCredentialSafeSurface(interventionId: string, owner: Handof
   return external.providerKind;
 }
 
+async function revokeCredentialSafeSurfaceIncludingExpired(
+  interventionId: string,
+  epoch: number,
+  owner: HandoffOwner
+): Promise<boolean> {
+  if (!credentialSafeSurface) return false;
+  const external = credentialSafeSurface.getActive();
+  if (external && external.interventionId === interventionId) {
+    await credentialSafeSurface.revoke(
+      external.interventionId,
+      external.epoch,
+      owner.principalBinding
+    );
+    return true;
+  }
+  try {
+    // CredentialSafeHumanSurfaceRuntime.revoke() intentionally matches the cached exact identity
+    // even after getActive() hides an expired locator. This lets the consumer fence/close the
+    // expired Human surface without minting or reviving any replacement capability.
+    await credentialSafeSurface.revoke(interventionId, epoch, owner.principalBinding);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof ExternalHumanSurfaceError &&
+      error.code === "EXTERNAL_SURFACE_STATE_CHANGED"
+    ) return false;
+    throw error;
+  }
+}
+
+async function recoverAutomationBrowserRuntime(): Promise<void> {
+  // The normal Human browser owns the same dedicated profile. Close it first, then reuse its
+  // existing fail-closed lock cleanup so live/foreign ownership can never be bypassed by recovery.
+  await credentialSafeBrowser?.close();
+  await credentialSafeBrowser?.assertProfileUnlocked();
+  await runtime.reconstructAutomationBrowserAfterHumanTeardown();
+}
+
+async function recoverExpiredExplicitHumanSignInForPrincipal(
+  principalBindingValue: string
+): Promise<boolean> {
+  const active = runtime.getActiveIntervention();
+  if (
+    !active ||
+    active.status !== "human_active" ||
+    active.authority !== "human" ||
+    !explicitHumanSignInInterventions.has(active.id)
+  ) return false;
+
+  const owner = handoffOwners.get(active.id);
+  if (!owner || owner.principalBinding !== principalBindingValue) return false;
+
+  // A still-valid surface means Human authority is intentionally live. Never self-recover over it.
+  const external = credentialSafeSurface?.getActive();
+  if (external) return false;
+
+  const revoked = await revokeCredentialSafeSurfaceIncludingExpired(active.id, active.epoch, owner);
+  if (!revoked) takeoverBroker.revokeForIntervention(active.id);
+  const stillActive = runtime.getActiveIntervention();
+  if (stillActive?.id === active.id) runtime.cancelHumanIntervention(active.id);
+  handoffLifecycleBridge.clear(active.id);
+  handoffOwners.delete(active.id);
+  explicitHumanSignInInterventions.delete(active.id);
+  clearHandoffCheckpoint(owner);
+  await recoverAutomationBrowserRuntime();
+  return true;
+}
+
+function reconstructedBrowserRequiresFreshInvocation(): CallToolResult {
+  return errorResult(new BrowserRuntimeError(
+    "UI_STATE_CHANGED",
+    "The stale Human/browser runtime was fenced and reconstructed. Re-run the intended Maps tool from fresh state; the interrupted action was not replayed."
+  ));
+}
+
 async function humanInputRequired(
   intervention: MapsIntervention,
   candidateOwner: HandoffOwner,
@@ -494,14 +569,28 @@ async function humanInputRequired(
   });
 }
 
-async function cancelIntervention(interventionId: string, owner: HandoffOwner): Promise<CallToolResult> {
+async function cancelIntervention(
+  interventionId: string,
+  owner: HandoffOwner,
+  reconstructBrowser = false
+): Promise<CallToolResult> {
+  const activeBeforeRevoke = runtime.getActiveIntervention();
+  if (reconstructBrowser && activeBeforeRevoke?.id === interventionId) {
+    await revokeCredentialSafeSurfaceIncludingExpired(
+      interventionId,
+      activeBeforeRevoke.epoch,
+      owner
+    );
+  } else {
+    await revokeCredentialSafeSurface(interventionId, owner);
+  }
   takeoverBroker.revokeForIntervention(interventionId);
-  await revokeCredentialSafeSurface(interventionId, owner);
   const active = runtime.getActiveIntervention();
   if (active?.id === interventionId) runtime.cancelHumanIntervention(interventionId);
   handoffLifecycleBridge.clear(interventionId);
   handoffOwners.delete(interventionId);
   clearHandoffCheckpoint(owner);
+  if (reconstructBrowser) await recoverAutomationBrowserRuntime();
   return jsonResult({ cancelled: true, reason: "human_intervention_cancelled" });
 }
 
@@ -561,6 +650,9 @@ async function beginExplicitHumanSignIn(): Promise<CallToolResult> {
   const args = {};
   const owner = ownerFor(toolName, args, "require_fresh_semantic_action");
   try {
+    if (await recoverExpiredExplicitHumanSignInForPrincipal(owner.principalBinding)) {
+      return reconstructedBrowserRequiresFreshInvocation();
+    }
     policy.consumeAction();
     const result = await operationQueue.run(async () => {
       const interventionBefore = runtime.getActiveIntervention()?.id;
@@ -623,6 +715,9 @@ async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
   }
 
   try {
+    if (await recoverExpiredExplicitHumanSignInForPrincipal(owner.principalBinding)) {
+      return reconstructedBrowserRequiresFreshInvocation();
+    }
     policy.consumeAction();
     takeoverBroker.revokeForIntervention(active.id);
     const currentSurface = credentialSafeSurface?.getActive();
@@ -681,7 +776,7 @@ async function cancelExplicitHumanSignIn(): Promise<CallToolResult> {
   }
   policy.consumeAction();
   explicitHumanSignInInterventions.delete(active.id);
-  return cancelIntervention(active.id, owner);
+  return cancelIntervention(active.id, owner, true);
 }
 
 async function executeToolTask<T>(
@@ -692,6 +787,9 @@ async function executeToolTask<T>(
 ): Promise<CallToolResult | InputRequiredResult> {
   const owner = ownerFor(toolName, args, resumeStrategy);
   try {
+    if (await recoverExpiredExplicitHumanSignInForPrincipal(owner.principalBinding)) {
+      return reconstructedBrowserRequiresFreshInvocation();
+    }
     policy.consumeAction();
     const result = await operationQueue.run(async () => {
       const interventionBefore = runtime.getActiveIntervention()?.id;
@@ -725,6 +823,19 @@ async function executeToolTask<T>(
       error.intervention
     ) {
       return humanInputRequired(error.intervention, owner, args);
+    }
+    if (
+      error instanceof BrowserRuntimeError &&
+      error.code === "BROWSER_UNAVAILABLE" &&
+      error.recoveryHint === "reconstruct_browser" &&
+      !runtime.getActiveIntervention()
+    ) {
+      try {
+        await recoverAutomationBrowserRuntime();
+        return reconstructedBrowserRequiresFreshInvocation();
+      } catch (recoveryError) {
+        return errorResult(recoveryError);
+      }
     }
     return errorResult(error);
   }

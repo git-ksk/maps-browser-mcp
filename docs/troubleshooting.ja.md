@@ -37,6 +37,10 @@ npm run smoke:browser
 4. 自動検出が失敗する場合だけ `MAPS_CHROME_EXECUTABLE` を設定
 5. 自分でChromeを管理する明確な理由がなければ `MAPS_CDP_PORT` を使わない
 
+runtimeが明示的にrecoverableと判定したprocess / CDP接続断では、Maps Browser MCPがstaleなbrowser stateをfenceし、**同じservice instance内で同じ専用profileを使うautomation Chrome / CDPを再構築**して `UI_STATE_CHANGED` を返します。その後、目的のMaps toolをfresh invocationとして再実行してください。失敗したactionを自動replayすることはありません。複数Maps tabのような構造的fail-closedエラーは、Chrome再起動で自動的に消し込みません。
+
+期限切れのexplicit Human sign-in surfaceも、同じauthenticated principalに限って同じ境界で処理します。stale Human generationをrevoke / cancelし、browser runtimeを再構築したうえでfresh readiness / tool invocationを要求します。Cloud Run revisionの差し替えは最後の運用fallbackであり、通常のbrowser recovery手段ではありません。
+
 ## `MAPS_NOT_OPEN`
 
 制御対象tabがblank、または想定するMaps surface上にいません。

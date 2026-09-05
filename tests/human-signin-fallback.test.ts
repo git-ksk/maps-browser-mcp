@@ -84,10 +84,39 @@ test("explicit cancellation cannot create a profile checkpoint", () => {
   const end = server.indexOf("async function executeToolTask", start);
   assert.ok(start >= 0 && end > start);
   const source = server.slice(start, end);
-  assert.match(source, /cancelIntervention\(active\.id, owner\)/);
+  assert.match(source, /cancelIntervention\(active\.id, owner, true\)/);
   assert.doesNotMatch(source, /stoppedProfileCheckpoint/);
 });
 
+
+test("expired explicit Human sign-in recovery fences only the same principal and reconstructs without replay", () => {
+  const start = server.indexOf("async function recoverExpiredExplicitHumanSignInForPrincipal");
+  const end = server.indexOf("function reconstructedBrowserRequiresFreshInvocation", start);
+  assert.ok(start >= 0 && end > start);
+  const source = server.slice(start, end);
+  assert.match(source, /owner\.principalBinding !== principalBindingValue/);
+  assert.match(source, /credentialSafeSurface\?\.getActive\(\)/);
+  assert.match(source, /revokeCredentialSafeSurfaceIncludingExpired/);
+  assert.match(source, /runtime\.cancelHumanIntervention/);
+  assert.match(source, /recoverAutomationBrowserRuntime\(\)/);
+  assert.doesNotMatch(source, /resumeAfterHumanIntervention|markVerified|task\(\)/);
+});
+
+test("browser unavailable recovery reconstructs the runtime but requires a separate fresh tool invocation", () => {
+  const start = server.indexOf("async function executeToolTask");
+  const end = server.indexOf("async function runToolWithHandoff", start);
+  assert.ok(start >= 0 && end > start);
+  const source = server.slice(start, end);
+  assert.match(source, /error\.code === "BROWSER_UNAVAILABLE"/);
+  assert.match(source, /error\.recoveryHint === "reconstruct_browser"/);
+  assert.match(source, /!runtime\.getActiveIntervention\(\)/);
+  assert.match(source, /await recoverAutomationBrowserRuntime\(\)/);
+  assert.match(source, /return reconstructedBrowserRequiresFreshInvocation\(\)/);
+  const resultStart = server.indexOf("function reconstructedBrowserRequiresFreshInvocation");
+  const resultEnd = server.indexOf("async function humanInputRequired", resultStart);
+  const resultSource = server.slice(resultStart, resultEnd);
+  assert.match(resultSource, /interrupted action was not replayed/);
+});
 
 test("credential-safe Human control has no hosted-CDP automation-browser exception", () => {
   const start = server.indexOf("async function prepareHandoffPrompt");
