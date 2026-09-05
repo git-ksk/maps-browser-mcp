@@ -619,12 +619,13 @@ async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
     ));
   }
 
+  let usedCredentialSafeSurface = false;
   try {
     policy.consumeAction();
     takeoverBroker.revokeForIntervention(active.id);
     const currentSurface = credentialSafeSurface?.getActive();
-    const usedCredentialSafeSurface = currentSurface?.interventionId === active.id;
-    const humanEpoch = usedCredentialSafeSurface ? currentSurface.epoch : active.epoch;
+    usedCredentialSafeSurface = currentSurface?.interventionId === active.id;
+    const humanEpoch = usedCredentialSafeSurface ? currentSurface!.epoch : active.epoch;
     await revokeCredentialSafeSurface(active.id, owner);
     handoffLifecycleBridge.ensureVerifying(active.id, humanEpoch);
     await operationQueue.run(() => usedCredentialSafeSurface
@@ -651,6 +652,18 @@ async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
   }
 
   runtime.resumeAfterHumanIntervention(active.id);
+  if (usedCredentialSafeSurface && credentialSafeProfileCheckpointEnabled) {
+    try {
+      await operationQueue.run(() => runtime.prepareFreshMapsSurfaceAfterProfileCheckpoint());
+    } catch (error) {
+      takeoverBroker.revokeForIntervention(active.id);
+      handoffLifecycleBridge.clear(active.id);
+      handoffOwners.delete(active.id);
+      explicitHumanSignInInterventions.delete(active.id);
+      clearHandoffCheckpoint(owner);
+      return errorResult(error);
+    }
+  }
   takeoverBroker.revokeForIntervention(active.id);
   handoffLifecycleBridge.clear(active.id);
   handoffOwners.delete(active.id);

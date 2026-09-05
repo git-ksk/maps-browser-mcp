@@ -71,6 +71,18 @@ test("explicit completion revokes Human authority before fresh verification and 
 });
 
 
+test("successful credential-safe checkpoint resumes before rebuilding a fresh Maps readiness surface", () => {
+  const start = server.indexOf("async function completeExplicitHumanSignIn");
+  const end = server.indexOf("async function cancelExplicitHumanSignIn", start);
+  assert.ok(start >= 0 && end > start);
+  const source = server.slice(start, end);
+  const resume = source.indexOf("runtime.resumeAfterHumanIntervention(active.id)");
+  const prepare = source.indexOf("runtime.prepareFreshMapsSurfaceAfterProfileCheckpoint()");
+  const cleanup = source.indexOf("handoffLifecycleBridge.clear(active.id)", prepare);
+  assert.ok(resume >= 0 && prepare > resume && cleanup > prepare);
+  assert.match(source, /usedCredentialSafeSurface && credentialSafeProfileCheckpointEnabled/);
+});
+
 test("deployment profile checkpoint is credential-safe-transport agnostic", () => {
   assert.match(server, /credentialSafeProfileCheckpointEnabled = Boolean\(config\.browserProfileCheckpoint\.module\)/);
   assert.match(server, /verifyCredentialSafeHumanInterventionAfterStoppedProfile\(active\.id\)/);
