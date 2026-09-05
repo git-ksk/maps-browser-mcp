@@ -139,8 +139,42 @@ export function buildCredentialSafeChromeArgs(options: Pick<SystemBrowserCredent
   return args;
 }
 
+
+export async function requestLinuxGracefulWindowClose(
+  processId: number,
+  windowId: number,
+  displayName: string,
+  options: {
+    xdotoolExecutable?: string;
+    runCommand?: WindowCommandRunner;
+  } = {}
+): Promise<boolean> {
+  if (!Number.isSafeInteger(processId) || processId <= 0 || !Number.isSafeInteger(windowId) || windowId <= 0) {
+    return false;
+  }
+  if (!/^:\d+(?:\.\d+)?$/.test(displayName)) return false;
+  const xdotoolExecutable = options.xdotoolExecutable ?? "/usr/bin/xdotool";
+  if (!path.isAbsolute(xdotoolExecutable)) return false;
+  const runCommand = options.runCommand ?? runBoundedWindowCommand;
+  const env = { ...buildBrowserProcessEnv(), DISPLAY: displayName };
+  const rawOwner = await runCommand(
+    xdotoolExecutable,
+    ["getwindowpid", String(windowId)],
+    env
+  ).catch(() => "");
+  const ownerPid = Number(rawOwner.trim());
+  if (!Number.isSafeInteger(ownerPid) || ownerPid !== processId) return false;
+  await runCommand(
+    xdotoolExecutable,
+    ["windowclose", String(windowId)],
+    env
+  );
+  return true;
+}
+
 export class SystemBrowserCredentialSession {
   private child?: ChildProcess;
+  private takeoverWindowId?: number;
   private warnedUnsandboxed = false;
 
   constructor(private readonly options: SystemBrowserCredentialSessionOptions) {}
@@ -165,12 +199,14 @@ export class SystemBrowserCredentialSession {
     if (this.getPid() !== processId) {
       throw new Error("Credential-safe normal Chrome process changed during exact-window lookup");
     }
+    this.takeoverWindowId = windowId;
     return { processId, windowId };
   }
 
   async start(): Promise<void> {
     if (this.isActive()) return;
     this.child = undefined;
+    this.takeoverWindowId = undefined;
     await fsp.mkdir(this.options.profileDir, { recursive: true, mode: 0o700 });
     if (process.platform !== "win32") {
       await fsp.chmod(this.options.profileDir, 0o700).catch(() => undefined);
@@ -197,11 +233,21 @@ export class SystemBrowserCredentialSession {
 
   async close(): Promise<void> {
     const child = this.child;
+    const takeoverWindowId = this.takeoverWindowId;
     this.child = undefined;
+    this.takeoverWindowId = undefined;
     if (child && child.exitCode === null) {
       const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-      child.kill("SIGTERM");
-      await Promise.race([exited, sleep(2_000)]);
+      if (process.platform === "linux" && child.pid !== undefined && this.options.takeoverDisplayName && takeoverWindowId !== undefined) {
+        await requestLinuxGracefulWindowClose(child.pid, takeoverWindowId, this.options.takeoverDisplayName, {
+          ...(this.options.xdotoolExecutable ? { xdotoolExecutable: this.options.xdotoolExecutable } : {})
+        }).catch(() => undefined);
+        await Promise.race([exited, sleep(2_000)]);
+      }
+      if (child.exitCode === null) {
+        child.kill("SIGTERM");
+        await Promise.race([exited, sleep(2_000)]);
+      }
       if (child.exitCode === null) {
         child.kill("SIGKILL");
         await Promise.race([exited, sleep(1_000)]);
