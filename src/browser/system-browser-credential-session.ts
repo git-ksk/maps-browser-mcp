@@ -135,6 +135,7 @@ export function buildCredentialSafeChromeArgs(options: Pick<SystemBrowserCredent
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-session-crashed-bubble",
+    "--disable-background-mode",
     "--new-window",
     options.startUrl ?? "https://www.google.com/maps"
   ];

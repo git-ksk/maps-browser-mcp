@@ -34,6 +34,7 @@ test("credential-safe normal Chrome uses the dedicated profile without remote de
   assert.equal(args.some((value) => value.startsWith("--remote-debugging")), false);
   assert.equal(args.some((value) => /automation/i.test(value)), false);
   assert.equal(args.some((value) => value === "--headless" || value.startsWith("--headless=")), false);
+  assert.equal(args.includes("--disable-background-mode"), true);
   assert.equal(args.includes("--no-sandbox"), false);
 });
 
