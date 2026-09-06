@@ -16,6 +16,7 @@
 - [MCP Apps portability](mcp-apps.ja.md) — host-neutral contract、fallback behavior、layout/lifecycle hardening、deployment security、compatibility evidence
 - [V5 authenticated workflows](v5-authenticated-workflows.ja.md) — 実装済みbounded account-backed workflow、Human-only sign-in境界、approval gate、authenticated non-goal
 - [ロードマップ](roadmap.ja.md) — 完了済みV4 Google Maps Web baseline、MCP Apps portability status、future direction
+- [Cloud Run profile acceptance handoff](cloud-run-profile-acceptance-handoff.ja.md) — v0.4.0 Cloud Run / Human Handoff / profile durability検証の現在地、次の切り分け、再開チェックリスト
 - [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.ja.md) — 未ログインMaps Webのcanonical coverage表、優先順位、V4 slice、login-required境界、明示的non-goal
 
 ## 設計・安全性

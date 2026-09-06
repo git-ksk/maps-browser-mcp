@@ -171,7 +171,7 @@ Release blockers:
 
 1. **#161 Cloud Run startup contract** — fresh candidate revisionでremote takeover HTTP auth-provider contractを復元し、candidateが`Ready=True`になるまでproductionをfail-safeに維持する。
 2. **#181 WSS-only managed transport policy** — PR #182の明示`websocket_relay`-only candidateをstageし、public-origin / WSS preflightと物理iPhone Human sign-in acceptanceを通してからguarded cutoverする。
-3. **#183 / #135 post-Human profile lifecycle** — PR #184のstopped-profile staging boundaryを取り込み、Done → Human fencing → fresh identity-free `signed_in` → stopped-profile checkpoint → fresh restore → Agent resumeをDOM/page/action/intervention stateのreplayなしでacceptする。
+3. **#183 / #135 / #196 post-Human profile lifecycle** — stopped-profile stagingとstable `signed_in` verifierは実装済み。#195のLinux exact-window物理acceptanceも完了済み。一方、Cloud Run物理試験ではHuman側でログイン済みでもDone後のfresh Agent verificationが`stable signed_in`へ到達せずfail closedしている。2 vCPU / 4 GiBでtakeover操作性は改善したが、ログイン済み表示後に約10秒待ってDoneしても再現したため、resource pressureや早すぎるDoneだけでは説明できない。次の決定的切り分けは **Human Chromeをgraceful closeした同一profileを、pre-verificationのlocal tar→restore round-tripなしでfresh Agent Chromeへ渡す比較試験**。stable verification成功前のdurable checkpointは禁止し、自動replayもしない。詳細は [Cloud Run profile acceptance handoff](cloud-run-profile-acceptance-handoff.ja.md) を参照。
 4. **#189 browser / CDP self-recovery** — expired / cancelled Human teardownやrecoverableなChrome / CDP接続断を同じservice instance内で復旧し、profile ownershipはfail-closedのまま維持する。失敗actionをreplayしたりCloud Run revisionを差し替えたりせず、別のfresh MCP invocationを必須にする。
 5. **#170 guarded Cloud Run rollout** — 0%-traffic candidate health / cutover / rollback手順をproduction昇格前のcanonical procedureにする。
 6. **#117 usage liability boundary** — proven pre-meter precondition refusalをcompleted browser workとして暗黙課金しない境界を確定する。

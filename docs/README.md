@@ -16,6 +16,7 @@ Documentation index for `maps-browser-mcp`.
 - [MCP Apps portability](mcp-apps.md) — host-neutral contract, fallback behavior, layout/lifecycle hardening, deployment security and compatibility evidence
 - [V5 authenticated workflows](v5-authenticated-workflows.md) — implemented bounded account-backed workflows, Human-only sign-in boundary, approval gates and explicit authenticated non-goals
 - [Roadmap](roadmap.md) — completed V4 Google Maps Web baseline, MCP Apps portability status, and future direction
+- [Cloud Run profile acceptance handoff](cloud-run-profile-acceptance-handoff.md) — current v0.4.0 Cloud Run / Human Handoff / profile durability acceptance state, next isolation test, and resume checklist
 - [V4 Google Maps Web Capability Inventory](maps-web-capability-inventory.md) — canonical unauthenticated Maps Web coverage table, priorities, implementation slices, login-required boundary, and explicit non-goals
 
 ## Design and safety
