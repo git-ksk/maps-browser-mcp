@@ -110,7 +110,7 @@ browser / Handoff authorityはprocess / worker-localのままです。instance�
 /tmp/maps-browser-mcp/chrome-profile
 ```
 
-single-user で profile の永続化が本当に必要な場合のみ `MAPS_CHROME_PROFILE_DIR` で変更してください。普段使いの browser profile を指定したり、複数ユーザー・複数instanceで1つの profile を共有したりしないでください。Reference OAuth gatewayでは `MAPS_PROFILE_SNAPSHOT_BUCKET` により停止済みprofileをrestore/checkpointできますが、live Chromiumはlocal ephemeral storageだけを使います。このsnapshot layer有効時はentrypointがdeployment-onlyな `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` を配線します。credential-safe Human transportをrevokeしてnormal Human browserを停止した後、deploymentは停止済みprofileをopaqueなままfresh local directory boundaryへround-tripできます。その後のfresh Agent `signed_in` verificationが成功した場合だけautomation browserを再度停止し、verified stopped profileだけをdurable checkpointします。
+single-user で profile の永続化が本当に必要な場合のみ `MAPS_CHROME_PROFILE_DIR` で変更してください。普段使いの browser profile を指定したり、複数ユーザー・複数instanceで1つの profile を共有したりしないでください。Reference OAuth gatewayでは `MAPS_PROFILE_SNAPSHOT_BUCKET` により停止済みprofileをrestoreできますが、live Chromiumはlocal ephemeral storageだけを使います。snapshot layer有効時はentrypointがdeployment-onlyな `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` を配線します。credential-safe Human transportをrevokeしてnormal Human browserを停止/quiesceした直後にprofileを未公開candidateとしてstageし、local profileは一切置換しません。同じlocal directoryをfresh Agentがstable `signed_in`と検証できた場合だけAgent browserを再停止し、stage時pointer generationをpreconditionとしてそのcandidateをdurable currentへpromoteします。
 
 ## Health / Readiness
 

@@ -254,7 +254,7 @@ MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
 
 `MAPS_PROFILE_SNAPSHOT_REQUIRED=false` がdefaultです。初回起動でsnapshotが無い場合は空の専用profileでsigned-out起動します。snapshot欠落/破損時に起動自体を止めたい運用だけ `true` にします。
 
-`MAPS_PROFILE_SNAPSHOT_BUCKET` 設定時、entrypointは `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` をreference checkpoint providerへ自動配線します。これはcredential-safe transport共通です。Human surfaceをrevokeしてnormal Human browserを閉じた後、reference providerはdurable Cloud Storage pointerを更新せずlocal opaque archive/restore round-tripを先に実施します。その後fresh Agent CDPで `signed_in` を確認し、Agent browserをclean stopしてverified profileをcheckpointした**後**にだけHandoffをresumableにします。checkpoint失敗時は未永続化sign-inを成功扱いせずfail closedします。legacy `hosted_cdp` はcredential-safe Human controlでは無効のままです。
+`MAPS_PROFILE_SNAPSHOT_BUCKET` 設定時、entrypointは `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` をreference checkpoint providerへ自動配線します。これはcredential-safe transport共通です。Human surfaceをrevokeしてnormal Human browserを閉じ、exact-profile process quiescenceを確認した直後、reference providerは停止済みprofileをCloud Storageの**未公開candidate**として1回だけarchive/uploadします。この時点では`current.json`を更新せず、local profileもarchiveからrestoreせずそのまま維持します。fresh Agent CDPが同じlocal profileでstable `signed_in`を確認できた場合だけAgent browserをclean stopし、stage時に記録したpointer generationをpreconditionとしてその同じcandidateを`current.json`へatomic promoteします。`signed_out` / `unknown` / stage・integrity・promotion失敗ではcurrent pointerを進めずfail closedします。legacy `hosted_cdp` はcredential-safe Human controlでは無効のままです。
 
 snapshot helperは以下を保証します。
 
@@ -262,16 +262,17 @@ snapshot helperは以下を保証します。
 - immutableなgeneration archiveと、previous generationも保持する小さな `current.json` pointer
 - 展開前にpath traversal、symbolic link、hard linkを拒否
 - 再生成可能cache、crash data、CDP runtime file、Chromium singleton fileを除外
-- cookie/token/account identifierを個別抽出・ログ出力しない
-- checkpointには `--browser-stopped` の明示が必要
+- candidate検証はarchive size / SHA-256 / safe path structure / required profile file presence / bounded SQLite integrity checkに限定する
+- profile内の値を個別抽出・ログ出力しない
+- unpublished candidateはrestore fallbackにせず、既定3世代でbounded retentionする
+- duplicate/parallel promotionはstage時pointer generationのpreconditionでfail closedする
 
-reference entrypointはCloud Runのgraceful `SIGTERM` だけを理由にprofileをpublishしません。durable publicationはcredential-safeな検証済みsign-in lifecycleに限定し、fresh coarse `signed_in`確認、Agent Chromium停止とexact-profile quiescence確認、その後のcheckpointという順序を必須にします。shutdown、未完了sign-in、停止/quiescence失敗では最後の正常なdurable pointerを維持します。
+reference entrypointはCloud Runのgraceful `SIGTERM` だけを理由にcandidate stage / promoteを行いません。durable publicationはcredential-safeな検証済みsign-in lifecycleに限定し、Human Chrome停止/quiescence → candidate stage → unchanged local profileでfresh stable `signed_in` → Agent Chromium停止/quiescence → candidate promoteという順序を必須にします。shutdown、未完了sign-in、停止/quiescence失敗では最後の正常なdurable pointerを維持します。
 
-停止済みbrowser deployment container内でのmaintenance command:
+deployment container向けのmaintenance CLIはrestoreだけです。candidate stage / promoteはverified Human-sign-in lifecycle内部APIからのみ実行します。
 
 ```bash
 node reference/oauth-gateway/profile-snapshot.mjs restore
-node reference/oauth-gateway/profile-snapshot.mjs checkpoint --browser-stopped
 ```
 
 専用private bucket/prefixを使い、object accessはMaps Cloud Run runtime service accountだけに付与します。`concurrency=1` / `max-instances=1` は維持します。profileを永続化してもsingle browser runtimeをmulti-user化してはいけません。

@@ -37,7 +37,7 @@ test("stopped browser profile checkpoint hook rejects an invalid deployment modu
     const hook = createStoppedBrowserProfileCheckpointHook(pathToFileURL(modulePath).href);
     await assert.rejects(
       hook({ reason: "credential_safe_sign_in" }),
-      /must export checkpointStoppedBrowserProfile/
+      /candidate stage\/promote pair or checkpointStoppedBrowserProfile/
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -70,6 +70,48 @@ test("stopped browser profile preparation hook preserves backward compatibility 
     await writeFile(modulePath, "export async function checkpointStoppedBrowserProfile() {}\n");
     const hook = createStoppedBrowserProfilePreparationHook(pathToFileURL(modulePath).href);
     await hook({ reason: "credential_safe_sign_in" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("stopped browser profile candidate provider stages bounded metadata and promotes that exact candidate", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-candidate-hook-"));
+  try {
+    const marker = path.join(root, "promoted.txt");
+    const modulePath = path.join(root, "provider.mjs");
+    const candidate = {
+      object: "maps-browser-mcp/profile/candidates/example.tar.gz",
+      generation: "101",
+      bytes: 1234,
+      sha256: "a".repeat(64),
+      createdAt: "2026-09-06T04:00:00.000Z",
+      basePointerGeneration: "77",
+      validation: { archiveEntries: 42, requiredProfileFiles: 2, sqliteDatabasesChecked: 1 }
+    };
+    await writeFile(modulePath, `import { writeFile } from "node:fs/promises";\nexport async function stageStoppedBrowserProfileCandidate(context) {\n  if (context.reason !== "credential_safe_sign_in") throw new Error("wrong reason");\n  return ${JSON.stringify(candidate)};\n}\nexport async function promoteStoppedBrowserProfileCandidate(context, candidate) {\n  if (context.reason !== "credential_safe_sign_in") throw new Error("wrong reason");\n  await writeFile(${JSON.stringify(marker)}, candidate.object);\n}\n`);
+    const preparation = createStoppedBrowserProfilePreparationHook(pathToFileURL(modulePath).href);
+    const checkpoint = createStoppedBrowserProfileCheckpointHook(pathToFileURL(modulePath).href);
+    const staged = await preparation({ reason: "credential_safe_sign_in" });
+    assert.deepEqual(staged, candidate);
+    await checkpoint({ reason: "credential_safe_sign_in" }, staged);
+    const { readFile } = await import("node:fs/promises");
+    assert.equal(await readFile(marker, "utf8"), candidate.object);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate hook rejects provider metadata with undeclared fields", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-candidate-secret-"));
+  try {
+    const modulePath = path.join(root, "provider.mjs");
+    await writeFile(modulePath, `export async function stageStoppedBrowserProfileCandidate() { return { object: "maps-browser-mcp/profile/candidates/example.tar.gz", generation: "1", bytes: 1, sha256: "${"b".repeat(64)}", createdAt: "2026-09-06T04:00:00.000Z", basePointerGeneration: "0", validation: { archiveEntries: 1, requiredProfileFiles: 2, sqliteDatabasesChecked: 0 }, rawCredentialData: "forbidden" }; }\nexport async function promoteStoppedBrowserProfileCandidate() {}\n`);
+    const preparation = createStoppedBrowserProfilePreparationHook(pathToFileURL(modulePath).href);
+    await assert.rejects(
+      preparation({ reason: "credential_safe_sign_in" }),
+      /unsupported metadata fields/
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1,9 +1,11 @@
+import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdtemp, mkdir, rename, rm, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { Storage } from "@google-cloud/storage";
 import * as tar from "tar";
@@ -12,6 +14,8 @@ const POINTER_VERSION = 1;
 const DEFAULT_PREFIX = "maps-browser-mcp/profile";
 const DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 const DEFAULT_KEEP_SNAPSHOTS = 2;
+const DEFAULT_KEEP_CANDIDATES = 3;
+const execFileAsync = promisify(execFile);
 
 const EXCLUDED_SEGMENTS = new Set([
   "Cache",
@@ -26,6 +30,8 @@ const EXCLUDED_SEGMENTS = new Set([
   "BrowserMetrics"
 ]);
 const EXCLUDED_BASENAMES = new Set(["DevToolsActivePort"]);
+const PROFILE_PREFERENCES = /^(?:Default|Profile [^/]+)\/Preferences$/;
+const SQLITE_RELATIVE_PATHS = ["Cookies", path.join("Network", "Cookies")];
 
 function envBool(name, fallback = false, env = process.env) {
   const raw = env[name];
@@ -65,7 +71,8 @@ export function loadProfileSnapshotConfig(env = process.env) {
     profileDir,
     required: envBool("MAPS_PROFILE_SNAPSHOT_REQUIRED", false, env),
     maxBytes: envInt("MAPS_PROFILE_SNAPSHOT_MAX_BYTES", DEFAULT_MAX_BYTES, 1 * 1024 * 1024, 2 * 1024 * 1024 * 1024, env),
-    keepSnapshots: envInt("MAPS_PROFILE_SNAPSHOT_KEEP", DEFAULT_KEEP_SNAPSHOTS, 2, 10, env)
+    keepSnapshots: envInt("MAPS_PROFILE_SNAPSHOT_KEEP", DEFAULT_KEEP_SNAPSHOTS, 2, 10, env),
+    keepCandidates: envInt("MAPS_PROFILE_CANDIDATE_KEEP", DEFAULT_KEEP_CANDIDATES, 3, 10, env)
   };
 }
 
@@ -135,6 +142,41 @@ export async function createProfileArchive(profileDir, archivePath, { maxBytes =
   };
 }
 
+export async function inspectProfileArchiveMetadata(archivePath) {
+  let validationError;
+  let archiveEntries = 0;
+  let localStatePresent = false;
+  let profilePreferencesPresent = false;
+  await tar.t({
+    file: archivePath,
+    onentry: (entry) => {
+      if (validationError) return;
+      try {
+        assertSafeArchiveEntry(entry);
+        const normalized = normalizedArchivePath(entry.path);
+        if (!normalized || normalized === ".") return;
+        if (isExcludedProfilePath(normalized)) {
+          throw new Error("profile snapshot contains excluded runtime data");
+        }
+        archiveEntries += 1;
+        if ((entry.type === "File" || entry.type === "OldFile") && normalized === "Local State") {
+          localStatePresent = true;
+        }
+        if ((entry.type === "File" || entry.type === "OldFile") && PROFILE_PREFERENCES.test(normalized)) {
+          profilePreferencesPresent = true;
+        }
+      } catch (error) {
+        validationError = error;
+      }
+    }
+  });
+  if (validationError) throw validationError;
+  if (!localStatePresent || !profilePreferencesPresent) {
+    throw new Error("profile snapshot is missing required Chrome profile metadata files");
+  }
+  return { archiveEntries, requiredProfileFiles: 2 };
+}
+
 export async function restoreProfileArchive(archivePath, profileDir, { maxBytes = DEFAULT_MAX_BYTES } = {}) {
   const archiveStat = await stat(archivePath);
   if (archiveStat.size > maxBytes) throw new Error(`profile snapshot archive exceeds ${maxBytes} bytes`);
@@ -188,6 +230,10 @@ function pointerObject(config) {
 
 function snapshotsPrefix(config) {
   return `${config.prefix}/snapshots/`;
+}
+
+function candidatesPrefix(config) {
+  return `${config.prefix}/candidates/`;
 }
 
 function validateSnapshotRecord(value) {
@@ -298,8 +344,9 @@ export async function restoreProfileFromCloud(config, { storage = new Storage(),
 }
 
 async function pruneSnapshots(bucket, config, keepObjects) {
-  const [files] = await bucket.getFiles({ prefix: snapshotsPrefix(config) });
-  const keep = new Set(keepObjects);
+  const prefix = snapshotsPrefix(config);
+  const [files] = await bucket.getFiles({ prefix });
+  const keep = new Set(keepObjects.filter((name) => typeof name === "string" && name.startsWith(prefix)));
   const additionalSlots = Math.max(0, config.keepSnapshots - keep.size);
   const nonPointerSnapshots = files
     .map((file) => file.name)
@@ -313,92 +360,187 @@ async function pruneSnapshots(bucket, config, keepObjects) {
   await Promise.all(stale.map((name) => bucket.file(name).delete({ ignoreNotFound: true })));
 }
 
-export async function prepareProfileForFreshAgentVerification(config, { logger = console } = {}) {
-  const workDir = await mkdtemp(path.join(os.tmpdir(), "maps-profile-prepare-"));
-  const archivePath = path.join(workDir, "profile.tar.gz");
+async function pruneCandidates(bucket, config, keepObjects) {
+  const prefix = candidatesPrefix(config);
+  const [files] = await bucket.getFiles({ prefix });
+  const keep = new Set(keepObjects.filter((name) => typeof name === "string" && name.startsWith(prefix)));
+  const ordered = files
+    .map((file) => file.name)
+    .filter((name) => name.endsWith(".tar.gz"))
+    .sort()
+    .reverse();
+  for (const name of ordered) {
+    if (keep.size >= config.keepCandidates) break;
+    keep.add(name);
+  }
+  const stale = ordered.filter((name) => !keep.has(name));
+  await Promise.all(stale.map((name) => bucket.file(name).delete({ ignoreNotFound: true })));
+}
+
+async function defaultSqliteIntegrityCheck(filePath) {
+  let stdout;
   try {
-    const archive = await createProfileArchive(config.profileDir, archivePath, { maxBytes: config.maxBytes });
-    await restoreProfileArchive(archivePath, config.profileDir, { maxBytes: config.maxBytes });
-    logger.error(`[maps-profile] prepared stopped dedicated Chrome profile for fresh Agent verification (${archive.bytes} bytes)`);
-    return { status: "prepared", bytes: archive.bytes, sha256: archive.sha256 };
-  } finally {
-    await rm(workDir, { recursive: true, force: true });
+    ({ stdout } = await execFileAsync("sqlite3", ["-readonly", filePath, "PRAGMA quick_check;"], {
+      timeout: 5_000,
+      maxBuffer: 64 * 1024
+    }));
+  } catch {
+    throw new Error("profile SQLite integrity check failed");
+  }
+  if (String(stdout).trim() !== "ok") {
+    throw new Error("profile SQLite integrity check failed");
   }
 }
 
-export async function checkpointProfileToCloud(config, { storage = new Storage(), logger = console } = {}) {
+export async function validateProfileSqliteIntegrity(profileDir, { check = defaultSqliteIntegrityCheck } = {}) {
+  const entries = await readdir(profileDir, { withFileTypes: true });
+  const profileDirs = entries
+    .filter((entry) => entry.isDirectory() && (entry.name === "Default" || entry.name.startsWith("Profile ")))
+    .map((entry) => path.join(profileDir, entry.name));
+  const databases = [];
+  for (const profilePath of profileDirs) {
+    for (const relative of SQLITE_RELATIVE_PATHS) {
+      const databasePath = path.join(profilePath, relative);
+      const info = await stat(databasePath).catch(() => undefined);
+      if (info?.isFile()) databases.push(databasePath);
+    }
+  }
+  for (const databasePath of databases.slice(0, 8)) {
+    await check(databasePath);
+  }
+  return { sqliteDatabasesChecked: Math.min(databases.length, 8) };
+}
+
+function validateCandidateRecord(candidate, config) {
+  if (!candidate || typeof candidate !== "object") throw new Error("profile candidate metadata is required");
+  if (typeof candidate.object !== "string" || !candidate.object.startsWith(candidatesPrefix(config)) || !candidate.object.endsWith(".tar.gz")) {
+    throw new Error("profile candidate object is outside the candidate namespace");
+  }
+  if (typeof candidate.generation !== "string" || !/^\d+$/.test(candidate.generation)) {
+    throw new Error("profile candidate object generation is invalid");
+  }
+  if (!Number.isSafeInteger(candidate.bytes) || candidate.bytes < 0 || candidate.bytes > config.maxBytes) {
+    throw new Error("profile candidate size is invalid");
+  }
+  if (typeof candidate.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(candidate.sha256)) {
+    throw new Error("profile candidate digest is invalid");
+  }
+  if (typeof candidate.createdAt !== "string" || Number.isNaN(Date.parse(candidate.createdAt))) {
+    throw new Error("profile candidate timestamp is invalid");
+  }
+  if (typeof candidate.basePointerGeneration !== "string" || !/^\d+$/.test(candidate.basePointerGeneration)) {
+    throw new Error("profile candidate base pointer generation is invalid");
+  }
+  const validation = candidate.validation;
+  if (!validation || typeof validation !== "object") throw new Error("profile candidate validation metadata is missing");
+  for (const field of ["archiveEntries", "requiredProfileFiles", "sqliteDatabasesChecked"]) {
+    if (!Number.isSafeInteger(validation[field]) || validation[field] < 0) {
+      throw new Error("profile candidate validation metadata is invalid");
+    }
+  }
+  return candidate;
+}
+
+async function uploadedCandidateMetadata(bucket, object, uploadedFile) {
+  if (uploadedFile && typeof uploadedFile.getMetadata === "function") {
+    const [metadata] = await uploadedFile.getMetadata();
+    return metadata;
+  }
+  const [metadata] = await bucket.file(object).getMetadata();
+  return metadata;
+}
+
+export async function stageProfileCandidate(config, options = {}) {
+  const { storage = new Storage(), logger = console, sqliteIntegrityCheck = defaultSqliteIntegrityCheck } = options;
   if (!config.enabled) return { status: "disabled" };
   const bucket = storage.bucket(config.bucket);
-  const workDir = await mkdtemp(path.join(os.tmpdir(), "maps-profile-checkpoint-"));
+  const workDir = await mkdtemp(path.join(os.tmpdir(), "maps-profile-candidate-"));
   const archivePath = path.join(workDir, "profile.tar.gz");
   try {
     const archive = await createProfileArchive(config.profileDir, archivePath, { maxBytes: config.maxBytes });
+    const structure = await inspectProfileArchiveMetadata(archivePath);
+    const sqlite = await validateProfileSqliteIntegrity(config.profileDir, { check: sqliteIntegrityCheck });
+    const pointerState = await readPointer(bucket, config);
+    const basePointerGeneration = String(pointerState?.generation ?? "0");
     const stamp = new Date().toISOString().replaceAll(":", "").replaceAll(".", "-");
-    const object = `${snapshotsPrefix(config)}${stamp}-${randomUUID()}.tar.gz`;
-    await bucket.upload(archivePath, {
+    const object = `${candidatesPrefix(config)}${stamp}-${randomUUID()}.tar.gz`;
+    const uploadResult = await bucket.upload(archivePath, {
       destination: object,
       resumable: false,
       validation: "crc32c",
-      metadata: {
-        cacheControl: "no-store",
-        contentType: "application/gzip"
-      },
+      metadata: { cacheControl: "no-store", contentType: "application/gzip", metadata: { mapsCandidateSha256: archive.sha256, mapsCandidateBytes: String(archive.bytes) } },
       preconditionOpts: { ifGenerationMatch: 0 }
     });
-
-    let prior;
-    let pointerGeneration;
-    try {
-      const pointerState = await readPointer(bucket, config);
-      prior = pointerState?.pointer.current;
-      pointerGeneration = pointerState?.generation;
-    } catch (error) {
-      logger.error(`[maps-profile] prior pointer unreadable; retaining snapshots without rollback pointer: ${error instanceof Error ? error.message : "unknown_error"}`);
+    const metadata = await uploadedCandidateMetadata(bucket, object, uploadResult?.[0]);
+    const generation = String(metadata.generation ?? "");
+    const uploadedBytes = Number(metadata.size ?? -1);
+    const customMetadata = metadata.metadata ?? {};
+    if (!/^\d+$/.test(generation) || uploadedBytes !== archive.bytes || customMetadata.mapsCandidateSha256 !== archive.sha256 || customMetadata.mapsCandidateBytes !== String(archive.bytes)) {
+      await bucket.file(object).delete({ ignoreNotFound: true }).catch(() => undefined);
+      throw new Error("staged profile candidate metadata does not match the uploaded archive");
     }
-
-    const current = {
-      object,
-      sha256: archive.sha256,
-      bytes: archive.bytes,
-      createdAt: new Date().toISOString()
+    const candidate = {
+      object, generation, bytes: archive.bytes, sha256: archive.sha256, createdAt: new Date().toISOString(), basePointerGeneration,
+      validation: { archiveEntries: structure.archiveEntries, requiredProfileFiles: structure.requiredProfileFiles, sqliteDatabasesChecked: sqlite.sqliteDatabasesChecked }
     };
-    const pointer = {
-      version: POINTER_VERSION,
-      current,
-      ...(prior ? { previous: prior } : {})
-    };
-    await bucket.file(pointerObject(config)).save(Buffer.from(`${JSON.stringify(pointer)}\n`), {
-      resumable: false,
-      validation: "crc32c",
-      metadata: { cacheControl: "no-store", contentType: "application/json" },
-      preconditionOpts: { ifGenerationMatch: pointerGeneration ? Number(pointerGeneration) : 0 }
+    const protectedObjects = [candidate.object, pointerState?.pointer.current?.object, pointerState?.pointer.previous?.object].filter(Boolean);
+    await pruneCandidates(bucket, config, protectedObjects).catch((error) => {
+      logger.error(`[maps-profile] stale candidate pruning failed: ${error instanceof Error ? error.message : "unknown_error"}`);
     });
-
-    await pruneSnapshots(bucket, config, [current.object, prior?.object].filter(Boolean)).catch((error) => {
-      logger.error(`[maps-profile] stale snapshot pruning failed: ${error instanceof Error ? error.message : "unknown_error"}`);
-    });
-    logger.error(`[maps-profile] checkpointed dedicated Chrome profile (${archive.bytes} bytes)`);
-    return { status: "checkpointed", object, bytes: archive.bytes, sha256: archive.sha256 };
+    logger.error(`[maps-profile] staged stopped profile candidate (${candidate.bytes} bytes, ${candidate.validation.archiveEntries} entries, ${candidate.validation.sqliteDatabasesChecked} SQLite checks); durable pointer unchanged`);
+    return { status: "staged", candidate };
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
 }
 
+export async function promoteProfileCandidate(config, candidate, { storage = new Storage(), logger = console } = {}) {
+  if (!config.enabled) return { status: "disabled" };
+  const checked = validateCandidateRecord(candidate, config);
+  const bucket = storage.bucket(config.bucket);
+  const [candidateMetadata] = await bucket.file(checked.object).getMetadata();
+  if (String(candidateMetadata.generation ?? "") !== checked.generation) throw new Error("profile candidate generation changed before promotion");
+  if (Number(candidateMetadata.size ?? -1) !== checked.bytes) throw new Error("profile candidate size changed before promotion");
+  const customMetadata = candidateMetadata.metadata ?? {};
+  if (customMetadata.mapsCandidateSha256 !== checked.sha256 || customMetadata.mapsCandidateBytes !== String(checked.bytes)) {
+    throw new Error("profile candidate integrity metadata changed before promotion");
+  }
+  const pointerState = await readPointer(bucket, config);
+  const pointerGeneration = String(pointerState?.generation ?? "0");
+  if (pointerGeneration !== checked.basePointerGeneration) throw new Error("durable profile pointer changed after candidate staging");
+  const prior = pointerState?.pointer.current;
+  const current = { object: checked.object, sha256: checked.sha256, bytes: checked.bytes, createdAt: checked.createdAt };
+  const pointer = { version: POINTER_VERSION, current, ...(prior ? { previous: prior } : {}) };
+  const generationMatch = Number(pointerGeneration);
+  if (!Number.isSafeInteger(generationMatch) || generationMatch < 0) {
+    throw new Error("durable profile pointer generation exceeds safe precondition bounds");
+  }
+  const pointerBytes = Buffer.from(`${JSON.stringify(pointer)}\n`);
+  await bucket.file(pointerObject(config)).save(pointerBytes, {
+    resumable: false,
+    validation: "crc32c",
+    metadata: { cacheControl: "no-store", contentType: "application/json" },
+    preconditionOpts: { ifGenerationMatch: generationMatch }
+  });
+  const protectedObjects = [current.object, prior?.object, pointerState?.pointer.previous?.object].filter(Boolean);
+  await pruneCandidates(bucket, config, protectedObjects).catch((error) => {
+    logger.error(`[maps-profile] stale candidate pruning failed after promotion: ${error instanceof Error ? error.message : "unknown_error"}`);
+  });
+  await pruneSnapshots(bucket, config, [prior?.object, pointerState?.pointer.previous?.object].filter(Boolean)).catch((error) => {
+    logger.error(`[maps-profile] stale snapshot pruning failed: ${error instanceof Error ? error.message : "unknown_error"}`);
+  });
+  logger.error(`[maps-profile] promoted verified stopped profile candidate (${checked.bytes} bytes)`);
+  return { status: "promoted", object: checked.object, bytes: checked.bytes, sha256: checked.sha256 };
+}
+
 async function main() {
-  const [command, safetyFlag] = process.argv.slice(2);
+  const [command] = process.argv.slice(2);
   const config = loadProfileSnapshotConfig();
   if (command === "restore") {
     await restoreProfileFromCloud(config);
     return;
   }
-  if (command === "checkpoint") {
-    if (safetyFlag !== "--browser-stopped") {
-      throw new Error("checkpoint requires --browser-stopped; never archive a live Chrome profile");
-    }
-    await checkpointProfileToCloud(config);
-    return;
-  }
-  throw new Error("usage: profile-snapshot.mjs restore | checkpoint --browser-stopped");
+  throw new Error("usage: profile-snapshot.mjs restore");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

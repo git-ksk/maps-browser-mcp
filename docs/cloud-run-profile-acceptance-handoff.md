@@ -54,7 +54,7 @@ Repeated physical Cloud Run runs under #196 correctly failed closed: no durable 
 4. Human presses Done.
 5. Human authority is revoked.
 6. Human Chrome closes and exact-profile Linux process quiescence is awaited.
-7. Before fresh Agent verification, `prepareProfileForFreshAgentVerification()` performs a **local stopped-profile archive/restore round-trip** against the same profile directory.
+7. The prior baseline performed a local stopped-profile archive/restore round-trip before fresh Agent verification.
 8. Fresh Agent Chrome starts and navigates to Maps.
 9. Stable readiness does not reach `signed_in`; the flow returns to Human / fails closed.
 10. The durable Cloud Storage checkpoint does **not** advance.
@@ -70,22 +70,24 @@ The live Chrome profile is local to the Cloud Run instance under `MAPS_CHROME_PR
 Expected lifecycle:
 
 ```text
-Cloud Storage snapshot
+published Cloud Storage snapshot
   -> restore into Cloud Run local profile
   -> Agent/Human Chrome uses local profile
   -> Human Done
   -> Human Chrome close + quiescence
-  -> fresh Agent signed_in verification
-  -> Agent Chrome stop
-  -> durable Cloud Storage checkpoint
+  -> stage unpublished candidate snapshot
+  -> fresh Agent stable signed_in against unchanged local profile
+  -> Agent Chrome stop + quiescence
+  -> atomically promote the exact staged candidate to current
+  -> fresh Cloud Run restore acceptance
   -> fresh Maps surface
 ```
 
-The current implementation additionally performs a local tar->restore preparation step between Human close and fresh Agent verification. This is the highest-value unisolated boundary.
+The combined acceptance line now replaces that boundary with a two-phase candidate lifecycle: stage one unpublished Cloud Storage candidate immediately after Human Chrome stop/quiescence, leave the local profile untouched, verify fresh Agent stable `signed_in` against that same directory, then stop Agent Chrome and promote the exact staged candidate using the pointer generation captured at staging. Unpublished candidates are bounded and never restore fallbacks. Root 384 tests (379 pass / 0 fail / 5 skip), reference OAuth gateway 48/48, build, and diff check are green; Cloud Run deployment/physical acceptance is still pending.
 
 ## Next decisive test
 
-Build a narrow diagnostic candidate that changes only the pre-verification preparation boundary:
+Deploy this two-phase implementation as a new immutable Cloud Run candidate and run one physical iPhone A/B/C isolation:
 
 ```text
 Human Chrome signed in
@@ -93,16 +95,19 @@ Human Chrome signed in
   -> revoke Human authority
   -> graceful Human Chrome close
   -> wait for exact-profile process quiescence
-  -> DO NOT local tar->restore here
+  -> stage unpublished GCS candidate (current pointer unchanged)
+  -> DO NOT local tar->restore
   -> launch fresh Agent Chrome against the unchanged profile directory
   -> classify stable signed_in / signed_out / unknown
+  -> promote only on stable signed_in
+  -> verify stable signed_in after a genuinely fresh Cloud Run restore
 ```
 
 Interpretation:
 
-- `signed_in`: isolate the defect to the pre-verification archive/restore round-trip or its interaction with Cloud Run local filesystem semantics.
-- `signed_out`: archive/restore is not needed to reproduce; investigate Human Chrome shutdown/flush behavior, Linux/Cloud Run Chrome startup differences, or Google session behavior across the Human->Agent process restart.
-
+- A=`signed_in`, C=`signed_out`: archive/restore remains the primary suspect.
+- A=`signed_out`: GCS staging/restore is not the primary cause; focus on Human Chrome shutdown/flush, Linux/Cloud Run restart behavior, or Google session behavior.
+- A=`signed_in`, C=`signed_in`: the candidate lifecycle is accepted; current promotion plus fresh-revision durability succeeds.
 The diagnostic must preserve the durable safety boundary: **never checkpoint/publish unless fresh Agent stable `signed_in` succeeds**.
 
 ## Safety / execution rules
@@ -130,6 +135,6 @@ The diagnostic must preserve the durable safety boundary: **never checkpoint/pub
 2. Read Cloud Run latest ready revision, active traffic, CPU/memory, min/max scale, and immutable image digest.
 3. Confirm no active Human takeover; cancel a stale takeover instead of completing it if ownership is unclear.
 4. Read durable profile pointer metadata only; do not inspect snapshot contents.
-5. Implement the one-variable “skip local pre-verification tar->restore” diagnostic candidate with tests.
-6. Deploy a new revision, run one fresh signed-out -> Human sign-in acceptance, and record only coarse readiness plus pointer generation.
-7. If same-revision stable `signed_in` succeeds, only then test a genuinely fresh Cloud Run revision restoring the newly published checkpoint.
+5. Candidate implementation/tests are complete on the combined branch; review, commit, and push without merging main.
+6. Deploy a new immutable digest/revision, run fresh signed-out -> Human sign-in acceptance once, and record only bounded readiness/candidate/pointer metadata.
+7. If same-revision stable `signed_in` promotes the candidate, create a genuinely fresh revision from the same immutable image and require stable `signed_in` after restore.

@@ -1,27 +1,30 @@
 import {
-  checkpointProfileToCloud,
   loadProfileSnapshotConfig,
-  prepareProfileForFreshAgentVerification
+  promoteProfileCandidate,
+  stageProfileCandidate
 } from "./profile-snapshot.mjs";
 
-export async function prepareStoppedBrowserProfileForVerification(context) {
+function assertCredentialSafeContext(context, operation) {
   if (!context || context.reason !== "credential_safe_sign_in") {
-    throw new Error("unsupported stopped browser profile preparation reason");
+    throw new Error(`unsupported stopped browser profile ${operation} reason`);
   }
+}
+
+export async function stageStoppedBrowserProfileCandidate(context) {
+  assertCredentialSafeContext(context, "candidate staging");
   const config = loadProfileSnapshotConfig();
   if (!config.enabled) {
     throw new Error("MAPS_PROFILE_SNAPSHOT_BUCKET is required for the Cloud Run profile provider");
   }
-  await prepareProfileForFreshAgentVerification(config);
+  const result = await stageProfileCandidate(config);
+  return result.candidate;
 }
 
-export async function checkpointStoppedBrowserProfile(context) {
-  if (!context || context.reason !== "credential_safe_sign_in") {
-    throw new Error("unsupported stopped browser profile checkpoint reason");
-  }
+export async function promoteStoppedBrowserProfileCandidate(context, candidate) {
+  assertCredentialSafeContext(context, "candidate promotion");
   const config = loadProfileSnapshotConfig();
   if (!config.enabled) {
-    throw new Error("MAPS_PROFILE_SNAPSHOT_BUCKET is required for the Cloud Run checkpoint provider");
+    throw new Error("MAPS_PROFILE_SNAPSHOT_BUCKET is required for the Cloud Run profile provider");
   }
-  await checkpointProfileToCloud(config);
+  await promoteProfileCandidate(config, candidate);
 }

@@ -267,24 +267,24 @@ MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
 
 `MAPS_PROFILE_SNAPSHOT_REQUIRED=false` is the default. A first boot with no object therefore starts with an empty dedicated profile. Set it to `true` only when an operator intentionally wants a missing/invalid snapshot to prevent startup.
 
-Whenever `MAPS_PROFILE_SNAPSHOT_BUCKET` is configured, the entrypoint automatically wires `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` to the reference checkpoint provider. This is credential-safe-transport agnostic: after the Human surface is revoked and the normal Human browser is closed, the reference provider first performs a local opaque archive/restore round-trip without updating the durable Cloud Storage pointer. Maps then verifies `signed_in` from a fresh Agent CDP attachment, cleanly stops the Agent browser, and checkpoints the verified profile **before** Handoff becomes resumable. A checkpoint failure therefore fails the intervention closed instead of silently accepting an unpersisted sign-in. Legacy `hosted_cdp` remains disabled for credential-safe Human control.
+Whenever `MAPS_PROFILE_SNAPSHOT_BUCKET` is configured, the entrypoint automatically wires `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` to the reference checkpoint provider. After Human revoke, normal-browser close, and exact-profile process quiescence, the provider uploads the stopped profile exactly once as an **unpublished candidate**. It does not advance `current.json` and does not restore the archive over the local profile. A fresh Agent verifies stable `signed_in` against that unchanged local directory. Only after verification and Agent stop/quiescence does the provider atomically promote that exact candidate with the pointer generation captured at staging. Any signed-out/unknown, staging/integrity failure, or promotion conflict leaves the durable pointer unchanged.
 
 The snapshot helper:
 
-- restores before `maps-browser-mcp` starts;
-- stores immutable generation archives plus a small `current.json` pointer retaining the previous good generation;
+- restores the published current/previous snapshot before `maps-browser-mcp` starts;
 - rejects path traversal and symbolic/hard-link archive entries before extraction;
 - excludes regenerable caches, crash data, CDP runtime files, and Chromium singleton files;
-- never extracts or logs individual cookies/tokens/account identifiers;
-- requires an explicit `--browser-stopped` acknowledgement for checkpoints.
+- validates candidate metadata/integrity only through bounded archive/hash/structure/file-presence/SQLite checks;
+- never extracts or logs profile values or account identifiers;
+- never treats unpublished candidates as restore fallbacks and keeps candidate retention bounded;
+- fails duplicate/parallel promotion closed through the stage-time pointer-generation precondition.
 
-The reference entrypoint does **not** publish a profile merely because the container receives graceful `SIGTERM`. Durable publication is restricted to the credential-safe verified sign-in lifecycle: fresh coarse `signed_in` verification, Agent Chromium stop plus exact-profile quiescence, then checkpoint. Shutdown, incomplete sign-in, or stop/quiescence failure therefore preserves the last known-good durable pointer.
+The reference entrypoint does **not** stage or promote a profile merely because the container receives graceful `SIGTERM`. Durable publication is restricted to Human Chrome stop/quiescence -> candidate stage -> unchanged-local fresh stable `signed_in` -> Agent stop/quiescence -> candidate promotion. Incomplete sign-in, shutdown, or stop/quiescence failure preserves the last known-good pointer.
 
-Manual maintenance command inside a stopped-browser deployment container:
+The deployment-container maintenance CLI is restore-only; candidate stage/promotion is available only through the verified Human-sign-in lifecycle provider.
 
 ```bash
 node reference/oauth-gateway/profile-snapshot.mjs restore
-node reference/oauth-gateway/profile-snapshot.mjs checkpoint --browser-stopped
 ```
 
 Use a dedicated private bucket/prefix and grant object access only to the Maps Cloud Run runtime service account. Keep `concurrency=1` and `max-instances=1`; profile persistence does not turn one browser runtime into a multi-user service.

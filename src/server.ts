@@ -80,7 +80,8 @@ import { resolveFreshRouteSendTarget, type RouteSendActionInput } from "./browse
 import { OperationQueue, OperationQueueError } from "./operation-queue.js";
 import {
   createStoppedBrowserProfileCheckpointHook,
-  createStoppedBrowserProfilePreparationHook
+  createStoppedBrowserProfilePreparationHook,
+  type StoppedBrowserProfileCandidate
 } from "./browser-profile-checkpoint.js";
 import { BrowserHandoffAdapter, HostedBrowserTakeoverProvider, InheritedFdNativeRuntimeProvider, TakeoverBroker, type TakeoverAuthorityReleaseEvent, type TakeoverBrowserAdapter } from "mcp-execution-handoff/browser-takeover";
 import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
@@ -137,20 +138,23 @@ const stoppedProfilePreparation = createStoppedBrowserProfilePreparationHook(con
 const stoppedProfileCheckpoint = createStoppedBrowserProfileCheckpointHook(config.browserProfileCheckpoint.module);
 const credentialSafeProfileCheckpointEnabled = Boolean(config.browserProfileCheckpoint.module);
 
-function credentialSafeVerificationOptions(interventionId: string) {
+function credentialSafeVerificationOptions(
+  interventionId: string,
+  candidate?: StoppedBrowserProfileCandidate
+) {
   if (!credentialSafeProfileCheckpointEnabled) return undefined;
   return {
     beforeMarkVerified: async () => {
       await runtime.stopBrowserForProfileCheckpoint(interventionId);
-      await stoppedProfileCheckpoint({ reason: "credential_safe_sign_in" });
+      await stoppedProfileCheckpoint({ reason: "credential_safe_sign_in" }, candidate);
     }
   };
 }
 async function verifyCredentialSafeHumanInterventionAfterStoppedProfile(interventionId: string) {
-  await stoppedProfilePreparation({ reason: "credential_safe_sign_in" });
+  const candidate = await stoppedProfilePreparation({ reason: "credential_safe_sign_in" });
   return runtime.verifyCredentialSafeHumanIntervention(
     interventionId,
-    credentialSafeVerificationOptions(interventionId)
+    credentialSafeVerificationOptions(interventionId, candidate)
   );
 }
 

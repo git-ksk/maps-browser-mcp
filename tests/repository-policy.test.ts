@@ -276,6 +276,7 @@ test("reference Cloud Run image provisions the bounded Linux normal-browser WebR
   assert.match(dockerfile, /openbox/);
   assert.match(dockerfile, /xdotool/);
   assert.match(dockerfile, /ffmpeg/);
+  assert.match(dockerfile, /sqlite3/);
   assert.match(dockerfile, /fonts-noto-cjk/);
   assert.match(dockerfile, /build-linux-xtest-helper\.sh/);
   assert.match(dockerfile, /build-linux-atspi-helper\.sh/);
