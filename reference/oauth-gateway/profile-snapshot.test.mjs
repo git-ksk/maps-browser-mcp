@@ -9,6 +9,7 @@ import {
   createProfileArchive,
   isExcludedProfilePath,
   loadProfileSnapshotConfig,
+  prepareProfileForFreshAgentVerification,
   restoreProfileArchive
 } from "./profile-snapshot.mjs";
 
@@ -17,6 +18,11 @@ test("profile snapshot config is disabled without a bucket", () => {
   assert.equal(config.enabled, false);
   assert.equal(config.required, false);
   assert.equal(config.keepSnapshots, 2);
+});
+
+test("profile snapshot default path matches the Maps runtime default", () => {
+  const config = loadProfileSnapshotConfig({});
+  assert.equal(config.profileDir, path.join(os.homedir(), ".maps-browser-mcp", "chrome-profile"));
 });
 
 test("profile snapshot config validates integer and prefix bounds", () => {
@@ -77,6 +83,48 @@ test("restore rejects parent traversal and symlink entries", async () => {
   }
 });
 
+
+
+
+test("pre-verification profile preparation round-trips the stopped profile locally without cloud publication", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-prepare-test-"));
+  try {
+    const profileDir = path.join(root, "profile");
+    await mkdir(path.join(profileDir, "Default", "Local Storage"), { recursive: true });
+    await mkdir(path.join(profileDir, "Default", "Cache"), { recursive: true });
+    await writeFile(path.join(profileDir, "Default", "Cookies"), "opaque-cookie-db");
+    await writeFile(path.join(profileDir, "Default", "Local Storage", "state"), "opaque-auth-state");
+    await writeFile(path.join(profileDir, "Default", "Cache", "discard"), "cache");
+    await writeFile(path.join(profileDir, "SingletonLock"), "runtime-only");
+
+    const config = {
+      enabled: true,
+      bucket: "unused-for-local-stage",
+      prefix: "maps-browser-mcp/profile",
+      profileDir,
+      required: false,
+      maxBytes: 16 * 1024 * 1024,
+      keepSnapshots: 2
+    };
+    const messages = [];
+    const result = await prepareProfileForFreshAgentVerification(config, {
+      logger: { error(message) { messages.push(message); } }
+    });
+
+    assert.equal(result.status, "prepared");
+    assert.ok(result.bytes > 0);
+    assert.match(result.sha256, /^[a-f0-9]{64}$/);
+    assert.equal(await readFile(path.join(profileDir, "Default", "Cookies"), "utf8"), "opaque-cookie-db");
+    assert.equal(await readFile(path.join(profileDir, "Default", "Local Storage", "state"), "utf8"), "opaque-auth-state");
+    await assert.rejects(readFile(path.join(profileDir, "Default", "Cache", "discard")), /ENOENT/);
+    await assert.rejects(readFile(path.join(profileDir, "SingletonLock")), /ENOENT/);
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /prepared stopped dedicated Chrome profile/);
+    assert.doesNotMatch(messages[0], /opaque-cookie-db|opaque-auth-state/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("cloud checkpoint uploads the archive through Bucket.upload with an explicit object destination", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-cloud-checkpoint-test-"));
@@ -150,3 +198,100 @@ async function symlinkCompat(target, linkPath) {
   const { symlink } = await import("node:fs/promises");
   await symlink(target, linkPath);
 }
+
+test("cloud checkpoint upload failure leaves the durable current pointer untouched", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-upload-failure-test-"));
+  try {
+    const profileDir = path.join(root, "profile");
+    await mkdir(path.join(profileDir, "Default"), { recursive: true });
+    await writeFile(path.join(profileDir, "Default", "Cookies"), "opaque-db");
+
+    const priorPointer = Buffer.from(`${JSON.stringify({
+      version: 1,
+      current: { object: "maps-browser-mcp/profile/snapshots/known-good.tar.gz", sha256: "a".repeat(64), bytes: 123, createdAt: "2026-09-05T00:00:00.000Z" }
+    })}\n`);
+    let pointerBytes = Buffer.from(priorPointer);
+    let pointerSaveCalls = 0;
+    const uploadFailure = new Error("upload failed");
+    const bucket = {
+      async upload() { throw uploadFailure; },
+      file(name) {
+        return {
+          async getMetadata() { return [{ generation: "7", size: String(pointerBytes.byteLength) }]; },
+          async download() { return [Buffer.from(pointerBytes)]; },
+          async save(buffer) { pointerSaveCalls += 1; pointerBytes = Buffer.from(buffer); },
+          async delete() {}
+        };
+      },
+      async getFiles() { return [[]]; }
+    };
+    const config = {
+      enabled: true,
+      bucket: "profile-bucket",
+      prefix: "maps-browser-mcp/profile",
+      profileDir,
+      required: false,
+      maxBytes: 16 * 1024 * 1024,
+      keepSnapshots: 2
+    };
+
+    await assert.rejects(
+      checkpointProfileToCloud(config, { storage: { bucket: () => bucket }, logger: { error() {} } }),
+      /upload failed/
+    );
+    assert.equal(pointerSaveCalls, 0);
+    assert.deepEqual(pointerBytes, priorPointer);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cloud checkpoint pointer publication failure preserves the prior current pointer", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-pointer-failure-test-"));
+  try {
+    const profileDir = path.join(root, "profile");
+    await mkdir(path.join(profileDir, "Default"), { recursive: true });
+    await writeFile(path.join(profileDir, "Default", "Cookies"), "opaque-db");
+
+    const pointerName = "maps-browser-mcp/profile/current.json";
+    const priorPointer = Buffer.from(`${JSON.stringify({
+      version: 1,
+      current: { object: "maps-browser-mcp/profile/snapshots/known-good.tar.gz", sha256: "b".repeat(64), bytes: 456, createdAt: "2026-09-05T00:00:00.000Z" }
+    })}\n`);
+    let pointerBytes = Buffer.from(priorPointer);
+    let pruneCalls = 0;
+    const bucket = {
+      async upload() { return [{}]; },
+      file(name) {
+        if (name === pointerName) {
+          return {
+            async getMetadata() { return [{ generation: "11", size: String(pointerBytes.byteLength) }]; },
+            async download() { return [Buffer.from(pointerBytes)]; },
+            async save() { throw new Error("pointer publish failed"); },
+            async delete() {}
+          };
+        }
+        return { async delete() { pruneCalls += 1; } };
+      },
+      async getFiles() { return [[{ name: "maps-browser-mcp/profile/snapshots/known-good.tar.gz" }]]; }
+    };
+    const config = {
+      enabled: true,
+      bucket: "profile-bucket",
+      prefix: "maps-browser-mcp/profile",
+      profileDir,
+      required: false,
+      maxBytes: 16 * 1024 * 1024,
+      keepSnapshots: 2
+    };
+
+    await assert.rejects(
+      checkpointProfileToCloud(config, { storage: { bucket: () => bucket }, logger: { error() {} } }),
+      /pointer publish failed/
+    );
+    assert.deepEqual(pointerBytes, priorPointer);
+    assert.equal(pruneCalls, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

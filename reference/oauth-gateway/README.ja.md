@@ -250,7 +250,7 @@ MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
 
 `MAPS_PROFILE_SNAPSHOT_REQUIRED=false` がdefaultです。初回起動でsnapshotが無い場合は空の専用profileでsigned-out起動します。snapshot欠落/破損時に起動自体を止めたい運用だけ `true` にします。
 
-`MAPS_PROFILE_SNAPSHOT_BUCKET` 設定時、entrypointは `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` をreference checkpoint providerへ自動配線します。これはcredential-safe transport共通です。Human surfaceをrevokeしてnormal Human browserを閉じた後、fresh Agent CDPで `signed_in` を確認し、Agent browserをclean stopしてprofileをcheckpointした**後**にだけHandoffをresumableにします。checkpoint失敗時は未永続化sign-inを成功扱いせずfail closedします。legacy `hosted_cdp` はcredential-safe Human controlでは無効のままです。
+`MAPS_PROFILE_SNAPSHOT_BUCKET` 設定時、entrypointは `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` をreference checkpoint providerへ自動配線します。これはcredential-safe transport共通です。Human surfaceをrevokeしてnormal Human browserを閉じた後、reference providerはdurable Cloud Storage pointerを更新せずlocal opaque archive/restore round-tripを先に実施します。その後fresh Agent CDPで `signed_in` を確認し、Agent browserをclean stopしてverified profileをcheckpointした**後**にだけHandoffをresumableにします。checkpoint失敗時は未永続化sign-inを成功扱いせずfail closedします。legacy `hosted_cdp` はcredential-safe Human controlでは無効のままです。
 
 snapshot helperは以下を保証します。
 
@@ -261,7 +261,7 @@ snapshot helperは以下を保証します。
 - cookie/token/account identifierを個別抽出・ログ出力しない
 - checkpointには `--browser-stopped` の明示が必要
 
-reference entrypointはCloud Runのgraceful `SIGTERM` 時も、private coreのbrowser shutdown完了後にcheckpointを試みます。core/gatewayのunexpected crashでは新snapshotを作りません。signed-in durabilityの主checkpointはcredential-safe Human authority revoke後、normal Human browser close、fresh `signed_in` verification、Agent Chromium clean stopを経た安全点へ結線済みです。これによりGoogleログイン直後のprofileを確実に保存できます。
+reference entrypointはCloud Runのgraceful `SIGTERM` だけを理由にprofileをpublishしません。durable publicationはcredential-safeな検証済みsign-in lifecycleに限定し、fresh coarse `signed_in`確認、Agent Chromium停止とexact-profile quiescence確認、その後のcheckpointという順序を必須にします。shutdown、未完了sign-in、停止/quiescence失敗では最後の正常なdurable pointerを維持します。
 
 停止済みbrowser deployment container内でのmaintenance command:
 

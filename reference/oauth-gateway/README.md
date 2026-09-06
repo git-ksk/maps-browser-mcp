@@ -263,7 +263,7 @@ MAPS_PROFILE_SNAPSHOT_MAX_BYTES=268435456
 
 `MAPS_PROFILE_SNAPSHOT_REQUIRED=false` is the default. A first boot with no object therefore starts with an empty dedicated profile. Set it to `true` only when an operator intentionally wants a missing/invalid snapshot to prevent startup.
 
-Whenever `MAPS_PROFILE_SNAPSHOT_BUCKET` is configured, the entrypoint automatically wires `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` to the reference checkpoint provider. This is credential-safe-transport agnostic: after the Human surface is revoked and the normal Human browser is closed, Maps verifies `signed_in` from a fresh Agent CDP attachment, cleanly stops the Agent browser, and checkpoints the profile **before** Handoff becomes resumable. A checkpoint failure therefore fails the intervention closed instead of silently accepting an unpersisted sign-in. Legacy `hosted_cdp` remains disabled for credential-safe Human control.
+Whenever `MAPS_PROFILE_SNAPSHOT_BUCKET` is configured, the entrypoint automatically wires `MAPS_BROWSER_STOPPED_CHECKPOINT_MODULE` to the reference checkpoint provider. This is credential-safe-transport agnostic: after the Human surface is revoked and the normal Human browser is closed, the reference provider first performs a local opaque archive/restore round-trip without updating the durable Cloud Storage pointer. Maps then verifies `signed_in` from a fresh Agent CDP attachment, cleanly stops the Agent browser, and checkpoints the verified profile **before** Handoff becomes resumable. A checkpoint failure therefore fails the intervention closed instead of silently accepting an unpersisted sign-in. Legacy `hosted_cdp` remains disabled for credential-safe Human control.
 
 The snapshot helper:
 
@@ -274,7 +274,7 @@ The snapshot helper:
 - never extracts or logs individual cookies/tokens/account identifiers;
 - requires an explicit `--browser-stopped` acknowledgement for checkpoints.
 
-The reference entrypoint also attempts a checkpoint after a graceful container `SIGTERM`, after the private core has completed its browser shutdown. An unexpected core/gateway crash does **not** create a new snapshot. The primary signed-in durability checkpoint should be wired to the hosted Human-Takeover `Done` lifecycle once the Linux takeover transport is available, so the freshly authenticated profile is captured immediately at a known browser-authority boundary.
+The reference entrypoint does **not** publish a profile merely because the container receives graceful `SIGTERM`. Durable publication is restricted to the credential-safe verified sign-in lifecycle: fresh coarse `signed_in` verification, Agent Chromium stop plus exact-profile quiescence, then checkpoint. Shutdown, incomplete sign-in, or stop/quiescence failure therefore preserves the last known-good durable pointer.
 
 Manual maintenance command inside a stopped-browser deployment container:
 

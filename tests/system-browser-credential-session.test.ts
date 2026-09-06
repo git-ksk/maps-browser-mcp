@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCredentialSafeChromeArgs,
+  commandUsesChromeProfile,
   parseLinuxWindowIds,
   parseLocalLinuxSingletonLockPid,
+  requestLinuxGracefulWindowClose,
   resolveLinuxExactWindowId,
+  waitForLinuxProfileProcessQuiescence,
   SystemBrowserCredentialSession
 } from "../src/browser/system-browser-credential-session.js";
 import { mkdtemp, symlink, rm } from "node:fs/promises";
@@ -42,6 +45,48 @@ test("Linux exact-window parser keeps only unique positive safe integer ids", ()
   assert.deepEqual(parseLinuxWindowIds("42\n42 77 invalid -1 0"), [42, 77]);
 });
 
+test("Linux profile-process matcher requires the exact dedicated user-data-dir argument", () => {
+  assert.equal(commandUsesChromeProfile([
+    "/usr/bin/chromium",
+    "--type=utility",
+    "--user-data-dir=/tmp/maps-profile"
+  ], "/tmp/maps-profile"), true);
+  assert.equal(commandUsesChromeProfile([
+    "/usr/bin/chromium",
+    "--user-data-dir=/tmp/maps-profile-other"
+  ], "/tmp/maps-profile"), false);
+});
+
+test("Linux profile-process quiescence waits for lingering Chromium children before returning", async () => {
+  const samples = [[91, 92], [92], []] as const;
+  let reads = 0;
+  let now = 0;
+  let waits = 0;
+  await waitForLinuxProfileProcessQuiescence("/tmp/maps-profile", {
+    timeoutMs: 1_000,
+    pollMs: 25,
+    readPids: async () => samples[Math.min(reads++, samples.length - 1)]!,
+    now: () => now,
+    wait: async (ms) => { now += ms; waits += 1; }
+  });
+  assert.equal(reads, 3);
+  assert.equal(waits, 2);
+});
+
+test("Linux profile-process quiescence fails closed when profile-bound Chromium never exits", async () => {
+  let now = 0;
+  await assert.rejects(
+    waitForLinuxProfileProcessQuiescence("/tmp/maps-profile", {
+      timeoutMs: 50,
+      pollMs: 25,
+      readPids: async () => [91],
+      now: () => now,
+      wait: async (ms) => { now += ms; }
+    }),
+    /still has Chromium processes/
+  );
+});
+
 test("Linux exact-window lookup requires one stable visible window owned by the normal Chrome PID", async () => {
   const calls: string[] = [];
   const windowId = await resolveLinuxExactWindowId(4242, ":99", {
@@ -62,6 +107,36 @@ test("Linux exact-window lookup requires one stable visible window owned by the 
     "getwindowpid 9001::99"
   ]);
   assert.equal(calls.some((call) => call.includes("getwindowname")), false);
+});
+
+test("Linux graceful close targets only the exact window still owned by the normal Chrome PID", async () => {
+  const calls: string[] = [];
+  const closed = await requestLinuxGracefulWindowClose(4242, 9001, ":99", {
+    runCommand: async (_executable, args, env) => {
+      calls.push(`${args.join(" ")}:${env.DISPLAY}`);
+      if (args[0] === "getwindowpid") return "4242\n";
+      if (args[0] === "windowclose") return "";
+      throw new Error("unexpected xdotool operation");
+    }
+  });
+  assert.equal(closed, true);
+  assert.deepEqual(calls, [
+    "getwindowpid 9001::99",
+    "windowclose 9001::99"
+  ]);
+});
+
+test("Linux graceful close refuses a stale or re-owned exact window", async () => {
+  const calls: string[] = [];
+  const closed = await requestLinuxGracefulWindowClose(4242, 9001, ":99", {
+    runCommand: async (_executable, args) => {
+      calls.push(args.join(" "));
+      if (args[0] === "getwindowpid") return "7777\n";
+      throw new Error("windowclose must not be attempted for a different owner");
+    }
+  });
+  assert.equal(closed, false);
+  assert.deepEqual(calls, ["getwindowpid 9001"]);
 });
 
 test("Linux exact-window lookup strips sensitive parent environment from xdotool", async () => {

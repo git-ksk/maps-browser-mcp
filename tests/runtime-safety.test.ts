@@ -292,7 +292,10 @@ test("Thin Takeover release fails closed if Agent-owned CDP authority appears du
 
 test("verified hosted sign-in checkpoint stops Chromium only while the intervention is still verifying", async () => {
   let chromeClosed = 0;
-  const chrome = { async close() { chromeClosed += 1; } } as ChromeProcess;
+  const chrome = {
+    async close() { throw new Error("checkpoint path must use quiescent close"); },
+    async closeForProfileCheckpoint() { chromeClosed += 1; }
+  } as ChromeProcess;
   const policy = {
     isAllowedMapsUrl(value: string) {
       try {
@@ -330,6 +333,36 @@ test("verified hosted sign-in checkpoint stops Chromium only while the intervent
   assert.equal(mutable.client, undefined);
   assert.equal(mutable.clientOwner, undefined);
   assert.equal(mutable.endpoint, undefined);
+  assert.equal(runtime.getActiveIntervention()?.status, "verifying");
+});
+
+
+test("profile checkpoint stop failure stays fail-closed before durable publication", async () => {
+  const chrome = {
+    async close() {},
+    async closeForProfileCheckpoint() { throw new Error("profile still busy"); }
+  } as ChromeProcess;
+  const policy = {
+    isAllowedMapsUrl(value: string) {
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname === "www.google.com" &&
+          (url.pathname === "/maps" || url.pathname.startsWith("/maps/"));
+      } catch { return false; }
+    }
+  } as PolicyEngine;
+  const runtime = new MapsBrowserRuntime(chrome, policy);
+  const boundary = runtime as unknown as { assertAllowedCurrentUrl(value: string): void };
+  assert.throws(
+    () => boundary.assertAllowedCurrentUrl("https://accounts.google.com/ServiceLogin"),
+    (error: unknown) => error instanceof BrowserRuntimeError && error.code === "HUMAN_INTERVENTION_REQUIRED"
+  );
+  const awaiting = runtime.getActiveIntervention();
+  assert.ok(awaiting);
+  const human = runtime.claimHumanControl(awaiting.id);
+  runtime.markHumanControlComplete(human.id);
+
+  await assert.rejects(runtime.stopBrowserForProfileCheckpoint(human.id), /profile still busy/);
   assert.equal(runtime.getActiveIntervention()?.status, "verifying");
 });
 

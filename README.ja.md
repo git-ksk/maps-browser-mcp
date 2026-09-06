@@ -210,7 +210,7 @@ maps_directions({ origin, destination, mode: "transit" })
 以下は `MAPS_V5_AUTHENTICATED_WORKFLOWS=true` がdedicated-profile / single-user gateを満たした場合だけ登録されます。
 
 - `maps_request_human_sign_in` — credential-safeなHuman-only sign-in ceremony。V5と `MAPS_CREDENTIAL_SAFE_HANDOFF=true` の両方が有効な場合だけ登録。form elicitation対応clientはMRTRを使い、非対応clientにはshort-livedなauthenticated takeover locatorだけを返してexplicit completion toolで完了する。credential入力やaccount選択は一切自動化しない
-- `maps_complete_human_sign_in` — explicitなnon-MRTR sign-in fallbackだけを完了し、Human authorityを先にrevoke、fresh Agent connectionで `signed_in` を検証してから、設定時のみstopped-profile checkpoint hookを実行
+- `maps_complete_human_sign_in` — explicitなnon-MRTR sign-in fallbackだけを完了し、Human authorityを先にrevoke、設定時は停止済みprofileをdeployment preparation hookでopaqueにround-tripしてからfresh Agent connectionで `signed_in` を検証し、その後だけdurable stopped-profile checkpoint hookを実行
 - `maps_cancel_human_sign_in` — explicitなnon-MRTR sign-in fallbackだけをcancelし、signed-in profile checkpointを作らずHuman surfaceをrevoke
 - `maps_read_handoff_diagnostics` — physical acceptance向けのread-only / content-free managed Handoff transport diagnostics。session/principal/target identity、browser content、Human input payload、credential/session material、network candidateは返さない
 - `maps_read_authenticated_readiness` — V5-A、identity-freeな `signed_in | signed_out | unknown` readinessのみ

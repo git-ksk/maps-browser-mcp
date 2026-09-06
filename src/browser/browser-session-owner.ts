@@ -6,6 +6,7 @@ export interface BrowserSessionOwner {
   readonly kind?: string;
   start(): Promise<number | BrowserAutomationEndpoint>;
   close(): Promise<void>;
+  closeForProfileCheckpoint?(): Promise<void>;
 }
 
 export function normalizeBrowserAutomationEndpoint(

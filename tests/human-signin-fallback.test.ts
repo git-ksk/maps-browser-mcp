@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const server = fs.readFileSync(path.join(root, "src/server.ts"), "utf8");
+const runtimeSource = fs.readFileSync(path.join(root, "src/browser/runtime.ts"), "utf8");
+const entrypoint = fs.readFileSync(path.join(root, "reference/oauth-gateway/entrypoint.sh"), "utf8");
 
 test("Human sign-in keeps MRTR for form-elicitation clients and uses an explicit fallback otherwise", () => {
   assert.match(
@@ -54,25 +56,52 @@ test("explicit completion revokes Human authority before fresh verification and 
   const brokerRevoke = source.indexOf("takeoverBroker.revokeForIntervention");
   const surfaceRevoke = source.indexOf("revokeCredentialSafeSurface");
   const release = source.indexOf("handoffLifecycleBridge.ensureVerifying");
-  const verify = source.indexOf("runtime.verifyCredentialSafeHumanIntervention");
-  const options = source.indexOf("credentialSafeVerificationOptions(active.id)");
+  const stagedVerify = source.indexOf("verifyCredentialSafeHumanInterventionAfterStoppedProfile(active.id)");
   assert.ok(brokerRevoke >= 0 && surfaceRevoke > brokerRevoke);
-  assert.ok(release > surfaceRevoke && verify > release && options > verify);
+  assert.ok(release > surfaceRevoke && stagedVerify > release);
 
   const helperStart = server.indexOf("function credentialSafeVerificationOptions");
   const helperEnd = server.indexOf("const nativeCredentialTakeover", helperStart);
   assert.ok(helperStart >= 0 && helperEnd > helperStart);
   const helper = server.slice(helperStart, helperEnd);
+  const preparation = helper.indexOf("stoppedProfilePreparation");
+  const verify = helper.indexOf("runtime.verifyCredentialSafeHumanIntervention");
   const stop = helper.indexOf("runtime.stopBrowserForProfileCheckpoint");
   const checkpoint = helper.indexOf("stoppedProfileCheckpoint");
+  assert.ok(preparation >= 0 && verify > preparation);
   assert.ok(stop >= 0 && checkpoint > stop);
 });
 
 
+test("successful credential-safe checkpoint rebuilds the fresh Maps surface through one shared post-checkpoint boundary", () => {
+  const helperStart = server.indexOf("async function prepareFreshMapsSurfaceAfterVerifiedProfileCheckpoint");
+  const helperEnd = server.indexOf("const nativeCredentialTakeover", helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const helper = server.slice(helperStart, helperEnd);
+  assert.match(helper, /!usedCredentialSafeSurface \|\| !credentialSafeProfileCheckpointEnabled/);
+  assert.match(helper, /runtime\.prepareFreshMapsSurfaceAfterProfileCheckpoint\(\)/);
+
+  const explicitStart = server.indexOf("async function completeExplicitHumanSignIn");
+  const explicitEnd = server.indexOf("async function cancelExplicitHumanSignIn", explicitStart);
+  assert.ok(explicitStart >= 0 && explicitEnd > explicitStart);
+  const explicit = server.slice(explicitStart, explicitEnd);
+  const explicitResume = explicit.indexOf("runtime.resumeAfterHumanIntervention(active.id)");
+  const explicitPrepare = explicit.indexOf("prepareFreshMapsSurfaceAfterVerifiedProfileCheckpoint(usedCredentialSafeSurface)");
+  assert.ok(explicitResume >= 0 && explicitPrepare > explicitResume);
+
+  const mrtrStart = server.indexOf("async function runToolWithHandoff");
+  const mrtrEnd = server.indexOf("function routeSendApprovalPrompt", mrtrStart);
+  assert.ok(mrtrStart >= 0 && mrtrEnd > mrtrStart);
+  const mrtr = server.slice(mrtrStart, mrtrEnd);
+  const mrtrResume = mrtr.indexOf("runtime.resumeAfterHumanIntervention(state.interventionId)");
+  const mrtrPrepare = mrtr.indexOf("prepareFreshMapsSurfaceAfterVerifiedProfileCheckpoint(usedCredentialSafeSurface)");
+  assert.ok(mrtrResume >= 0 && mrtrPrepare > mrtrResume);
+});
+
 test("deployment profile checkpoint is credential-safe-transport agnostic", () => {
   assert.match(server, /credentialSafeProfileCheckpointEnabled = Boolean\(config\.browserProfileCheckpoint\.module\)/);
-  assert.match(server, /credentialSafeVerificationOptions\(active\.id\)/);
-  assert.match(server, /credentialSafeVerificationOptions\(state\.interventionId\)/);
+  assert.match(server, /verifyCredentialSafeHumanInterventionAfterStoppedProfile\(active\.id\)/);
+  assert.match(server, /verifyCredentialSafeHumanInterventionAfterStoppedProfile\(state\.interventionId\)/);
   assert.doesNotMatch(server, /usedHostedBrowserSurface/);
   assert.doesNotMatch(server, /providerKind === "hosted-browser-takeover"[\s\S]{0,400}stoppedProfileCheckpoint/);
 });
@@ -122,4 +151,23 @@ test("consumer cancellation never masquerades as Human Done", () => {
   assert.match(source, /takeoverBroker\.revokeForIntervention/);
   assert.match(source, /runtime\.cancelHumanIntervention/);
   assert.doesNotMatch(source, /ensureVerifying|releaseHumanAuthorityForVerification|markHumanControlComplete/);
+});
+
+test("durable profile publication stays behind verified signed-in readiness", () => {
+  const start = runtimeSource.indexOf("async verifyCredentialSafeHumanIntervention");
+  const end = runtimeSource.indexOf("async stopBrowserForProfileCheckpoint", start);
+  assert.ok(start >= 0 && end > start);
+  const source = runtimeSource.slice(start, end);
+  const signedInGate = source.indexOf('readiness !== "signed_in"');
+  const checkpointBoundary = source.indexOf("options.beforeMarkVerified");
+  assert.ok(signedInGate >= 0 && checkpointBoundary > signedInGate);
+});
+
+test("container shutdown never publishes a new profile snapshot", () => {
+  const start = entrypoint.indexOf("graceful_shutdown() {");
+  const end = entrypoint.indexOf("exit_cleanup()", start);
+  assert.ok(start >= 0 && end > start);
+  const shutdown = entrypoint.slice(start, end);
+  assert.doesNotMatch(shutdown, /profile_checkpoint|checkpoint --browser-stopped|profile-snapshot\.mjs checkpoint/);
+  assert.doesNotMatch(entrypoint, /profile_checkpoint\(\)/);
 });

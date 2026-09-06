@@ -11,6 +11,7 @@ import { PolicyEngine, PolicyError } from "../policy/policy-engine.js";
 import {
   AUTHENTICATED_READINESS_EXPRESSION,
   parseAuthenticatedReadiness,
+  waitForAuthenticatedReadinessAfterHuman,
   type AuthenticatedMapsReadiness
 } from "./authenticated-readiness.js";
 import { classifyGoogleInterventionSurface } from "./intervention-surface.js";
@@ -330,7 +331,9 @@ export class MapsBrowserRuntime {
     const url = await this.currentUrlUnchecked(client);
     this.assertAllowedCurrentUrl(url);
     await this.assertNoInlineChallenge(undefined, client);
-    const readiness = await this.readAuthenticatedReadinessUnchecked(client);
+    const readiness = await waitForAuthenticatedReadinessAfterHuman(
+      () => this.readAuthenticatedReadinessProbe(client)
+    );
     if (readiness === "signed_out") {
       throw new BrowserRuntimeError(
         "HUMAN_INTERVENTION_REQUIRED",
@@ -365,11 +368,41 @@ export class MapsBrowserRuntime {
     await this.resetClient();
     this.endpoint = undefined;
     this.invalidateSemanticState(false);
-    await this.chrome.close();
+    if (this.chrome.closeForProfileCheckpoint) {
+      await this.chrome.closeForProfileCheckpoint();
+    } else {
+      await this.chrome.close();
+    }
   }
 
   resumeAfterHumanIntervention(interventionId: string): ResumeDecision<MapsAction> {
     return this.handoff.resumeAgent(interventionId);
+  }
+
+  /**
+   * Re-open a fresh Maps home surface only after a verified credential-safe profile checkpoint
+   * has completed and the Human intervention has been fully resumed/fenced. This establishes
+   * the documented fresh-readiness boundary without replaying any interrupted Maps action.
+   */
+  async prepareFreshMapsSurfaceAfterProfileCheckpoint(): Promise<void> {
+    if (this.handoff.getActive()) {
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Fresh Maps readiness preparation requires the Human intervention to be fully fenced first"
+      );
+    }
+
+    await this.resetClient();
+    this.endpoint = undefined;
+    this.invalidateSemanticState();
+    await this.chrome.close();
+
+    const client = await this.getClientUnchecked("automation");
+    const loaded = client.Page.loadEventFired();
+    await client.Page.navigate({ url: "https://www.google.com/maps" });
+    await Promise.race([loaded, sleep(8_000)]);
+    const url = await this.currentUrlUnchecked(client);
+    this.assertAllowedCurrentUrl(url);
   }
 
   cancelHumanIntervention(interventionId: string): void {
@@ -767,15 +800,19 @@ export class MapsBrowserRuntime {
     }
   }
 
+  private async readAuthenticatedReadinessProbe(client: CdpClient): Promise<AuthenticatedMapsReadiness> {
+    const result = await client.Runtime.evaluate({
+      expression: AUTHENTICATED_READINESS_EXPRESSION,
+      returnByValue: true,
+      awaitPromise: true
+    });
+    return parseAuthenticatedReadiness(result.result.value);
+  }
+
   private async readAuthenticatedReadinessUnchecked(client: CdpClient): Promise<AuthenticatedMapsReadiness> {
     const deadline = Date.now() + 1_500;
     for (;;) {
-      const result = await client.Runtime.evaluate({
-        expression: AUTHENTICATED_READINESS_EXPRESSION,
-        returnByValue: true,
-        awaitPromise: true
-      });
-      const readiness = parseAuthenticatedReadiness(result.result.value);
+      const readiness = await this.readAuthenticatedReadinessProbe(client);
       if (readiness !== "unknown" || Date.now() >= deadline) return readiness;
       await sleep(100);
     }
