@@ -185,6 +185,18 @@ Combined acceptance lineではこの境界を二相candidate方式へ置換済�
 
 次のHuman操作は、この診断入りimmutable Cloud Run revisionがReadyかつtraffic/config差分確認済みになるまで実施しない。
 
+### 実機run後に必ず機械確認するcross-boundary invariants
+
+Human試験後に追加の仮説診断を考え始めず、あらかじめ以下を同じrunの証拠として確認する。
+
+- Cloud Loggingのresource metadataで対象 `profile_lifecycle_diagnostics` / `managed_handoff_diagnostics` を絞り、`revision_name` が診断revisionだけ、かつ **distinct `instanceId` count = 1** であることを確認する。instanceId値そのものは記録・共有しない。
+- candidate stage直後の `profile_store_diagnostics:candidate_stage_pointer_observed` で `pointerGenerationBefore == pointerGenerationAfter` かつ `pointerUnchanged=true` を確認する。
+- A=`signed_in` の場合のみ、promotion後の `candidate_promote_pointer_observed` で `pointerAdvanced=true` / `currentMatchesCandidate=true` を確認する。
+- fresh revision Cでは `profile_restore_succeeded` が `source=current`、promotion後pointer generation、`digestVerified=true` を示すことを確認してからfresh Agent readinessを判定する。object名・digest値自体はログに出さない。
+- Handoff側は既存のcontent-free `managed_handoff_diagnostics` を同じ時間窓で照合し、Human authority release/revokeとtransport teardownがprofile lifecycleより前に成立していることを確認する。
+
+これにより、Cloud Run continuity / Handoff authority / Human browser / X11 / process / profile flush / candidate / pointer / fresh Agent A / promotion / C restoreまでを1回の試験で閉じる。
+
 ## Safety / execution rules for resumption
 
 - Never inspect or log account identity, cookie/token contents, credentials, Human-entered text, browser/frame content, or takeover secrets.

@@ -164,14 +164,15 @@ function createStorageHarness() {
   const bucket = {
     async upload(filePath, options) {
       uploads += 1;
-      const bytes = (await readFile(filePath)).byteLength;
+      const data = await readFile(filePath);
+      const bytes = data.byteLength;
       const generation = String(nextGeneration++);
       const metadata = {
         generation,
         size: String(bytes),
         metadata: { ...options.metadata.metadata }
       };
-      objects.set(options.destination, { metadata });
+      objects.set(options.destination, { metadata, data: Buffer.from(data) });
       return [{ async getMetadata() { return [metadata]; } }];
     },
     file(name) {
@@ -200,6 +201,15 @@ function createStorageHarness() {
           const object = objects.get(name);
           if (!object) throw missingObjectError();
           return [object.metadata];
+        },
+        async download({ destination } = {}) {
+          const object = objects.get(name);
+          if (!object) throw missingObjectError();
+          if (destination) {
+            await writeFile(destination, object.data);
+            return [];
+          }
+          return [Buffer.from(object.data)];
         },
         async delete() {
           deleted.push(name);
@@ -252,9 +262,17 @@ test("candidate staging uploads once, returns bounded metadata, and leaves the l
     assert.equal(await readFile(path.join(profileDir, "Default", "Cache", "discard"), "utf8"), "cache");
     assert.equal(await readFile(path.join(profileDir, "SingletonLock"), "utf8"), "runtime-only");
     assert.equal(await readFile(path.join(profileDir, "Default", "Local Storage", "state"), "utf8"), "opaque-auth-state");
-    assert.equal(messages.length, 1);
-    assert.match(messages[0], /durable pointer unchanged/);
-    assert.doesNotMatch(messages[0], /opaque-cookie-db|opaque-auth-state|opaque-local-state|opaque-preferences/);
+    assert.equal(messages.length, 2);
+    const stageDiagnostic = JSON.parse(messages[0].replace(/^\[maps-profile\] /, ""));
+    assert.deepEqual(stageDiagnostic, {
+      type: "profile_store_diagnostics",
+      event: "candidate_stage_pointer_observed",
+      pointerGenerationBefore: "0",
+      pointerGenerationAfter: "0",
+      pointerUnchanged: true
+    });
+    assert.match(messages[1], /durable pointer unchanged/);
+    assert.doesNotMatch(messages.join("\n"), /opaque-cookie-db|opaque-auth-state|opaque-local-state|opaque-preferences/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -273,9 +291,10 @@ test("verified candidate promotion advances current atomically without a second 
     });
     await writeFile(path.join(profileDir, "Default", "Local Storage", "state"), "post-stage-agent-mutation");
 
+    const promotionMessages = [];
     const promoted = await promoteProfileCandidate(config, staged.candidate, {
       storage: harness.storage,
-      logger: { error() {} }
+      logger: { error(message) { promotionMessages.push(message); } }
     });
     assert.equal(promoted.status, "promoted");
     assert.equal(harness.uploads, 1);
@@ -284,7 +303,46 @@ test("verified candidate promotion advances current atomically without a second 
     assert.equal(pointer.current.object, staged.candidate.object);
     assert.equal(pointer.current.sha256, staged.candidate.sha256);
     assert.equal(pointer.current.bytes, staged.candidate.bytes);
+    const promotionDiagnostic = JSON.parse(promotionMessages[0].replace(/^\[maps-profile\] /, ""));
+    assert.equal(promotionDiagnostic.type, "profile_store_diagnostics");
+    assert.equal(promotionDiagnostic.event, "candidate_promote_pointer_observed");
+    assert.equal(promotionDiagnostic.pointerGenerationBefore, "0");
+    assert.match(promotionDiagnostic.pointerGenerationAfter, /^\d+$/);
+    assert.equal(promotionDiagnostic.pointerAdvanced, true);
+    assert.equal(promotionDiagnostic.currentMatchesCandidate, true);
     assert.equal(await readFile(path.join(profileDir, "Default", "Local Storage", "state"), "utf8"), "post-stage-agent-mutation");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("fresh restore records that the promoted current pointer was selected without logging object identity", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-profile-restore-diagnostic-test-"));
+  try {
+    const profileDir = await makeChromeProfile(root);
+    const harness = createStorageHarness();
+    const config = profileConfig(profileDir);
+    const staged = await stageProfileCandidate(config, {
+      storage: harness.storage,
+      sqliteIntegrityCheck: async () => {},
+      logger: { error() {} }
+    });
+    await promoteProfileCandidate(config, staged.candidate, { storage: harness.storage, logger: { error() {} } });
+    await rm(profileDir, { recursive: true, force: true });
+    const messages = [];
+    const restored = await restoreProfileFromCloud(config, {
+      storage: harness.storage,
+      logger: { error(message) { messages.push(message); } }
+    });
+    assert.equal(restored.status, "restored");
+    const diagnostic = JSON.parse(messages[0].replace(/^\[maps-profile\] /, ""));
+    assert.equal(diagnostic.type, "profile_store_diagnostics");
+    assert.equal(diagnostic.event, "profile_restore_succeeded");
+    assert.equal(diagnostic.source, "current");
+    assert.match(diagnostic.pointerGeneration, /^\d+$/);
+    assert.equal(diagnostic.bytes, staged.candidate.bytes);
+    assert.equal(diagnostic.digestVerified, true);
+    assert.doesNotMatch(messages.join("\n"), /candidates\/|snapshots\/|[a-f0-9]{64}/i);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

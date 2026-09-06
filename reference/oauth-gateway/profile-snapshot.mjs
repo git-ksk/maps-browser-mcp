@@ -16,6 +16,29 @@ const DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 const DEFAULT_KEEP_SNAPSHOTS = 2;
 const DEFAULT_KEEP_CANDIDATES = 3;
 const execFileAsync = promisify(execFile);
+const PROFILE_STORE_DIAGNOSTIC_EVENTS = new Set([
+  "candidate_stage_pointer_observed",
+  "candidate_promote_pointer_observed",
+  "profile_restore_succeeded",
+  "profile_restore_failed"
+]);
+
+function profileStoreDiagnostic(logger, event, fields = {}) {
+  if (!PROFILE_STORE_DIAGNOSTIC_EVENTS.has(event)) throw new Error("unsupported profile store diagnostic event");
+  const allowed = new Set([
+    "pointerGenerationBefore", "pointerGenerationAfter", "pointerUnchanged", "pointerAdvanced",
+    "currentMatchesCandidate", "source", "pointerGeneration", "bytes", "digestVerified", "state"
+  ]);
+  for (const [key, value] of Object.entries(fields)) {
+    if (!allowed.has(key)) throw new Error(`unsupported profile store diagnostic field: ${key}`);
+    if (typeof value === "boolean") continue;
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) continue;
+    if (typeof value === "string" && /^(?:\d+|current|previous|fallback|unavailable|failed)$/.test(value)) continue;
+    throw new Error(`invalid profile store diagnostic value: ${key}`);
+  }
+  logger.error(`[maps-profile] ${JSON.stringify({ type: "profile_store_diagnostics", event, ...fields })}`);
+}
+
 
 const EXCLUDED_SEGMENTS = new Set([
   "Cache",
@@ -300,18 +323,25 @@ export async function restoreProfileFromCloud(config, { storage = new Storage(),
   const bucket = storage.bucket(config.bucket);
 
   let candidates = [];
+  let restorePointerGeneration = "0";
   try {
     const pointerState = await readPointer(bucket, config);
-    if (pointerState) candidates = [pointerState.pointer.current, pointerState.pointer.previous].filter(Boolean);
+    if (pointerState) {
+      restorePointerGeneration = String(pointerState.generation ?? "0");
+      candidates = [
+        pointerState.pointer.current ? { ...pointerState.pointer.current, diagnosticSource: "current" } : undefined,
+        pointerState.pointer.previous ? { ...pointerState.pointer.previous, diagnosticSource: "previous" } : undefined
+      ].filter(Boolean);
+    }
   } catch (error) {
     logger.error(`[maps-profile] pointer read failed: ${error instanceof Error ? error.message : "unknown_error"}`);
   }
 
   if (candidates.length === 0) {
-    candidates = await listFallbackCandidates(bucket, config).catch((error) => {
+    candidates = (await listFallbackCandidates(bucket, config).catch((error) => {
       if (error?.code === 404) return [];
       throw error;
-    });
+    })).map((candidate) => ({ ...candidate, diagnosticSource: "fallback" }));
   }
 
   if (candidates.length === 0) {
@@ -326,11 +356,22 @@ export async function restoreProfileFromCloud(config, { storage = new Storage(),
       const archivePath = path.join(workDir, "profile.tar.gz");
       await rm(archivePath, { force: true });
       try {
-        await downloadSnapshot(bucket, candidate, config, archivePath);
+        const downloaded = await downloadSnapshot(bucket, candidate, config, archivePath);
         await restoreProfileArchive(archivePath, config.profileDir, { maxBytes: config.maxBytes });
+        profileStoreDiagnostic(logger, "profile_restore_succeeded", {
+          source: candidate.diagnosticSource ?? "fallback",
+          pointerGeneration: restorePointerGeneration,
+          bytes: downloaded.bytes,
+          digestVerified: Boolean(candidate.sha256)
+        });
         logger.error("[maps-profile] restored persisted dedicated Chrome profile");
         return { status: "restored", object: candidate.object };
       } catch (error) {
+        profileStoreDiagnostic(logger, "profile_restore_failed", {
+          source: candidate.diagnosticSource ?? "fallback",
+          pointerGeneration: restorePointerGeneration,
+          state: "failed"
+        });
         logger.error(`[maps-profile] snapshot restore candidate failed: ${error instanceof Error ? error.message : "unknown_error"}`);
       }
     }
@@ -487,6 +528,16 @@ export async function stageProfileCandidate(config, options = {}) {
     await pruneCandidates(bucket, config, protectedObjects).catch((error) => {
       logger.error(`[maps-profile] stale candidate pruning failed: ${error instanceof Error ? error.message : "unknown_error"}`);
     });
+    let pointerGenerationAfter = "unavailable";
+    try {
+      const after = await readPointer(bucket, config);
+      pointerGenerationAfter = String(after?.generation ?? "0");
+    } catch {}
+    profileStoreDiagnostic(logger, "candidate_stage_pointer_observed", {
+      pointerGenerationBefore: basePointerGeneration,
+      pointerGenerationAfter,
+      pointerUnchanged: pointerGenerationAfter !== "unavailable" && pointerGenerationAfter === basePointerGeneration
+    });
     logger.error(`[maps-profile] staged stopped profile candidate (${candidate.bytes} bytes, ${candidate.validation.archiveEntries} entries, ${candidate.validation.sqliteDatabasesChecked} SQLite checks); durable pointer unchanged`);
     return { status: "staged", candidate };
   } finally {
@@ -521,6 +572,19 @@ export async function promoteProfileCandidate(config, candidate, { storage = new
     validation: "crc32c",
     metadata: { cacheControl: "no-store", contentType: "application/json" },
     preconditionOpts: { ifGenerationMatch: generationMatch }
+  });
+  let pointerGenerationAfter = "unavailable";
+  let currentMatchesCandidate = false;
+  try {
+    const after = await readPointer(bucket, config);
+    pointerGenerationAfter = String(after?.generation ?? "0");
+    currentMatchesCandidate = after?.pointer.current.object === checked.object;
+  } catch {}
+  profileStoreDiagnostic(logger, "candidate_promote_pointer_observed", {
+    pointerGenerationBefore: pointerGeneration,
+    pointerGenerationAfter,
+    pointerAdvanced: pointerGenerationAfter !== "unavailable" && pointerGenerationAfter !== pointerGeneration,
+    currentMatchesCandidate
   });
   const protectedObjects = [current.object, prior?.object, pointerState?.pointer.previous?.object].filter(Boolean);
   await pruneCandidates(bucket, config, protectedObjects).catch((error) => {

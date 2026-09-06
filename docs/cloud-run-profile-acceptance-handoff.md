@@ -155,6 +155,18 @@ Do not add more ad-hoc probes after the next Human run. The next immutable candi
 
 Do not request another Human sign-in until this diagnostic build is deployed as an immutable Ready Cloud Run revision and its runtime shape is confirmed unchanged.
 
+### Mandatory cross-boundary invariants after the physical run
+
+Do not invent additional probes after the Human trial. Treat the following predeclared checks as part of the same run evidence:
+
+- Filter Cloud Logging to the diagnostic revision and the `profile_lifecycle_diagnostics` / `managed_handoff_diagnostics` records; require exactly one revision and **distinct `instanceId` count = 1**. Do not record or share the instanceId value itself.
+- Immediately after candidate staging, require `profile_store_diagnostics:candidate_stage_pointer_observed` to report identical before/after pointer generations and `pointerUnchanged=true`.
+- Only if A=`signed_in`, require `candidate_promote_pointer_observed` to report `pointerAdvanced=true` and `currentMatchesCandidate=true`.
+- On fresh revision C, require `profile_restore_succeeded` with `source=current`, the promoted pointer generation, and `digestVerified=true` before classifying fresh-Agent readiness. Object names and digest values are never logged.
+- Correlate the existing content-free `managed_handoff_diagnostics` in the same time window so Human authority release/revoke and transport teardown are known to precede profile reconstruction.
+
+This closes Cloud Run continuity, Handoff authority, Human browser, X11, process lifecycle, profile flush, candidate staging, pointer state, fresh Agent A, promotion, and C restore in one bounded run.
+
 ## Safety / execution rules
 
 - Never inspect or log account identity, cookie/token contents, credentials, Human-entered text, browser/frame content, or takeover secrets.
