@@ -17,9 +17,14 @@ import {
 import { classifyGoogleInterventionSurface } from "./intervention-surface.js";
 import { normalizeBrowserAutomationEndpoint, type BrowserAutomationEndpoint, type BrowserSessionOwner } from "./browser-session-owner.js";
 import { CdpScreencastCapture, FramePipeline, LatencyMetrics, type CdpScreencastPage } from "../takeover-runtime/index.js";
+import { formatProfileLifecycleDiagnostic } from "./profile-lifecycle-diagnostics.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function lifecycleLog(event: Parameters<typeof formatProfileLifecycleDiagnostic>[0], fields: Parameters<typeof formatProfileLifecycleDiagnostic>[1]): void {
+  console.error(`[maps-browser-mcp] ${formatProfileLifecycleDiagnostic(event, fields)}`);
 }
 
 type CdpClient = Awaited<ReturnType<typeof CDP>>;
@@ -325,16 +330,42 @@ export class MapsBrowserRuntime {
       );
     }
 
+    lifecycleLog("fresh_agent_verification_started", { credentialSafe: true });
+    if (this.chrome.diagnosticsSnapshot) {
+      lifecycleLog("fresh_agent_browser_preflight", await this.chrome.diagnosticsSnapshot());
+    }
     const client = await this.getClientUnchecked();
+    lifecycleLog("fresh_agent_cdp_ready", { cdpReady: true });
+    if (this.chrome.diagnosticsSnapshot) {
+      lifecycleLog("fresh_agent_browser_ready", await this.chrome.diagnosticsSnapshot());
+    }
     const loaded = client.Page.loadEventFired();
     await client.Page.navigate({ url: "https://www.google.com/maps" });
     await Promise.race([loaded, sleep(8_000)]);
     const url = await this.currentUrlUnchecked(client);
     this.assertAllowedCurrentUrl(url);
     await this.assertNoInlineChallenge(undefined, client);
+    let readinessSummary: {
+      finalState: AuthenticatedMapsReadiness;
+      elapsedMs: number;
+      samples: number;
+      signedInSamples: number;
+      signedOutSamples: number;
+      unknownSamples: number;
+      transitions: number;
+    } | undefined;
     const readiness = await waitForAuthenticatedReadinessAfterHuman(
-      () => this.readAuthenticatedReadinessProbe(client)
+      () => this.readAuthenticatedReadinessProbe(client),
+      {
+        onStateChange: (state, elapsedMs) => {
+          lifecycleLog("fresh_agent_readiness_transition", { state, elapsedMs });
+        },
+        onComplete: (summary) => { readinessSummary = summary; }
+      }
     );
+    if (readinessSummary) {
+      lifecycleLog("fresh_agent_readiness_final", { ...readinessSummary });
+    }
     if (readiness === "signed_out") {
       throw new BrowserRuntimeError(
         "HUMAN_INTERVENTION_REQUIRED",
@@ -366,6 +397,7 @@ export class MapsBrowserRuntime {
         "Browser profile checkpoint cannot stop Chromium while Human-owned CDP authority remains attached"
       );
     }
+    lifecycleLog("agent_checkpoint_stop_started", { checkpointStop: true });
     await this.resetClient();
     this.endpoint = undefined;
     this.invalidateSemanticState(false);
@@ -374,6 +406,7 @@ export class MapsBrowserRuntime {
     } else {
       await this.chrome.close();
     }
+    lifecycleLog("agent_checkpoint_stopped", { checkpointStop: true });
   }
 
   resumeAfterHumanIntervention(interventionId: string): ResumeDecision<MapsAction> {

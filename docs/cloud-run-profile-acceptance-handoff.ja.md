@@ -103,17 +103,85 @@ Combined acceptance lineではこの境界を二相candidate方式へ置換済�
 
 一時的にtakeover画面の更新停止も見えたが、利用端末側の電波状況によるものと確認できたため、本acceptanceではWSS regression evidenceとして扱わない。
 
-## Next decisive test
+## 2026-09-06 fact matrix before the next Human trial
 
-A=`signed_out` が確定したため、同じHuman sign-inを繰り返さず、次はarchive/GCS restoreより前の境界だけを切り分ける。
+次のHuman sign-inを行う前に、これまでの実測を以下で固定する。
 
-1. Human Chromeのgraceful shutdown完了とexact-profile process quiescenceをcontent-free metadataで確認する。
-2. shutdown直後、candidate stage前後でlocal profile directoryを変更せず、fresh Chromeを同じprofileで起動する。
-3. coarse readinessだけで `signed_in | signed_out | unknown` を判定する。
-4. `signed_out` が続く場合はChrome shutdown/flushまたはLinux/Cloud Run上のsession materializationを主因候補としてさらに分離する。
-5. Aがstable `signed_in` へ変わった時点でのみ、既存のcandidate promotionとfresh revision C acceptanceへ戻る。
+### 確定事実
 
-安全境界は維持する: **fresh Agent stable `signed_in` が成立しない限りcurrentへpromoteしない**。
+- Macローカルでは同系統のprofile再利用が成立した一方、Cloud Run combined acceptanceではHuman側ログイン完了/Done後のfresh Agent Aが複数回 `signed_out` になった。
+- Human Chrome stop後のunpublished candidate stageは成功しており、archive structure / bounded SQLite `quick_check` / GCS upload metadata verificationは通っている。
+- AはGCS restoreを一度も行わず、**同じCloud Run instance内の変更していないlocal profile directory**をfresh Agentが開いた時点で失敗した。したがってGCS restore round-tripはA失敗より後段であり、主因候補から外れる。
+- `current.json` pointerはA失敗時に進まず、未検証candidateはcurrentへpromoteされていない。fail-closed境界は期待どおり。
+- fresh Agentをheadedで動かしてもA=`signed_out`だったため、headed → headless切替は主因候補から外れる。
+- Human Chromeのgraceful close待機を2秒から10秒へ延長しても、10秒後にSIGTERM escalationが再現した。
+- Human Chromeへ `--disable-background-mode` を追加しても、10秒後のSIGTERM escalationとA=`signed_out`が再現した。background mode単独原因説は弱い。
+- takeover画面更新停止の一件は利用端末側の電波状況によるものと確認済みで、今回のprofile durability原因として扱わない。
+
+### まだ未確定
+
+- `xdotool windowclose` が正常に受理された後、exact X11 windowが500ms/10s時点で実際に消えているか。
+- windowが消えているのにbrowser root processだけが残るのか、window自体が残っているのか。
+- 10秒待機中にChromiumのdescendant/process-role構成がどう変化しているか。
+- Human Chrome close前後でprofile core metadata、Cookie DB file metadata、WAL/SHM sidecar、Singleton lockがどう変化するか。
+- SIGTERM後にNode `ChildProcess` が `exitCode` と `signalCode` のどちらで終了を表しているか。現行制御は既存挙動を変えず、診断では両方を区別する。
+- candidate stage直後のfresh Agentで、readinessが `unknown → signed_out` なのか、最初から継続して `signed_out` なのか、途中にtransient `signed_in` が出るのか。
+- Aが成功した場合のAgent clean stop → candidate promotion → fresh Cloud Run Cは未実施。
+
+## One-shot comprehensive diagnostic gate
+
+次回は場当たり的な追加診断をせず、以下の全境界を1回で取得してから判断する。診断はすべてcontent-freeで、PID/window ID/profile path/account identity/cookie値/token/credential/Human入力/browser contentは記録しない。
+
+1. **Pre-Human profile baseline**
+   - core profile file presence/aggregate bytes
+   - Cookie DB file presence/aggregate bytes
+   - Cookie WAL/SHM sidecar presence/aggregate bytes
+   - Singleton lock count
+2. **Human Chrome startup / exact-window bind**
+   - normal Chrome start success
+   - `--disable-background-mode` enabled fact
+   - profile-bound process count
+   - descendant count + bounded role counts (`renderer/gpu/utility/zygote/other`)
+   - exact X11 window bound success
+3. **Done/revoke → graceful close**
+   - `windowclose` accepted yes/no
+   - 500ms sample: exact-window state (`owned|missing|reowned|unavailable`), process summary, profile metadata
+   - 10s sample: same fields before any signal escalation
+4. **Signal escalation**
+   - whether SIGTERM was sent
+   - 2s post-SIGTERM: root state (`running|exited_code|exited_signal`), process summary, profile metadata
+   - whether SIGKILL was sent under the current existing control semantics
+   - 1s post-SIGKILL equivalent sample
+5. **Exact-profile quiescence**
+   - no profile-bound Chromium process remaining
+   - post-quiescence profile metadata + lock count
+6. **Candidate stage**
+   - archive bytes
+   - archive entry count
+   - required-profile-file count
+   - bounded SQLite check count
+   - base durable pointer generation
+   - current pointer remains unchanged until verification
+7. **Fresh Agent A**
+   - fresh CDP start/ready boundary
+   - readiness state-transition sequence only (`signed_in|signed_out|unknown`)
+   - final elapsed time, sample counts, transition count
+8. **Only if A=`signed_in`**
+   - Agent checkpoint stop boundary
+   - exact candidate promotion
+   - then fresh revision C restore acceptance
+
+### One-run interpretation matrix
+
+- `windowclose accepted=false` → X11 exact-window close request pathが第一原因候補。
+- `accepted=true` かつ10秒後も `windowState=owned` → X11/Openbox/Chromium window shutdown pathを第一候補。
+- `windowState=missing` かつroot/processがrunning → Chromium internal keepalive/process-lifecycleを第一候補。
+- SIGTERM後 `rootState=exited_signal` なのに現行制御がさらにSIGKILLへ進む → Node `exitCode` / `signalCode` 判定バグを独立fix対象として確定。
+- post-quiescence profile metadataがHuman開始前から変化していない → Human session materialization/flushがprofileへ反映されていない可能性が高い。
+- profile metadataが明確に更新済みでA=`signed_out` → fresh Agent再起動時のLinux Chromium session materialization / cookie decryption / profile compatibility側へ絞る。
+- A=`signed_in` → shutdown/profile materialization境界は突破。candidate promotion後にCへ進む。
+
+次のHuman操作は、この診断入りimmutable Cloud Run revisionがReadyかつtraffic/config差分確認済みになるまで実施しない。
 
 ## Safety / execution rules for resumption
 

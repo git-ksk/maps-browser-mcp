@@ -3,6 +3,12 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { waitForLinuxProfileProcessQuiescence } from "./profile-process-quiescence.js";
+import {
+  readBrowserRuntimeFingerprint,
+  readLinuxChromeProcessSummary,
+  readLinuxGraphicsSummary,
+  readProfileMetadataSummary
+} from "./profile-lifecycle-diagnostics.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -126,6 +132,21 @@ export class ChromeProcess {
   private warnedUnsandboxed = false;
 
   constructor(private readonly options: ChromeProcessOptions) {}
+
+  async diagnosticsSnapshot() {
+    const executable = findChromeExecutable(this.options.executable);
+    return {
+      runtime: await readBrowserRuntimeFingerprint(executable, {
+        headless: this.options.headless,
+        remoteDebugging: true,
+        backgroundModeDisabled: false,
+        noSandbox: process.platform === "linux" && Boolean(this.options.allowUnsandboxedChromium)
+      }),
+      graphics: await readLinuxGraphicsSummary(process.env.DISPLAY),
+      process: await readLinuxChromeProcessSummary(this.child?.pid, this.options.profileDir, this.child),
+      profile: await readProfileMetadataSummary(this.options.profileDir)
+    };
+  }
 
   async start(): Promise<number> {
     if (this.options.externalCdpPort !== undefined) {

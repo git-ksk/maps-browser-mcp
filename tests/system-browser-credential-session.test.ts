@@ -8,6 +8,7 @@ import {
   parseLinuxWindowIds,
   parseLocalLinuxSingletonLockPid,
   requestLinuxGracefulWindowClose,
+  readLinuxExactWindowState,
   resolveLinuxExactWindowId,
   waitForLinuxProfileProcessQuiescence,
   SystemBrowserCredentialSession
@@ -234,4 +235,20 @@ test("credential-safe Linux profile keeps ambiguous foreign-host singleton owner
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test("Linux exact-window lifecycle diagnostics distinguish owned, re-owned, and missing without reading content", async () => {
+  const owned = await readLinuxExactWindowState(4242, 9001, ":99", {
+    runCommand: async () => "4242\n"
+  });
+  const reowned = await readLinuxExactWindowState(4242, 9001, ":99", {
+    runCommand: async () => "7777\n"
+  });
+  const missing = await readLinuxExactWindowState(4242, 9001, ":99", {
+    runCommand: async () => { throw new Error("gone"); }
+  });
+  assert.equal(owned, "owned");
+  assert.equal(reowned, "reowned");
+  assert.equal(missing, "missing");
 });
