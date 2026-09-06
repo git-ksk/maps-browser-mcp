@@ -151,6 +151,11 @@ async function verifyCredentialSafeHumanInterventionAfterStoppedProfile(interven
   );
 }
 
+async function prepareFreshMapsSurfaceAfterVerifiedProfileCheckpoint(usedCredentialSafeSurface: boolean): Promise<void> {
+  if (!usedCredentialSafeSurface || !credentialSafeProfileCheckpointEnabled) return;
+  await operationQueue.run(() => runtime.prepareFreshMapsSurfaceAfterProfileCheckpoint());
+}
+
 const nativeCredentialTakeover = nativeTakeoverRuntime
   ? new NativeCredentialTakeoverBoundary(takeoverBroker)
   : undefined;
@@ -652,17 +657,15 @@ async function completeExplicitHumanSignIn(): Promise<CallToolResult> {
   }
 
   runtime.resumeAfterHumanIntervention(active.id);
-  if (usedCredentialSafeSurface && credentialSafeProfileCheckpointEnabled) {
-    try {
-      await operationQueue.run(() => runtime.prepareFreshMapsSurfaceAfterProfileCheckpoint());
-    } catch (error) {
-      takeoverBroker.revokeForIntervention(active.id);
-      handoffLifecycleBridge.clear(active.id);
-      handoffOwners.delete(active.id);
-      explicitHumanSignInInterventions.delete(active.id);
-      clearHandoffCheckpoint(owner);
-      return errorResult(error);
-    }
+  try {
+    await prepareFreshMapsSurfaceAfterVerifiedProfileCheckpoint(usedCredentialSafeSurface);
+  } catch (error) {
+    takeoverBroker.revokeForIntervention(active.id);
+    handoffLifecycleBridge.clear(active.id);
+    handoffOwners.delete(active.id);
+    explicitHumanSignInInterventions.delete(active.id);
+    clearHandoffCheckpoint(owner);
+    return errorResult(error);
   }
   takeoverBroker.revokeForIntervention(active.id);
   handoffLifecycleBridge.clear(active.id);
@@ -863,6 +866,15 @@ async function runToolWithHandoff<T>(input: {
   }
 
   const decision = runtime.resumeAfterHumanIntervention(state.interventionId);
+  try {
+    await prepareFreshMapsSurfaceAfterVerifiedProfileCheckpoint(usedCredentialSafeSurface);
+  } catch (error) {
+    takeoverBroker.revokeForIntervention(state.interventionId);
+    handoffLifecycleBridge.clear(state.interventionId);
+    handoffOwners.delete(state.interventionId);
+    clearHandoffCheckpoint(owner);
+    return errorResult(error);
+  }
   takeoverBroker.revokeForIntervention(state.interventionId);
   handoffLifecycleBridge.clear(state.interventionId);
   handoffOwners.delete(state.interventionId);

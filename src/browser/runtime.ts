@@ -368,7 +368,11 @@ export class MapsBrowserRuntime {
     await this.resetClient();
     this.endpoint = undefined;
     this.invalidateSemanticState(false);
-    await this.chrome.close();
+    if (this.chrome.closeForProfileCheckpoint) {
+      await this.chrome.closeForProfileCheckpoint();
+    } else {
+      await this.chrome.close();
+    }
   }
 
   resumeAfterHumanIntervention(interventionId: string): ResumeDecision<MapsAction> {

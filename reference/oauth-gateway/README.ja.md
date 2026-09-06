@@ -261,7 +261,7 @@ snapshot helperは以下を保証します。
 - cookie/token/account identifierを個別抽出・ログ出力しない
 - checkpointには `--browser-stopped` の明示が必要
 
-reference entrypointはCloud Runのgraceful `SIGTERM` 時も、private coreのbrowser shutdown完了後にcheckpointを試みます。core/gatewayのunexpected crashでは新snapshotを作りません。signed-in durabilityの主checkpointはcredential-safe Human authority revoke後、normal Human browser close、fresh `signed_in` verification、Agent Chromium clean stopを経た安全点へ結線済みです。これによりGoogleログイン直後のprofileを確実に保存できます。
+reference entrypointはCloud Runのgraceful `SIGTERM` だけを理由にprofileをpublishしません。durable publicationはcredential-safeな検証済みsign-in lifecycleに限定し、fresh coarse `signed_in`確認、Agent Chromium停止とexact-profile quiescence確認、その後のcheckpointという順序を必須にします。shutdown、未完了sign-in、停止/quiescence失敗では最後の正常なdurable pointerを維持します。
 
 停止済みbrowser deployment container内でのmaintenance command:
 

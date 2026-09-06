@@ -15,11 +15,6 @@ profile_restore() {
   node reference/oauth-gateway/profile-snapshot.mjs restore
 }
 
-profile_checkpoint() {
-  [ -n "${MAPS_PROFILE_SNAPSHOT_BUCKET:-}" ] || return 0
-  node reference/oauth-gateway/profile-snapshot.mjs checkpoint --browser-stopped
-}
-
 cleanup_processes() {
   [ "$cleanup_started" = "false" ] || return 0
   cleanup_started="true"
@@ -73,9 +68,6 @@ start_linux_webrtc_graphics() {
 graceful_shutdown() {
   trap - INT TERM EXIT
   cleanup_processes
-  if ! profile_checkpoint; then
-    echo "[maps-profile] graceful shutdown checkpoint failed" >&2
-  fi
   cleanup_graphics
   exit 0
 }
