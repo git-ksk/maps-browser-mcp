@@ -83,32 +83,35 @@ published Cloud Storage snapshot
   -> fresh Maps surface
 ```
 
-The combined acceptance line now replaces that boundary with a two-phase candidate lifecycle: stage one unpublished Cloud Storage candidate immediately after Human Chrome stop/quiescence, leave the local profile untouched, verify fresh Agent stable `signed_in` against that same directory, then stop Agent Chrome and promote the exact staged candidate using the pointer generation captured at staging. Unpublished candidates are bounded and never restore fallbacks. Root 384 tests (379 pass / 0 fail / 5 skip), reference OAuth gateway 48/48, build, and diff check are green; Cloud Run deployment/physical acceptance is still pending.
+The combined acceptance line now replaces that boundary with a two-phase candidate lifecycle: stage one unpublished Cloud Storage candidate immediately after Human Chrome stop/quiescence, leave the local profile untouched, verify fresh Agent stable `signed_in` against that same directory, then stop Agent Chrome and promote the exact staged candidate using the pointer generation captured at staging. Unpublished candidates are bounded and never restore fallbacks. Root 384 tests (379 pass / 0 fail / 5 skip), reference OAuth gateway 48/48, build, and diff check are green. Cloud Run deployment and physical A/B isolation have now been run; the result is recorded below.
+
+## 2026-09-06 physical A/B result
+
+A fresh physical-iPhone Human sign-in was completed on the immutable candidate through Done. In the two-phase candidate flow, staging the stopped-profile candidate succeeded, but fresh Agent verification A against the unchanged local profile directory classified the session as `signed_out`.
+
+- A: `signed_out`
+- B: unpublished candidate staged successfully
+- candidate object generation: `1788676961530905`
+- candidate size: `34172641` bytes
+- current pointer generation: unchanged at `1788663068754194`
+- promotion: not performed
+- C: not run because A failed
+
+This isolates the failure ahead of any archive/restore or GCS restore step. The candidate safety boundary behaved correctly: a profile that did not regain stable `signed_in` under a fresh Agent was not published as current. The next isolation target is Human Chrome graceful shutdown/flush, session materialization when reopening the exact same profile with a fresh Chrome process, and Linux/Cloud Run-specific Chrome profile behavior.
+
+A transient takeover refresh problem was also observed, but the operator confirmed poor client network conditions; it is therefore not counted as WSS regression evidence in this acceptance result.
 
 ## Next decisive test
 
-Deploy this two-phase implementation as a new immutable Cloud Run candidate and run one physical iPhone A/B/C isolation:
+Because A is now confirmed `signed_out`, do not repeat the same Human sign-in loop. Isolate only the pre-archive/GCS boundary next:
 
-```text
-Human Chrome signed in
-  -> Done
-  -> revoke Human authority
-  -> graceful Human Chrome close
-  -> wait for exact-profile process quiescence
-  -> stage unpublished GCS candidate (current pointer unchanged)
-  -> DO NOT local tar->restore
-  -> launch fresh Agent Chrome against the unchanged profile directory
-  -> classify stable signed_in / signed_out / unknown
-  -> promote only on stable signed_in
-  -> verify stable signed_in after a genuinely fresh Cloud Run restore
-```
+1. Confirm Human Chrome graceful shutdown completion and exact-profile process quiescence using content-free metadata.
+2. Without modifying the local profile directory before or after candidate staging, launch a fresh Chrome process against that exact profile.
+3. Classify only coarse `signed_in | signed_out | unknown` readiness.
+4. If `signed_out` persists, isolate Chrome shutdown/flush versus Linux/Cloud Run session materialization behavior.
+5. Return to candidate promotion and fresh-revision C acceptance only after same-profile fresh Agent A becomes stably `signed_in`.
 
-Interpretation:
-
-- A=`signed_in`, C=`signed_out`: archive/restore remains the primary suspect.
-- A=`signed_out`: GCS staging/restore is not the primary cause; focus on Human Chrome shutdown/flush, Linux/Cloud Run restart behavior, or Google session behavior.
-- A=`signed_in`, C=`signed_in`: the candidate lifecycle is accepted; current promotion plus fresh-revision durability succeeds.
-The diagnostic must preserve the durable safety boundary: **never checkpoint/publish unless fresh Agent stable `signed_in` succeeds**.
+Preserve the safety boundary: **never promote current unless fresh Agent stable `signed_in` succeeds**.
 
 ## Safety / execution rules
 

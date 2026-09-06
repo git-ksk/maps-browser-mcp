@@ -85,33 +85,35 @@ published Cloud Storage snapshot
   -> fresh Maps surface
 ```
 
-Combined acceptance lineではこの境界を二相candidate方式へ置換済み。Human Chrome close/quiescence直後に同時点profileをCloud Storageへ未公開candidateとしてstageし、local profileは一切restore/置換せずfresh Agentへ渡す。stable `signed_in`成功後のみAgentを停止し、stage済みcandidateをstage時pointer generationのprecondition付きでcurrentへpromoteする。unpublished candidateはrestore fallbackにせずbounded retentionする。root 384件（379 pass / 0 fail / 5 skip）、reference OAuth gateway 48/48、build、diff checkはgreen。まだCloud Run deploy/physical acceptance前。
+Combined acceptance lineではこの境界を二相candidate方式へ置換済み。Human Chrome close/quiescence直後に同時点profileをCloud Storageへ未公開candidateとしてstageし、local profileは一切restore/置換せずfresh Agentへ渡す。stable `signed_in`成功後のみAgentを停止し、stage済みcandidateをstage時pointer generationのprecondition付きでcurrentへpromoteする。unpublished candidateはrestore fallbackにせずbounded retentionする。root 384件（379 pass / 0 fail / 5 skip）、reference OAuth gateway 48/48、build、diff checkはgreen。Cloud Run deployと物理A/B isolationまで実施済みで、結果は下記のとおり。
+
+## 2026-09-06 physical A/B result
+
+新immutable candidate上で物理iPhoneのHuman sign-inを再実施し、Human側ではMapsへのログイン完了後にDoneまで到達した。Done後の二相candidateフローでは、stopped-profile candidateのstage自体は成功したが、同じlocal profile directoryを使うfresh Agent A判定は `signed_out` だった。
+
+- A: `signed_out`
+- B: unpublished candidate stage成功
+- candidate object generation: `1788676961530905`
+- candidate size: `34172641` bytes
+- current pointer generation: `1788663068754194` のまま
+- promotion: 実施されず
+- C: Aが失敗したため未実施
+
+この結果により、archive/restore round-tripやGCS restoreは今回のA失敗の主因ではない。candidate方式の安全境界は期待どおり機能し、fresh Agentでstable `signed_in` を得られなかったprofileはcurrentへ公開されなかった。次の切り分けはHuman Chromeのgraceful shutdown/flush境界、同一profileをfresh Chromeで再起動した際のsession materialization、Linux/Cloud Run固有のChrome profile behaviorへ絞る。
+
+一時的にtakeover画面の更新停止も見えたが、利用端末側の電波状況によるものと確認できたため、本acceptanceではWSS regression evidenceとして扱わない。
 
 ## Next decisive test
 
-新immutable Cloud Run candidateへこの二相方式をdeployし、物理iPhoneで1回だけA/B/C isolationを実施する:
+A=`signed_out` が確定したため、同じHuman sign-inを繰り返さず、次はarchive/GCS restoreより前の境界だけを切り分ける。
 
-```text
-Human Chrome signed in
-  -> Done
-  -> revoke Human authority
-  -> graceful Human Chrome close
-  -> wait for exact-profile process quiescence
-  -> stage unpublished GCS candidate（current pointer不変）
-  -> DO NOT local tar->restore
-  -> launch fresh Agent Chrome against the unchanged profile directory
-  -> classify stable signed_in / signed_out / unknown
-  -> stable signed_inのみcandidate promote
-  -> fresh Cloud Run revision restoreでstable signed_inを再確認
-```
+1. Human Chromeのgraceful shutdown完了とexact-profile process quiescenceをcontent-free metadataで確認する。
+2. shutdown直後、candidate stage前後でlocal profile directoryを変更せず、fresh Chromeを同じprofileで起動する。
+3. coarse readinessだけで `signed_in | signed_out | unknown` を判定する。
+4. `signed_out` が続く場合はChrome shutdown/flushまたはLinux/Cloud Run上のsession materializationを主因候補としてさらに分離する。
+5. Aがstable `signed_in` へ変わった時点でのみ、既存のcandidate promotionとfresh revision C acceptanceへ戻る。
 
-Interpretation:
-
-- A=`signed_in`, fresh restore C=`signed_out`: archive/restore round-tripが主因候補。
-- A=`signed_out`: GCS stage/restoreは主因ではない。Human Chrome shutdown/flush、Linux/Cloud Run restart、Google session behaviorへ絞る。
-- A=`signed_in`, C=`signed_in`: candidate方式成立。current promotion + fresh-revision durability acceptance成功。
-
-The diagnostic candidate must preserve the durable safety boundary: **do not checkpoint/publish unless fresh Agent stable `signed_in` succeeds**.
+安全境界は維持する: **fresh Agent stable `signed_in` が成立しない限りcurrentへpromoteしない**。
 
 ## Safety / execution rules for resumption
 
