@@ -197,6 +197,7 @@ Recommended constraints:
 - dedicated service account;
 - secrets supplied from Secret Manager;
 - `1` vCPU and at least `2Gi` memory when Chromium + Interactive Assist run in the same Cloud Run instance;
+- minimum instances `1` while credential-safe Human takeover is enabled, so the memory-only takeover locator is not lost to idle scale-down during its bounded TTL;
 - max instances `1`;
 - concurrency `1`, matching the single-browser runtime;
 - HTTPS only;
@@ -212,8 +213,11 @@ gcloud run services update maps-browser-mcp \
   --cpu=1 \
   --memory=2Gi \
   --concurrency=1 \
+  --min-instances=1 \
   --max-instances=1
 ```
+
+Takeover locators and Human-session authority intentionally remain memory-only. `min-instances=1` is therefore part of the managed single-user Cloud Run lifetime boundary: Cloud Run must not reclaim the only instance during the bounded Human takeover TTL. Process replacement for maintenance still fails closed and does not recreate or persist Human authority.
 
 A `1Gi` instance was observed to cross its memory limit during repeated headless `maps_search` + `maps_read_place_summary` calls, causing Cloud Run to terminate the container and return HTTP `503`. The remote MCP client surfaced that transport failure as an `UNKNOWN`/TaskGroup-style exception. This is a deployment-capacity failure, not a bounded-reader exception to catch inside the MCP process.
 

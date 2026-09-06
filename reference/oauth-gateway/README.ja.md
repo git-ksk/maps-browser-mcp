@@ -186,6 +186,7 @@ Historical `map-browser-mcp-test` は更新せず、**別serviceとして並行d
 - dedicated service account
 - secretはSecret Manager
 - Chromium + Interactive Assistを同一Cloud Run instanceで動かす場合は `1` vCPU / 最低 `2Gi` memory
+- credential-safe Human takeoverを有効にする間はminimum instances `1`。memory-onlyのtakeover locatorをbounded TTL中のidle scale-downで失わないためのdeployment lifetime boundaryです
 - max instances `1`
 - concurrency `1`
 - HTTPS only
@@ -199,8 +200,11 @@ gcloud run services update maps-browser-mcp \
   --cpu=1 \
   --memory=2Gi \
   --concurrency=1 \
+  --min-instances=1 \
   --max-instances=1
 ```
+
+Takeover locator / Human-session authorityは意図的にmemory-onlyのままです。そのためmanaged single-user Cloud Runでは`min-instances=1`を必須とし、bounded Human takeover TTL中に唯一のinstanceがidle scale-downされないようにします。Cloud Runのmaintenance等でprocess自体が置換された場合は引き続きfail closedし、Human authorityを永続化・復元しません。
 
 `1Gi` instanceではheadless `maps_search` + `maps_read_place_summary` の繰り返しでmemory limitを超えHTTP `503` になった実測があります。Remote MCP clientではこのtransport failureが `UNKNOWN` / TaskGroup系exceptionとして見えます。これはdeployment capacity failureです。
 

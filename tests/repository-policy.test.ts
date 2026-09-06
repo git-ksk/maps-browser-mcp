@@ -305,13 +305,15 @@ test("reference Cloud Run image provisions the bounded Linux normal-browser WebR
   assert.doesNotMatch(entrypoint, /remote-debugging|enable-automation|headless=new/);
 });
 
-test("reference Cloud Run profile protects the single Chromium runtime from OOM/parallelism regressions", () => {
+test("reference Cloud Run profile protects single-browser capacity and Human takeover lifetime", () => {
   for (const doc of ["reference/oauth-gateway/README.md", "reference/oauth-gateway/README.ja.md"]) {
     const source = read(doc);
     assert.match(source, /--cpu=1/);
     assert.match(source, /--memory=2Gi/);
     assert.match(source, /--concurrency=1/);
+    assert.match(source, /--min-instances=1/);
     assert.match(source, /--max-instances=1/);
+    assert.match(source, /memory-only/);
     assert.match(source, /503/);
     assert.match(source, /TaskGroup/);
   }
