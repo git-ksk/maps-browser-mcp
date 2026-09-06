@@ -371,7 +371,7 @@ The server does not automatically load `.env`. Use your shell, process manager, 
 | `MAPS_MAX_AX_NODES` | `120` | Accessibility-node bound for bounded visible-state reading |
 | `MAPS_MAX_READ_CHARS` | `1800` | Returned-text bound for bounded visible-state reading |
 | `MAPS_MAX_PENDING_ACTIONS` | `8` | Maximum queued browser operations |
-| `MAPS_OPERATION_TIMEOUT_MS` | `25000` | Per-operation watchdog |
+| `MAPS_OPERATION_TIMEOUT_MS` | `45000` | Per-operation watchdog; intentionally longer than the managed Chromium startup deadline so browser-unavailable recovery can fail closed before the outer queue reset |
 
 Invalid boolean/integer configuration fails fast instead of being silently coerced.
 

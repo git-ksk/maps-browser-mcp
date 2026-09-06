@@ -373,7 +373,7 @@ ChatGPT固有の接続・tool refreshについては **[ChatGPT接続ガイド �
 | `MAPS_MAX_AX_NODES` | `120` | bounded visible-state readingのAccessibility node上限 |
 | `MAPS_MAX_READ_CHARS` | `1800` | bounded visible-state readingの返却text上限 |
 | `MAPS_MAX_PENDING_ACTIONS` | `8` | 待機可能なbrowser操作数 |
-| `MAPS_OPERATION_TIMEOUT_MS` | `25000` | 1操作watchdog |
+| `MAPS_OPERATION_TIMEOUT_MS` | `45000` | 1操作watchdog。managed Chromium startup deadlineより長くし、outer queue resetより先にbrowser-unavailable recoveryをfail-closedで確定させる |
 
 不正なboolean/整数値は曖昧に解釈せず、起動時にfail fastします。
 

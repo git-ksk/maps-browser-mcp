@@ -196,7 +196,10 @@ test("keeps Chromium sandboxing enabled unless explicitly opted out", async () =
   });
 });
 
-test("validates operation watchdog bounds", async () => {
+test("keeps the operation watchdog outside the managed Chromium startup deadline and validates bounds", async () => {
+  await withEnv({}, () => {
+    assert.equal(loadConfig().policy.operationTimeoutMs, 45_000);
+  });
   await withEnv({ MAPS_OPERATION_TIMEOUT_MS: "4999" }, () => {
     assert.throws(() => loadConfig(), /between 5000 and 120000/);
   });

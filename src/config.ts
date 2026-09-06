@@ -565,7 +565,7 @@ export function loadConfig(): AppConfig {
       maxActionsPerMinute: envInt("MAPS_MAX_ACTIONS_PER_MINUTE", 30, 1, 300),
       maxVisibleReadsPerHour: envInt("MAPS_MAX_VISIBLE_READS_PER_HOUR", 30, 1, 240),
       maxPendingActions: envInt("MAPS_MAX_PENDING_ACTIONS", 8, 1, 50),
-      operationTimeoutMs: envInt("MAPS_OPERATION_TIMEOUT_MS", 25_000, 5_000, 120_000),
+      operationTimeoutMs: envInt("MAPS_OPERATION_TIMEOUT_MS", 45_000, 5_000, 120_000),
       maxAxNodes: envInt("MAPS_MAX_AX_NODES", 120, 20, 500),
       maxReadChars: envInt("MAPS_MAX_READ_CHARS", 1800, 300, 8000)
     }
