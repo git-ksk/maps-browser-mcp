@@ -101,17 +101,59 @@ This isolates the failure ahead of any archive/restore or GCS restore step. The 
 
 A transient takeover refresh problem was also observed, but the operator confirmed poor client network conditions; it is therefore not counted as WSS regression evidence in this acceptance result.
 
-## Next decisive test
+## 2026-09-06 fact matrix before the next Human trial
 
-Because A is now confirmed `signed_out`, do not repeat the same Human sign-in loop. Isolate only the pre-archive/GCS boundary next:
+Freeze the observed evidence before asking the Human to sign in again.
 
-1. Confirm Human Chrome graceful shutdown completion and exact-profile process quiescence using content-free metadata.
-2. Without modifying the local profile directory before or after candidate staging, launch a fresh Chrome process against that exact profile.
-3. Classify only coarse `signed_in | signed_out | unknown` readiness.
-4. If `signed_out` persists, isolate Chrome shutdown/flush versus Linux/Cloud Run session materialization behavior.
-5. Return to candidate promotion and fresh-revision C acceptance only after same-profile fresh Agent A becomes stably `signed_in`.
+### Confirmed facts
 
-Preserve the safety boundary: **never promote current unless fresh Agent stable `signed_in` succeeds**.
+- The equivalent profile-reuse path works on the Mac-side acceptance, while Cloud Run combined acceptance has repeatedly classified fresh Agent A as `signed_out` after the Human completed Google Maps sign-in and Done.
+- Unpublished candidate staging succeeds after Human Chrome stop; archive structure, bounded SQLite `quick_check`, and GCS upload metadata verification pass.
+- A fails before any GCS restore: fresh Agent opens the unchanged local profile directory in the same Cloud Run instance. GCS restore round-trip is therefore downstream of the observed A failure.
+- `current.json` never advances when A fails, and the unverified candidate is not promoted.
+- Running fresh Agent headed did not change A, so headed-to-headless switching is not the primary suspect.
+- Extending graceful close from 2s to 10s still resulted in SIGTERM escalation.
+- Adding `--disable-background-mode` to Human Chrome still resulted in the same 10s SIGTERM escalation and A=`signed_out`, weakening the background-mode-only hypothesis.
+- The previously observed takeover refresh stall was confirmed as poor client network conditions and is not treated as profile-durability evidence.
+
+### Still unknown
+
+- Whether `xdotool windowclose` is accepted and whether the exact X11 window is actually gone at 500ms and 10s.
+- Whether the window disappears while the browser root process remains alive, or whether the window itself remains.
+- How the bounded Chromium descendant/process-role shape changes during the 10s graceful-close interval.
+- How core profile metadata, Cookie DB file metadata, WAL/SHM sidecars, and Singleton locks change before/after Human Chrome close.
+- A regression test reproduced a Node `ChildProcess` decision bug: checking only `exitCode` can treat SIGTERM termination (`signalCode`) as still running. Before the next physical run, exit is defined as `exitCode != null || signalCode != null`, while diagnostics still distinguish `exited_code|exited_signal`.
+- The exact fresh-Agent readiness transition sequence, including whether any transient `signed_in` sample occurs.
+- Agent clean stop, candidate promotion, and fresh Cloud Run C remain untested because A has not succeeded.
+
+## One-shot comprehensive diagnostic gate
+
+Do not add more ad-hoc probes after the next Human run. The next immutable candidate captures these ten content-free layers in one pass. No PID/window id/profile path/account identity/cookie value/token/credential/Human input/browser content is logged.
+
+1. **Cloud Run execution boundary** — externally pin active revision/image/traffic/resources/concurrency/scaling before and after the run; any `runtime_boot` inside the test window indicates core-process replacement.
+2. **Human/Agent runtime fingerprint** — platform/arch/Node/Chromium version, executable basename, headed/headless, remote debugging, background-mode disable, sandbox opt-out, and only presence booleans for HOME/XDG/DISPLAY variables.
+3. **Handoff transport/authority** — reuse the bounded managed Handoff diagnostics for transport, authority/session disposition, frame and input health.
+4. **Human Chrome startup/exact-window bind** — profile baseline, graphics readiness, exact-window bind, total Chromium process count, exact-profile process count, and bounded descendant-role counts.
+5. **Done/revoke to X11 graceful close** — `windowclose` acceptance plus 500ms and 10s window/graphics/process/profile samples.
+6. **Signal/process lifecycle** — SIGTERM if required, 2s post-SIGTERM `running|exited_code|exited_signal`, total/profile-bound Chromium counts, and SIGKILL only if the process is genuinely still alive.
+7. **Profile flush/quiescence** — zero profile-bound Chromium processes, core/Cookie DB/WAL/SHM presence/aggregate bytes/latest mtime, Singleton locks, and bounded Cookie DB SQLite `quick_check` result counts.
+8. **Candidate/durable-pointer boundary** — archive bytes/entries, required-profile files, SQLite checks, candidate generation/base pointer generation, plus external pre/post `current.json` generation proving no advancement on failed A.
+9. **Fresh Agent A reconstruction** — preflight/ready runtime fingerprint, graphics/process/profile metadata, fresh CDP ready, coarse readiness transitions, and bounded final timing/sample counts.
+10. **Only after stable A=`signed_in`** — Agent checkpoint stop/quiescence, exact candidate promotion/pointer advance, then fresh-revision restore and C coarse `signed_in` verification.
+
+### One-run interpretation matrix
+
+- `windowclose accepted=false`: isolate the exact X11 close-request path.
+- accepted=true but `windowState=owned` at 10s: isolate X11/Openbox/Chromium window shutdown.
+- `windowState=missing` while root/process remains running: isolate Chromium internal keepalive/process lifecycle.
+- SIGTERM produces `rootState=exited_signal`: treat it as exited and verify no SIGKILL follows.
+- Post-quiescence profile metadata unchanged from pre-Human: suspect Human-session materialization/flush never reached profile files.
+- Cookie/core metadata changed and SQLite is healthy but A remains `signed_out`: narrow to fresh-process Linux Chromium session materialization, OS crypt/password-store, or profile compatibility.
+- Human/Agent runtime fingerprints differ: eliminate that runtime difference before attributing failure to durability.
+- A new `runtime_boot` appears inside the test window: treat Cloud Run/core process replacement as a separate cause and do not grade that run as profile durability.
+- A=`signed_in`: the shutdown/materialization boundary passes; promote the exact candidate and run C.
+
+Do not request another Human sign-in until this diagnostic build is deployed as an immutable Ready Cloud Run revision and its runtime shape is confirmed unchanged.
 
 ## Safety / execution rules
 

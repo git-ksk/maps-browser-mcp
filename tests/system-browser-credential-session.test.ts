@@ -8,6 +8,7 @@ import {
   parseLinuxWindowIds,
   parseLocalLinuxSingletonLockPid,
   requestLinuxGracefulWindowClose,
+  readLinuxExactWindowState,
   resolveLinuxExactWindowId,
   waitForLinuxProfileProcessQuiescence,
   SystemBrowserCredentialSession
@@ -234,4 +235,30 @@ test("credential-safe Linux profile keeps ambiguous foreign-host singleton owner
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+
+test("credential-safe Human browser treats signalCode as an exited Chrome process", () => {
+  const session = new SystemBrowserCredentialSession({ profileDir: "/tmp/maps-signal-exit-test" });
+  (session as unknown as { child: { exitCode: number | null; signalCode: NodeJS.Signals | null } }).child = {
+    exitCode: null,
+    signalCode: "SIGTERM"
+  };
+  assert.equal(session.isActive(), false);
+});
+
+test("Linux exact-window lifecycle diagnostics distinguish owned, re-owned, and missing without reading content", async () => {
+  const owned = await readLinuxExactWindowState(4242, 9001, ":99", {
+    runCommand: async () => "4242\n"
+  });
+  const reowned = await readLinuxExactWindowState(4242, 9001, ":99", {
+    runCommand: async () => "7777\n"
+  });
+  const missing = await readLinuxExactWindowState(4242, 9001, ":99", {
+    runCommand: async () => { throw new Error("gone"); }
+  });
+  assert.equal(owned, "owned");
+  assert.equal(reowned, "reowned");
+  assert.equal(missing, "missing");
 });

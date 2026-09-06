@@ -103,17 +103,87 @@ Combined acceptance lineではこの境界を二相candidate方式へ置換済�
 
 一時的にtakeover画面の更新停止も見えたが、利用端末側の電波状況によるものと確認できたため、本acceptanceではWSS regression evidenceとして扱わない。
 
-## Next decisive test
+## 2026-09-06 fact matrix before the next Human trial
 
-A=`signed_out` が確定したため、同じHuman sign-inを繰り返さず、次はarchive/GCS restoreより前の境界だけを切り分ける。
+次のHuman sign-inを行う前に、これまでの実測を以下で固定する。
 
-1. Human Chromeのgraceful shutdown完了とexact-profile process quiescenceをcontent-free metadataで確認する。
-2. shutdown直後、candidate stage前後でlocal profile directoryを変更せず、fresh Chromeを同じprofileで起動する。
-3. coarse readinessだけで `signed_in | signed_out | unknown` を判定する。
-4. `signed_out` が続く場合はChrome shutdown/flushまたはLinux/Cloud Run上のsession materializationを主因候補としてさらに分離する。
-5. Aがstable `signed_in` へ変わった時点でのみ、既存のcandidate promotionとfresh revision C acceptanceへ戻る。
+### 確定事実
 
-安全境界は維持する: **fresh Agent stable `signed_in` が成立しない限りcurrentへpromoteしない**。
+- Macローカルでは同系統のprofile再利用が成立した一方、Cloud Run combined acceptanceではHuman側ログイン完了/Done後のfresh Agent Aが複数回 `signed_out` になった。
+- Human Chrome stop後のunpublished candidate stageは成功しており、archive structure / bounded SQLite `quick_check` / GCS upload metadata verificationは通っている。
+- AはGCS restoreを一度も行わず、**同じCloud Run instance内の変更していないlocal profile directory**をfresh Agentが開いた時点で失敗した。したがってGCS restore round-tripはA失敗より後段であり、主因候補から外れる。
+- `current.json` pointerはA失敗時に進まず、未検証candidateはcurrentへpromoteされていない。fail-closed境界は期待どおり。
+- fresh Agentをheadedで動かしてもA=`signed_out`だったため、headed → headless切替は主因候補から外れる。
+- Human Chromeのgraceful close待機を2秒から10秒へ延長しても、10秒後にSIGTERM escalationが再現した。
+- Human Chromeへ `--disable-background-mode` を追加しても、10秒後のSIGTERM escalationとA=`signed_out`が再現した。background mode単独原因説は弱い。
+- takeover画面更新停止の一件は利用端末側の電波状況によるものと確認済みで、今回のprofile durability原因として扱わない。
+
+### まだ未確定
+
+- `xdotool windowclose` が正常に受理された後、exact X11 windowが500ms/10s時点で実際に消えているか。
+- windowが消えているのにbrowser root processだけが残るのか、window自体が残っているのか。
+- 10秒待機中にChromiumのdescendant/process-role構成がどう変化しているか。
+- Human Chrome close前後でprofile core metadata、Cookie DB file metadata、WAL/SHM sidecar、Singleton lockがどう変化するか。
+- Node `ChildProcess` の終了判定が `exitCode` のみを見ており、SIGTERM終了時の `signalCode` を生存扱いし得るバグを回帰テストで再現した。次回試験前に `exitCode != null || signalCode != null` を終了条件として固定し、診断では `exited_code|exited_signal` を区別する。
+- candidate stage直後のfresh Agentで、readinessが `unknown → signed_out` なのか、最初から継続して `signed_out` なのか、途中にtransient `signed_in` が出るのか。
+- Aが成功した場合のAgent clean stop → candidate promotion → fresh Cloud Run Cは未実施。
+
+## One-shot comprehensive diagnostic gate
+
+次回は場当たり的な追加診断をせず、以下の10層を1回で取得してから判断する。診断はすべてcontent-freeで、PID/window ID/profile path/account identity/cookie値/token/credential/Human入力/browser contentは記録しない。
+
+1. **Cloud Run execution boundary**
+   - 実行前後でactive revision / immutable image / traffic / CPU・memory / concurrency / min/max scaleを外側から固定
+   - 試験window内の `runtime_boot` 有無でcore process restartを検出
+   - revision差分やcontainer restartがあればA/B結果と分離する
+2. **Human / Agent runtime fingerprint**
+   - platform / arch / Node / Chromium version / executable basename
+   - headed/headless、remote-debugging有無、background-mode-disable、sandbox opt-out有無
+   - HOME / XDG_CONFIG_HOME / XDG_CACHE_HOME / XDG_RUNTIME_DIR / DISPLAYは値を出さずconfigured yes/noのみ
+3. **Handoff transport / authority**
+   - existing bounded Handoff diagnosticsでtransport、authority、session disposition、frame/input状態を確認
+4. **Human Chrome startup / exact-window bind**
+   - start success、profile metadata baseline、graphics readiness
+   - exact X11 window bind成功
+   - container内Chromium総数、exact-profile引数を持つprocess総数、descendant role count
+5. **Done/revoke → X11 graceful close**
+   - `windowclose` accepted yes/no
+   - 500ms sampleと10s sampleでexact-window state (`owned|missing|reowned|unavailable`)、graphics/process/profile metadataを取得
+6. **Signal escalation / process lifecycle**
+   - SIGTERM送信有無
+   - 2s post-SIGTERMで `running|exited_code|exited_signal`、Chromium総数、profile-bound総数、profile metadata
+   - `signalCode`終了を正しく終了扱いし、既に終了済みならSIGKILLへ進まない
+   - 必要な場合のみSIGKILLと1s後sample
+7. **Profile flush / exact-profile quiescence**
+   - profile-bound Chromium processが0になること
+   - core/Cookie DB/WAL/SHMのpresence・aggregate bytes・最新mtime、Singleton lock count
+   - Cookie DBに対するbounded SQLite `quick_check` count/result count
+   - live profileはlocal filesystemのままで、GCS restoreは行わない
+8. **Candidate stage / durable pointer boundary**
+   - archive bytes / entry count / required-profile-file count / SQLite check count / candidate generation / base pointer generation
+   - 実行前後でGCS `current.json` generationを外側から取得し、A失敗時に不変であることを確認
+9. **Fresh Agent A reconstruction**
+   - Agent start前/ready後のruntime fingerprint、graphics/process/profile metadata
+   - fresh CDP ready
+   - readiness transition sequenceは `signed_in|signed_out|unknown` のみ、最終elapsed/sample/transition countを記録
+10. **A成功時のみ promotion → C**
+   - Agent checkpoint stop / quiescence
+   - exact candidate promotionとpointer generation advance
+   - fresh Cloud Run revisionでrestore logを確認し、同じcoarse readinessでC=`signed_in`を確認
+
+### One-run interpretation matrix
+
+- `windowclose accepted=false` → X11 exact-window close request pathが第一原因候補。
+- `accepted=true` かつ10秒後も `windowState=owned` → X11/Openbox/Chromium window shutdown pathを第一候補。
+- `windowState=missing` かつroot/processがrunning → Chromium internal keepalive/process-lifecycleを第一候補。
+- SIGTERM後 `rootState=exited_signal` → signal終了は正常に終了扱いし、SIGKILLへ進まないことを確認。
+- post-quiescence profile metadataがHuman開始前から変化していない → Human session materialization/flushがprofileへ反映されていない可能性が高い。
+- Cookie DB/WAL/core metadataが更新済み・SQLite正常なのにA=`signed_out` → fresh-process Linux Chromiumのsession materialization / OS crypt・password-store / profile compatibility側へ絞る。
+- Human/Agent runtime fingerprintが不一致 → その差分を先に解消し、profile durability原因と混同しない。
+- 試験window内に新しい `runtime_boot` が入る → Cloud Run/core process replacementを独立要因として扱い、そのrunでdurabilityを判定しない。
+- A=`signed_in` → shutdown/profile materialization境界は突破。exact candidateをpromoteしてCへ進む。
+
+次のHuman操作は、この診断入りimmutable Cloud Run revisionがReadyかつtraffic/config差分確認済みになるまで実施しない。
 
 ## Safety / execution rules for resumption
 

@@ -70,6 +70,7 @@ import {
   formatManagedHandoffDiagnosticsCheckpointLog,
   formatManagedHandoffDiagnosticsLog
 } from "./browser/handoff-diagnostics-log.js";
+import { formatProfileLifecycleDiagnostic } from "./browser/profile-lifecycle-diagnostics.js";
 import { MapsBrowserRuntime, BrowserRuntimeError, type MapsIntervention } from "./browser/runtime.js";
 import { SemanticController } from "./browser/semantic-controller.js";
 import { SEARCH_RATING_OPTIONS } from "./browser/search-rating-filter.js";
@@ -88,6 +89,13 @@ import { ROUTE_AVOID_OPTIONS, TRAVEL_MODES } from "./types.js";
 
 const SERVER_VERSION = "0.3.3";
 const config = loadConfig();
+
+function profileLifecycleLog(
+  event: Parameters<typeof formatProfileLifecycleDiagnostic>[0],
+  fields: Parameters<typeof formatProfileLifecycleDiagnostic>[1]
+): void {
+  console.error(`[maps-browser-mcp] ${formatProfileLifecycleDiagnostic(event, fields)}`);
+}
 const compiler = new MapsUrlCompiler();
 const policy = new PolicyEngine({
   interactiveAssist: config.policy.interactiveAssist,
@@ -137,6 +145,10 @@ const hostedBrowserCredentialTakeover = config.credentialSafeHandoff.enabled &&
 const stoppedProfilePreparation = createStoppedBrowserProfilePreparationHook(config.browserProfileCheckpoint.module);
 const stoppedProfileCheckpoint = createStoppedBrowserProfileCheckpointHook(config.browserProfileCheckpoint.module);
 const credentialSafeProfileCheckpointEnabled = Boolean(config.browserProfileCheckpoint.module);
+profileLifecycleLog("runtime_boot", {
+  credentialSafe: config.credentialSafeHandoff.enabled,
+  checkpointConfigured: credentialSafeProfileCheckpointEnabled
+});
 
 function credentialSafeVerificationOptions(
   interventionId: string,
@@ -146,12 +158,44 @@ function credentialSafeVerificationOptions(
   return {
     beforeMarkVerified: async () => {
       await runtime.stopBrowserForProfileCheckpoint(interventionId);
-      await stoppedProfileCheckpoint({ reason: "credential_safe_sign_in" }, candidate);
+      try {
+        await stoppedProfileCheckpoint({ reason: "credential_safe_sign_in" }, candidate);
+      } catch (error) {
+        profileLifecycleLog("candidate_promotion_failed", { state: "failed" });
+        throw error;
+      }
+      if (candidate) {
+        profileLifecycleLog("candidate_promoted", {
+          generation: candidate.generation,
+          bytes: candidate.bytes,
+          basePointerGeneration: candidate.basePointerGeneration,
+          archiveEntries: candidate.validation.archiveEntries,
+          requiredProfileFiles: candidate.validation.requiredProfileFiles,
+          sqliteDatabasesChecked: candidate.validation.sqliteDatabasesChecked
+        });
+      }
     }
   };
 }
 async function verifyCredentialSafeHumanInterventionAfterStoppedProfile(interventionId: string) {
-  const candidate = await stoppedProfilePreparation({ reason: "credential_safe_sign_in" });
+  profileLifecycleLog("candidate_stage_started", { checkpointConfigured: credentialSafeProfileCheckpointEnabled });
+  let candidate;
+  try {
+    candidate = await stoppedProfilePreparation({ reason: "credential_safe_sign_in" });
+  } catch (error) {
+    profileLifecycleLog("candidate_stage_failed", { state: "failed" });
+    throw error;
+  }
+  if (candidate) {
+    profileLifecycleLog("candidate_staged", {
+      generation: candidate.generation,
+      bytes: candidate.bytes,
+      basePointerGeneration: candidate.basePointerGeneration,
+      archiveEntries: candidate.validation.archiveEntries,
+      requiredProfileFiles: candidate.validation.requiredProfileFiles,
+      sqliteDatabasesChecked: candidate.validation.sqliteDatabasesChecked
+    });
+  }
   return runtime.verifyCredentialSafeHumanIntervention(
     interventionId,
     credentialSafeVerificationOptions(interventionId, candidate)

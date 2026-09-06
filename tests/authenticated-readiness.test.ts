@@ -107,3 +107,36 @@ test("post-Human readiness remains fail-closed when signed_out persists through 
   assert.equal(result, "signed_out");
   assert.ok(reads >= 3);
 });
+
+
+test("post-Human readiness diagnostics report only coarse state transitions and bounded summary counts", async () => {
+  const { waitForAuthenticatedReadinessAfterHuman } = await import("../src/browser/authenticated-readiness.js");
+  const values = ["unknown", "signed_out", "signed_out", "signed_in", "signed_in", "signed_in"] as const;
+  let index = 0;
+  let now = 0;
+  const transitions: Array<{ state: string; elapsedMs: number }> = [];
+  let summary: unknown;
+  const result = await waitForAuthenticatedReadinessAfterHuman(
+    async () => values[Math.min(index++, values.length - 1)]!,
+    {
+      timeoutMs: 500,
+      pollMs: 25,
+      signedInStableMs: 50,
+      now: () => now,
+      wait: async (ms) => { now += ms; },
+      onStateChange: (state, elapsedMs) => transitions.push({ state, elapsedMs }),
+      onComplete: (value) => { summary = value; }
+    }
+  );
+  assert.equal(result, "signed_in");
+  assert.deepEqual(transitions.map((item) => item.state), ["unknown", "signed_out", "signed_in"]);
+  assert.deepEqual(summary, {
+    finalState: "signed_in",
+    elapsedMs: 125,
+    samples: 6,
+    signedInSamples: 3,
+    signedOutSamples: 2,
+    unknownSamples: 1,
+    transitions: 3
+  });
+});

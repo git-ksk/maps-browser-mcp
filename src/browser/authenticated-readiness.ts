@@ -50,6 +50,16 @@ export async function waitForAuthenticatedReadinessAfterHuman(
     signedInStableMs?: number;
     now?: () => number;
     wait?: (ms: number) => Promise<void>;
+    onStateChange?: (state: AuthenticatedMapsReadiness, elapsedMs: number) => void;
+    onComplete?: (summary: {
+      finalState: AuthenticatedMapsReadiness;
+      elapsedMs: number;
+      samples: number;
+      signedInSamples: number;
+      signedOutSamples: number;
+      unknownSamples: number;
+      transitions: number;
+    }) => void;
   } = {}
 ): Promise<AuthenticatedMapsReadiness> {
   const timeoutMs = options.timeoutMs ?? 8_000;
@@ -59,20 +69,43 @@ export async function waitForAuthenticatedReadinessAfterHuman(
   const wait = options.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const deadline = now() + timeoutMs;
   let last: AuthenticatedMapsReadiness = "unknown";
+  let prior: AuthenticatedMapsReadiness | undefined;
   let signedInSince: number | undefined;
+  let samples = 0;
+  let signedInSamples = 0;
+  let signedOutSamples = 0;
+  let unknownSamples = 0;
+  let transitions = 0;
+  const startedAt = now();
+
+  const finish = (finalState: AuthenticatedMapsReadiness, elapsedMs: number) => {
+    options.onComplete?.({
+      finalState, elapsedMs, samples, signedInSamples, signedOutSamples, unknownSamples, transitions
+    });
+    return finalState;
+  };
 
   for (;;) {
     last = await read();
     const observedAt = now();
+    samples += 1;
+    if (last === "signed_in") signedInSamples += 1;
+    else if (last === "signed_out") signedOutSamples += 1;
+    else unknownSamples += 1;
+    if (prior !== last) {
+      transitions += 1;
+      options.onStateChange?.(last, observedAt - startedAt);
+      prior = last;
+    }
     if (last === "signed_in") {
       signedInSince ??= observedAt;
-      if (observedAt - signedInSince >= signedInStableMs) return "signed_in";
+      if (observedAt - signedInSince >= signedInStableMs) return finish("signed_in", observedAt - startedAt);
     } else {
       signedInSince = undefined;
     }
 
     if (observedAt >= deadline) {
-      return last === "signed_out" ? "signed_out" : "unknown";
+      return finish(last === "signed_out" ? "signed_out" : "unknown", observedAt - startedAt);
     }
     await wait(pollMs);
   }

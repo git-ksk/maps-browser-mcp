@@ -4,6 +4,14 @@ import path from "node:path";
 import os from "node:os";
 import { buildBrowserProcessEnv, findChromeExecutable } from "./chrome-process.js";
 import {
+  formatProfileLifecycleDiagnostic,
+  readBrowserRuntimeFingerprint,
+  readLinuxChromeProcessSummary,
+  readLinuxGraphicsSummary,
+  readProfileMetadataSummary,
+  readProfileSqliteIntegritySummary
+} from "./profile-lifecycle-diagnostics.js";
+import {
   commandUsesChromeProfile,
   waitForLinuxProfileProcessQuiescence
 } from "./profile-process-quiescence.js";
@@ -55,6 +63,17 @@ type WindowCommandRunner = (
 export const EXACT_WINDOW_TIMEOUT_MS = 15_000;
 export const GRACEFUL_BROWSER_CLOSE_TIMEOUT_MS = 10_000;
 const EXACT_WINDOW_POLL_MS = 100;
+const GRACEFUL_BROWSER_CLOSE_SAMPLE_MS = 500;
+
+function childHasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+
+
+function lifecycleLog(event: Parameters<typeof formatProfileLifecycleDiagnostic>[0], fields: Parameters<typeof formatProfileLifecycleDiagnostic>[1]): void {
+  console.error(`[maps-browser-mcp] ${formatProfileLifecycleDiagnostic(event, fields)}`);
+}
 export function parseLinuxWindowIds(value: string): number[] {
   return [...new Set(value
     .split(/\s+/)
@@ -146,6 +165,32 @@ export function buildCredentialSafeChromeArgs(options: Pick<SystemBrowserCredent
 }
 
 
+
+export async function readLinuxExactWindowState(
+  processId: number,
+  windowId: number,
+  displayName: string,
+  options: {
+    xdotoolExecutable?: string;
+    runCommand?: WindowCommandRunner;
+  } = {}
+): Promise<"owned" | "missing" | "reowned" | "unavailable"> {
+  if (!Number.isSafeInteger(processId) || processId <= 0 || !Number.isSafeInteger(windowId) || windowId <= 0) return "unavailable";
+  if (!/^:\d+(?:\.\d+)?$/.test(displayName)) return "unavailable";
+  const xdotoolExecutable = options.xdotoolExecutable ?? "/usr/bin/xdotool";
+  if (!path.isAbsolute(xdotoolExecutable)) return "unavailable";
+  const runCommand = options.runCommand ?? runBoundedWindowCommand;
+  const env = { ...buildBrowserProcessEnv(), DISPLAY: displayName };
+  try {
+    const rawOwner = await runCommand(xdotoolExecutable, ["getwindowpid", String(windowId)], env);
+    const ownerPid = Number(rawOwner.trim());
+    if (!Number.isSafeInteger(ownerPid) || ownerPid <= 0) return "missing";
+    return ownerPid === processId ? "owned" : "reowned";
+  } catch {
+    return "missing";
+  }
+}
+
 export async function requestLinuxGracefulWindowClose(
   processId: number,
   windowId: number,
@@ -186,7 +231,7 @@ export class SystemBrowserCredentialSession {
   constructor(private readonly options: SystemBrowserCredentialSessionOptions) {}
 
   isActive(): boolean {
-    return Boolean(this.child && this.child.exitCode === null);
+    return Boolean(this.child && !childHasExited(this.child));
   }
 
   getPid(): number | undefined {
@@ -206,6 +251,10 @@ export class SystemBrowserCredentialSession {
       throw new Error("Credential-safe normal Chrome process changed during exact-window lookup");
     }
     this.takeoverWindowId = windowId;
+    lifecycleLog("human_window_bound", {
+      windowState: "owned",
+      process: await readLinuxChromeProcessSummary(processId, this.options.profileDir, this.child)
+    });
     return { processId, windowId };
   }
 
@@ -220,6 +269,18 @@ export class SystemBrowserCredentialSession {
     await this.waitForProfileUnlock();
 
     const executable = findChromeExecutable(this.options.executable);
+    const runtime = await readBrowserRuntimeFingerprint(executable, {
+      headless: false,
+      remoteDebugging: false,
+      backgroundModeDisabled: true,
+      noSandbox: process.platform === "linux" && Boolean(this.options.allowUnsandboxedChromium)
+    });
+    lifecycleLog("human_browser_starting", {
+      backgroundModeDisabled: true,
+      runtime,
+      graphics: await readLinuxGraphicsSummary(this.options.takeoverDisplayName),
+      profile: await readProfileMetadataSummary(this.options.profileDir)
+    });
     if (process.platform === "linux" && this.options.allowUnsandboxedChromium && !this.warnedUnsandboxed) {
       this.warnedUnsandboxed = true;
       console.error(
@@ -231,10 +292,16 @@ export class SystemBrowserCredentialSession {
     let startupError: Error | undefined;
     child.once("error", (error) => { startupError = error; });
     await sleep(350);
-    if (startupError || child.exitCode !== null) {
+    if (startupError || childHasExited(child)) {
       this.child = undefined;
       throw new Error("Normal Chrome could not be started for credential-safe Human control");
     }
+    lifecycleLog("human_browser_started", {
+      runtime,
+      graphics: await readLinuxGraphicsSummary(this.options.takeoverDisplayName),
+      process: await readLinuxChromeProcessSummary(child.pid, this.options.profileDir, child),
+      profile: await readProfileMetadataSummary(this.options.profileDir)
+    });
   }
 
   async close(): Promise<void> {
@@ -242,27 +309,80 @@ export class SystemBrowserCredentialSession {
     const takeoverWindowId = this.takeoverWindowId;
     this.child = undefined;
     this.takeoverWindowId = undefined;
-    if (child && child.exitCode === null) {
+    if (child && !childHasExited(child)) {
+      lifecycleLog("human_browser_close_started", {
+        exactWindowBound: takeoverWindowId !== undefined,
+        graphics: await readLinuxGraphicsSummary(this.options.takeoverDisplayName),
+        process: await readLinuxChromeProcessSummary(child.pid, this.options.profileDir, child),
+        profile: await readProfileMetadataSummary(this.options.profileDir)
+      });
       const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
       if (process.platform === "linux" && child.pid !== undefined && this.options.takeoverDisplayName && takeoverWindowId !== undefined) {
-        await requestLinuxGracefulWindowClose(child.pid, takeoverWindowId, this.options.takeoverDisplayName, {
+        const closeAccepted = await requestLinuxGracefulWindowClose(child.pid, takeoverWindowId, this.options.takeoverDisplayName, {
           ...(this.options.xdotoolExecutable ? { xdotoolExecutable: this.options.xdotoolExecutable } : {})
-        }).catch(() => undefined);
-        await Promise.race([exited, sleep(GRACEFUL_BROWSER_CLOSE_TIMEOUT_MS)]);
+        }).catch(() => false);
+        lifecycleLog("human_window_close_requested", { closeAccepted });
+        const gracefulCloseStartedAt = Date.now();
+
+        await Promise.race([exited, sleep(GRACEFUL_BROWSER_CLOSE_SAMPLE_MS)]);
+        lifecycleLog("human_window_close_sample", {
+          elapsedMs: GRACEFUL_BROWSER_CLOSE_SAMPLE_MS,
+          windowState: await readLinuxExactWindowState(child.pid, takeoverWindowId, this.options.takeoverDisplayName, {
+            ...(this.options.xdotoolExecutable ? { xdotoolExecutable: this.options.xdotoolExecutable } : {})
+          }),
+          graphics: await readLinuxGraphicsSummary(this.options.takeoverDisplayName),
+          process: await readLinuxChromeProcessSummary(child.pid, this.options.profileDir, child),
+          profile: await readProfileMetadataSummary(this.options.profileDir)
+        });
+
+        if (!childHasExited(child)) {
+          const remainingMs = Math.max(0, GRACEFUL_BROWSER_CLOSE_TIMEOUT_MS - (Date.now() - gracefulCloseStartedAt));
+          await Promise.race([exited, sleep(remainingMs)]);
+        }
+        if (!childHasExited(child)) {
+          lifecycleLog("human_graceful_exit_timeout", {
+            elapsedMs: GRACEFUL_BROWSER_CLOSE_TIMEOUT_MS,
+            windowState: await readLinuxExactWindowState(child.pid, takeoverWindowId, this.options.takeoverDisplayName, {
+              ...(this.options.xdotoolExecutable ? { xdotoolExecutable: this.options.xdotoolExecutable } : {})
+            }),
+            graphics: await readLinuxGraphicsSummary(this.options.takeoverDisplayName),
+            process: await readLinuxChromeProcessSummary(child.pid, this.options.profileDir, child),
+            profile: await readProfileMetadataSummary(this.options.profileDir)
+          });
+        }
       }
-      if (child.exitCode === null) {
-        console.error("[maps-browser-mcp] Credential-safe normal Chrome did not exit after graceful window close; escalating to SIGTERM");
+      if (!childHasExited(child)) {
+        lifecycleLog("human_sigterm_sent", {
+          process: await readLinuxChromeProcessSummary(child.pid, this.options.profileDir, child)
+        });
         child.kill("SIGTERM");
         await Promise.race([exited, sleep(2_000)]);
+        lifecycleLog("human_sigterm_sample", {
+          process: await readLinuxChromeProcessSummary(child.pid, this.options.profileDir, child),
+          profile: await readProfileMetadataSummary(this.options.profileDir)
+        });
       }
-      if (child.exitCode === null) {
+      if (!childHasExited(child)) {
+        lifecycleLog("human_sigkill_sent", {
+          process: await readLinuxChromeProcessSummary(child.pid, this.options.profileDir, child)
+        });
         child.kill("SIGKILL");
         await Promise.race([exited, sleep(1_000)]);
+        lifecycleLog("human_sigkill_sample", {
+          process: await readLinuxChromeProcessSummary(child.pid, this.options.profileDir, child),
+          profile: await readProfileMetadataSummary(this.options.profileDir)
+        });
       }
     }
     if (child && process.platform === "linux") {
       await waitForLinuxProfileProcessQuiescence(this.options.profileDir, {
         timeoutMs: this.options.profileUnlockTimeoutMs ?? 5_000
+      });
+      lifecycleLog("human_profile_quiescent", {
+        graphics: await readLinuxGraphicsSummary(this.options.takeoverDisplayName),
+        process: await readLinuxChromeProcessSummary(child.pid, this.options.profileDir, child),
+        profile: await readProfileMetadataSummary(this.options.profileDir),
+        sqlite: await readProfileSqliteIntegritySummary(this.options.profileDir)
       });
     }
     await this.waitForProfileUnlock();
