@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { waitForLinuxProfileProcessQuiescence } from "./profile-process-quiescence.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -224,5 +225,16 @@ export class ChromeProcess {
       child.kill("SIGKILL");
       await Promise.race([exited, sleep(1_000)]);
     }
+    if (child.exitCode === null) {
+      throw new Error("Chrome/Chromium did not exit after SIGTERM/SIGKILL shutdown");
+    }
+  }
+
+  async closeForProfileCheckpoint(): Promise<void> {
+    if (this.options.externalCdpPort !== undefined) {
+      throw new Error("Cannot checkpoint a profile owned by an external CDP browser");
+    }
+    await this.close();
+    await waitForLinuxProfileProcessQuiescence(this.options.profileDir, { timeoutMs: 5_000 });
   }
 }

@@ -274,7 +274,7 @@ The snapshot helper:
 - never extracts or logs individual cookies/tokens/account identifiers;
 - requires an explicit `--browser-stopped` acknowledgement for checkpoints.
 
-The reference entrypoint also attempts a checkpoint after a graceful container `SIGTERM`, after the private core has completed its browser shutdown. An unexpected core/gateway crash does **not** create a new snapshot. The primary signed-in durability checkpoint should be wired to the hosted Human-Takeover `Done` lifecycle once the Linux takeover transport is available, so the freshly authenticated profile is captured immediately at a known browser-authority boundary.
+The reference entrypoint does **not** publish a profile merely because the container receives graceful `SIGTERM`. Durable publication is restricted to the credential-safe verified sign-in lifecycle: fresh coarse `signed_in` verification, Agent Chromium stop plus exact-profile quiescence, then checkpoint. Shutdown, incomplete sign-in, or stop/quiescence failure therefore preserves the last known-good durable pointer.
 
 Manual maintenance command inside a stopped-browser deployment container:
 
