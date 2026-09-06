@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildCredentialSafeChromeArgs,
   EXACT_WINDOW_TIMEOUT_MS,
+  GRACEFUL_BROWSER_CLOSE_TIMEOUT_MS,
   commandUsesChromeProfile,
   parseLinuxWindowIds,
   parseLocalLinuxSingletonLockPid,
@@ -17,6 +18,10 @@ import path from "node:path";
 
 test("Linux exact-window default settling stays bounded for Cloud Run cold/profile startup", () => {
   assert.equal(EXACT_WINDOW_TIMEOUT_MS, 15_000);
+});
+
+test("credential-safe normal Chrome gets a bounded graceful flush window before signal escalation", () => {
+  assert.equal(GRACEFUL_BROWSER_CLOSE_TIMEOUT_MS, 10_000);
 });
 
 test("credential-safe normal Chrome uses the dedicated profile without remote debugging or automation flags", () => {

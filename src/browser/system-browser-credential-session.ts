@@ -53,6 +53,7 @@ type WindowCommandRunner = (
 ) => Promise<string>;
 
 export const EXACT_WINDOW_TIMEOUT_MS = 15_000;
+export const GRACEFUL_BROWSER_CLOSE_TIMEOUT_MS = 10_000;
 const EXACT_WINDOW_POLL_MS = 100;
 export function parseLinuxWindowIds(value: string): number[] {
   return [...new Set(value
@@ -246,9 +247,10 @@ export class SystemBrowserCredentialSession {
         await requestLinuxGracefulWindowClose(child.pid, takeoverWindowId, this.options.takeoverDisplayName, {
           ...(this.options.xdotoolExecutable ? { xdotoolExecutable: this.options.xdotoolExecutable } : {})
         }).catch(() => undefined);
-        await Promise.race([exited, sleep(2_000)]);
+        await Promise.race([exited, sleep(GRACEFUL_BROWSER_CLOSE_TIMEOUT_MS)]);
       }
       if (child.exitCode === null) {
+        console.error("[maps-browser-mcp] Credential-safe normal Chrome did not exit after graceful window close; escalating to SIGTERM");
         child.kill("SIGTERM");
         await Promise.race([exited, sleep(2_000)]);
       }
