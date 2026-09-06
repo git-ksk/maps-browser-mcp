@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCredentialSafeChromeArgs,
+  EXACT_WINDOW_TIMEOUT_MS,
   commandUsesChromeProfile,
   parseLinuxWindowIds,
   parseLocalLinuxSingletonLockPid,
@@ -13,6 +14,10 @@ import {
 import { mkdtemp, symlink, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+
+test("Linux exact-window default settling stays bounded for Cloud Run cold/profile startup", () => {
+  assert.equal(EXACT_WINDOW_TIMEOUT_MS, 15_000);
+});
 
 test("credential-safe normal Chrome uses the dedicated profile without remote debugging or automation flags", () => {
   const args = buildCredentialSafeChromeArgs({

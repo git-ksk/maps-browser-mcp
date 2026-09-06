@@ -52,7 +52,7 @@ type WindowCommandRunner = (
   env: NodeJS.ProcessEnv
 ) => Promise<string>;
 
-const EXACT_WINDOW_TIMEOUT_MS = 5_000;
+export const EXACT_WINDOW_TIMEOUT_MS = 15_000;
 const EXACT_WINDOW_POLL_MS = 100;
 export function parseLinuxWindowIds(value: string): number[] {
   return [...new Set(value
