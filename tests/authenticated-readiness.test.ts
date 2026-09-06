@@ -44,19 +44,51 @@ test("probe source does not read or return raw account identity fields", () => {
   assert.doesNotMatch(AUTHENTICATED_READINESS_EXPRESSION, /cookie|localStorage|sessionStorage|indexedDB/i);
 });
 
-test("post-Human readiness tolerates transient signed_out until signed_in stabilizes", async () => {
+test("post-Human readiness tolerates transient signed_out until signed_in stays stable", async () => {
   const { waitForAuthenticatedReadinessAfterHuman } = await import("../src/browser/authenticated-readiness.js");
-  const values = ["signed_out", "unknown", "signed_in"] as const;
+  const values = ["signed_out", "unknown", "signed_in", "signed_in", "signed_in"] as const;
   let index = 0;
   let now = 0;
   const result = await waitForAuthenticatedReadinessAfterHuman(async () => values[Math.min(index++, values.length - 1)]!, {
     timeoutMs: 1_000,
     pollMs: 25,
+    signedInStableMs: 50,
     now: () => now,
     wait: async (ms) => { now += ms; }
   });
   assert.equal(result, "signed_in");
-  assert.equal(index, 3);
+  assert.equal(index, 5);
+});
+
+test("post-Human readiness rejects a transient signed_in sample before signed_out settles", async () => {
+  const { waitForAuthenticatedReadinessAfterHuman } = await import("../src/browser/authenticated-readiness.js");
+  const values = ["unknown", "signed_in", "signed_out", "signed_out", "signed_out"] as const;
+  let index = 0;
+  let now = 0;
+  const result = await waitForAuthenticatedReadinessAfterHuman(async () => values[Math.min(index++, values.length - 1)]!, {
+    timeoutMs: 100,
+    pollMs: 25,
+    signedInStableMs: 50,
+    now: () => now,
+    wait: async (ms) => { now += ms; }
+  });
+  assert.equal(result, "signed_out");
+  assert.ok(index >= 5);
+});
+
+test("post-Human readiness fails closed when signed_in appears only at the settle deadline", async () => {
+  const { waitForAuthenticatedReadinessAfterHuman } = await import("../src/browser/authenticated-readiness.js");
+  const values = ["unknown", "unknown", "signed_in"] as const;
+  let index = 0;
+  let now = 0;
+  const result = await waitForAuthenticatedReadinessAfterHuman(async () => values[Math.min(index++, values.length - 1)]!, {
+    timeoutMs: 50,
+    pollMs: 25,
+    signedInStableMs: 50,
+    now: () => now,
+    wait: async (ms) => { now += ms; }
+  });
+  assert.equal(result, "unknown");
 });
 
 test("post-Human readiness remains fail-closed when signed_out persists through the bounded settle", async () => {

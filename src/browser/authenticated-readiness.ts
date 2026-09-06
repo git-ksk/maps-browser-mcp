@@ -47,20 +47,33 @@ export async function waitForAuthenticatedReadinessAfterHuman(
   options: {
     timeoutMs?: number;
     pollMs?: number;
+    signedInStableMs?: number;
     now?: () => number;
     wait?: (ms: number) => Promise<void>;
   } = {}
 ): Promise<AuthenticatedMapsReadiness> {
   const timeoutMs = options.timeoutMs ?? 8_000;
   const pollMs = options.pollMs ?? 100;
+  const signedInStableMs = options.signedInStableMs ?? 1_000;
   const now = options.now ?? Date.now;
   const wait = options.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const deadline = now() + timeoutMs;
   let last: AuthenticatedMapsReadiness = "unknown";
+  let signedInSince: number | undefined;
+
   for (;;) {
     last = await read();
-    if (last === "signed_in") return last;
-    if (now() >= deadline) return last;
+    const observedAt = now();
+    if (last === "signed_in") {
+      signedInSince ??= observedAt;
+      if (observedAt - signedInSince >= signedInStableMs) return "signed_in";
+    } else {
+      signedInSince = undefined;
+    }
+
+    if (observedAt >= deadline) {
+      return last === "signed_out" ? "signed_out" : "unknown";
+    }
     await wait(pollMs);
   }
 }
