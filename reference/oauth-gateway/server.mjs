@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import { createOAuthBoundary } from "./oauth.mjs";
 import { createTakeoverOperatorBoundary } from "./operator-auth.mjs";
 import { normalizedTopLevelTakeoverUrl } from "./takeover-url.mjs";
+import { responseForUnauthenticatedTopLevelProbe } from "./takeover-terminal.mjs";
 import {
   assertPrivateBearer,
   proxyMcpRequest,
@@ -146,9 +147,12 @@ const server = http.createServer(async (req, res) => {
             headers: normalized.headers,
             signal: normalized.signal
           }), { coreUrl, privateBearer });
-          if (probe.status !== 200) return await writeNodeResponse(res, probe);
-          const response = takeoverOperator.loginPage();
-          return await writeNodeResponse(res, request.method === "HEAD" ? headResponse(response) : response);
+          const response = responseForUnauthenticatedTopLevelProbe(
+            probe,
+            request.method,
+            () => takeoverOperator.loginPage()
+          );
+          return await writeNodeResponse(res, response);
         }
         return await writeNodeResponse(res, json(401, "operator_auth_required"));
       }
