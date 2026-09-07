@@ -184,6 +184,9 @@ This closes Cloud Run continuity, Handoff authority, Human browser, X11, process
 - #189 — browser/CDP recovery after Human teardown
 - #194 — resident takeover / idle scale-down behavior
 - #196 — stable signed-in evidence before durable checkpoint
+- #197 — durable-profile writer fencing. For v0.4.0, keep `concurrency=1` / `maxScale=1` as guardrails while treating pointer-generation CAS as the actual single-writer correctness boundary.
+- #199 — post-Human lifecycle crash-boundary acceptance. Fault-inject every defined boundary in CI/local coverage and keep physical Cloud Run coverage to 2–3 representative boundaries.
+- #198 — snapshot compatibility manifest / rollback-safe restore. Targeted to v0.4.1 and intentionally not a blocker for the current A root-cause diagnostic.
 - #195 — closed; bounded Linux exact-window settle physically accepted
 
 ## Resume checklist

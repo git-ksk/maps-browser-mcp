@@ -174,20 +174,29 @@ Release blockers:
 3. **#183 / #135 / #196 post-Human profile lifecycle** — stopped-profile candidate方式とstable `signed_in` verifierをcombined acceptance lineへ実装。Human Chrome stop/quiescence直後にCloud Storageへ未公開candidateをstageし、local profileはtar→restoreせずそのままfresh Agentへ渡す。stable `signed_in`成功時だけAgentを停止してstage済みcandidateをpointer-generation precondition付きでcurrentへpromoteする。unpublished candidateはrestore fallbackにせずbounded retention、失敗時はcurrent pointer不変。root 391件（386 pass / 0 fail / 5 skip）、reference OAuth gateway 49/49がgreen。2026-09-06の物理iPhone A/B isolationではBのunpublished candidate stageは成功した一方、unchanged local profileをfresh Agentで開いたAが`signed_out`となりcurrent pointerは未昇格、Cは未実施。archive/GCS restoreより前で失敗している。2秒→10秒のgraceful close延長、headed Agent、Human Chromiumの`--disable-background-mode`でも再現したため、次回Human trialは場当たり的な再試験をせず、pre-Human profile metadata、Human Chrome/X11/process tree、500ms/10s close state、signal escalation、profile quiescence/SQLite、candidate stage、fresh Agent runtime/readiness transitionまでをcontent-freeで一括観測するone-shot diagnostic gateとする。診断整備中にNode `ChildProcess` のsignal終了を `exitCode === null` だけで生存扱いしてしまうバグを回帰テストで再現したため、`exitCode != null || signalCode != null` を終了条件として修正済み。これ以外の原因仮説に対する挙動変更は混ぜず、one-shot診断で各境界を観測する。詳細は [Cloud Run profile acceptance handoff](cloud-run-profile-acceptance-handoff.ja.md)。
 4. **#189 browser / CDP self-recovery** — expired / cancelled Human teardownやrecoverableなChrome / CDP接続断を同じservice instance内で復旧し、profile ownershipはfail-closedのまま維持する。失敗actionをreplayしたりCloud Run revisionを差し替えたりせず、別のfresh MCP invocationを必須にする。
 5. **#170 guarded Cloud Run rollout** — 0%-traffic candidate health / cutover / rollback手順をproduction昇格前のcanonical procedureにする。
-6. **#117 usage liability boundary** — proven pre-meter precondition refusalをcompleted browser workとして暗黙課金しない境界を確定する。
-7. **#141 first broad distribution** — maintainerが明示authorizeした場合のみ、version metadata、packed artifact、clean-consumer smoke、npm、Official MCP Registry、repository discovery metadataを一括確認して公開する。
+6. **#197 durable profile writer fencing** — `concurrency=1` / `maxScale=1` を運用guardrailとして維持しつつ、correctnessはGCS candidate create preconditionと`current.json` generation CASに置く。同じbase pointer generationから複数revision/instanceがstageしても、durable pointerを成功commitできるwriterは1つだけで、stale writerはfail closedすることをdeterministic race testで固定する。
+7. **#199 crash-boundary acceptance** — Done/revoke/stage/verify/upload/pointer advanceの各境界をdeterministic fault injectionで網羅し、Cloud Run physicalはpre-commit、upload-before-pointer、post-pointer restartの代表2〜3ケースだけを確認する。全境界を物理iPhoneで繰り返すことはv0.4.0 gateにしない。
+8. **#117 usage liability boundary** — proven pre-meter precondition refusalをcompleted browser workとして暗黙課金しない境界を確定する。
+9. **#141 first broad distribution** — maintainerが明示authorizeした場合のみ、version metadata、packed artifact、clean-consumer smoke、npm、Official MCP Registry、repository discovery metadataを一括確認して公開する。
 
 **非blockerのUX follow-up:** #134はMaps consumerで観測したgeneric Handoff mobile keyboard / CJK / scroll polishを追跡します。Generic input defectが実際のGoogle認証フロー自体を止めない限り、Maps v0.4 blockerにはしません。通常のMaps検索、scroll、zoom、place selection、ログイン後actionはAgent-owned MCP operationのままです。
 
 v0.4.0で維持するproduction invariants:
 
-- Cloud Runはsingle interactive browser authorityを守るため `concurrency=1` / `maxScale=1` を維持する。
+- Cloud Runはsingle interactive browser authorityの運用guardrailとして `concurrency=1` / `maxScale=1` を維持する。ただしdurable profile publicationのsingle-writer correctnessはこれだけに依存せず、candidate object create precondition + `current.json` generation CAS/fencingで保証する。
 - remote takeover authを弱めず、startup failureはfail closedのまま扱う。
 - Handoff diagnosticsはenum/bounded/content-freeとし、credential、Human-entered text、browser/frame content、account identity、session/transport secretを記録しない。
 - failed Human inputを自動replayせず、duplicate side effectを作らない。
 - Mapsはtransport-blindのまま、generic browser/desktop MCPへscopeを広げない。
 
 **#143 CI docs-only efficiencyはv0.4.0 release blockerではありません。** Required check名とbranch protectionを維持したまま、純docs変更の重いbrowser/container matrixを短絡できる時だけ改善します。
+
+### 次 — v0.4.1: Profile Compatibility & Crash Hardening
+
+- **#198 snapshot compatibility manifest / rollback-safe restore** — snapshot format version、app/repository revision、Chromium major、snapshot generation、createdAtだけをcontent-free manifestとして保存し、unknown/incompatible manifestはrestore前にfail closedする。
+- v0.4.0でacceptedなsame-runtime Done → stage → A → promote → Cを前提に、cross-revision / cross-Chromium restore時のcompatibilityを明示化する。現在観測中のA=`signed_out`はGCS restore前に発生しているため、#198をv0.4.0 one-shot root-cause diagnosticのblockerにはしない。
+- previous known-good generationをbounded rollback候補として維持するが、rollback後もfresh Maps readinessから再開し、DOM/page/action/intervention/Handoff authorityは復元しない。
+- #199のdeterministic crash coverageを超えるexhaustive physical crash matrixが必要になった場合も、このhardening laneで扱う。
 
 ### 次 — v0.5.0: MCP Apps production portability
 

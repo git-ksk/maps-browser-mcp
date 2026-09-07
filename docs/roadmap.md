@@ -172,20 +172,29 @@ Release blockers:
 3. **#183 / #135 / #196 post-Human profile lifecycle** — the combined acceptance line now implements the two-phase stopped-profile candidate design plus the stable `signed_in` verifier. Immediately after Human Chrome stop/quiescence it stages an unpublished Cloud Storage candidate, leaves the local profile untouched, and launches fresh Agent Chrome against that same directory. Only stable `signed_in` permits Agent stop followed by generation-preconditioned promotion of the exact staged candidate. Unpublished candidates are bounded and never restore fallbacks; all pre-promotion failures leave current unchanged. Root 391 tests (386 pass / 0 fail / 5 skip) and reference OAuth gateway 49/49 are green. The 2026-09-06 physical iPhone A/B isolation staged B successfully, but fresh Agent A against the unchanged local profile classified `signed_out`; current remained unchanged and C was not run. The failure occurs before archive/GCS restore and reproduced after a 2s→10s graceful-close extension, with headed Agent, and with Human Chromium `--disable-background-mode`. The next Human trial is therefore a one-shot comprehensive diagnostic gate rather than another ad-hoc retry: it captures content-free pre-Human profile metadata, Human Chrome/X11/process-tree state, 500ms/10s close state, signal escalation, profile quiescence/SQLite, candidate staging, and fresh-Agent runtime/readiness transitions in one run. During diagnostics hardening, a regression test reproduced a Node `ChildProcess` signal-exit bug: `exitCode === null` alone could misclassify SIGTERM termination as still alive. The next build fixes that boundary by treating `exitCode != null || signalCode != null` as exited; no other hypothesis-driven behavior change is mixed into the one-shot diagnostic build. See [Cloud Run profile acceptance handoff](cloud-run-profile-acceptance-handoff.md).
 4. **#189 browser/CDP self-recovery** — recover expired/cancelled Human teardown and recoverable Chrome/CDP loss inside the same service instance, preserve fail-closed profile ownership, and require a separate fresh MCP invocation instead of replaying the failed action or redeploying Cloud Run.
 5. **#170 guarded Cloud Run rollout** — make the 0%-traffic candidate health/cutover/rollback procedure canonical before production promotion.
-6. **#117 usage-liability boundary** — ensure proven pre-meter precondition refusals are not silently charged as completed browser work.
-7. **#141 first broad distribution** — only with explicit maintainer authorization, validate synchronized version metadata, packed artifact, clean-consumer smoke, npm publication, Official MCP Registry publication, and repository discovery metadata.
+6. **#197 durable-profile writer fencing** — keep `concurrency=1` / `maxScale=1` as operational guardrails, while placing correctness on immutable candidate creation plus generation-CAS of `current.json`. If multiple revisions/instances stage from the same base pointer generation, deterministic race coverage must prove that only one writer can successfully commit the durable pointer and every stale writer fails closed.
+7. **#199 crash-boundary acceptance** — cover Done/revoke/stage/verify/upload/pointer-advance boundaries with deterministic fault injection, then physically validate only 2–3 representative Cloud Run cases: pre-commit, upload-before-pointer, and post-pointer restart. Repeating every synthetic crash boundary with a physical iPhone is not a v0.4.0 gate.
+8. **#117 usage-liability boundary** — ensure proven pre-meter precondition refusals are not silently charged as completed browser work.
+9. **#141 first broad distribution** — only with explicit maintainer authorization, validate synchronized version metadata, packed artifact, clean-consumer smoke, npm publication, Official MCP Registry publication, and repository discovery metadata.
 
 **Non-blocking UX follow-up:** #134 tracks generic Handoff mobile keyboard/CJK/scroll polish observed through the Maps consumer. It is not a Maps v0.4 release blocker unless a generic input defect prevents the real Google authentication flow itself. Ordinary Maps search, scroll, zoom, place selection, and authenticated actions remain Agent-owned MCP operations.
 
 Production invariants for v0.4.0:
 
-- Preserve `concurrency=1` and `maxScale=1` for the single interactive browser authority model.
+- Preserve `concurrency=1` and `maxScale=1` as operational guardrails for the single interactive browser authority model. Durable-profile single-writer correctness must not depend on those limits alone; immutable candidate creation plus generation-CAS/fencing of `current.json` is the publication boundary.
 - Do not weaken remote-takeover authentication; startup misconfiguration remains fail-closed.
 - Keep Handoff diagnostics bounded, enum-based, and content-free: no credentials, Human-entered text, browser/frame content, account identity, or session/transport secrets.
 - Never auto-replay failed Human input or create duplicate side effects.
 - Keep Maps transport-blind and do not widen it into a generic browser/desktop MCP.
 
 **#143 docs-only CI efficiency is not a v0.4.0 release blocker.** Improve it only if required check names and branch protection remain intact.
+
+### Next — v0.4.1: Profile Compatibility & Crash Hardening
+
+- **#198 snapshot compatibility manifest / rollback-safe restore** — persist only a content-free manifest with snapshot format version, app/repository revision, Chromium major, snapshot generation, and creation time; reject unknown/incompatible manifests before restore.
+- Build this on the same-runtime Done → stage → A → promote → C lifecycle accepted in v0.4.0. The current A=`signed_out` failure occurs before any GCS restore, so #198 is intentionally not a blocker for the v0.4.0 one-shot root-cause diagnostic.
+- Retain the previous known-good generation as a bounded rollback candidate, but always restart from fresh Maps readiness and never restore DOM/page/action/intervention/Handoff authority.
+- Any exhaustive physical crash matrix beyond #199's deterministic coverage plus representative v0.4.0 Cloud Run cases also belongs in this hardening lane.
 
 ### Next — v0.5.0: MCP Apps production portability
 

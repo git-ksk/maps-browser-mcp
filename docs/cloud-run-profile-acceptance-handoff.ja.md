@@ -214,6 +214,9 @@ Human試験後に追加の仮説診断を考え始めず、あらかじめ以下
 - #189 — browser/CDP recovery after Human teardown
 - #194 — resident takeover / idle scale-down behavior
 - #196 — stable signed-in evidence before durable checkpoint
+- #197 — durable profile writer fencing。v0.4.0では`concurrency=1` / `maxScale=1`をguardrailとして維持しつつ、pointer generation CASをsingle-writer correctnessの本体とする。
+- #199 — post-Human lifecycle crash-boundary acceptance。CI/localでは全定義境界をfault injection、Cloud Run physicalは代表2〜3境界に限定する。
+- #198 — snapshot compatibility manifest / rollback-safe restore。v0.4.1対象で、現在のA root-cause diagnosticはblockしない。
 - #195 — closed; bounded Linux exact-window settle physically accepted
 
 ## Resume checklist
