@@ -47,18 +47,21 @@ export function parseDevToolsActivePort(value: string): ActiveDevToolsEndpoint |
   return { port, browserPath };
 }
 
-export function buildChromeArgs(options: ChromeProcessOptions): string[] {
+export function buildChromeArgs(
+  options: ChromeProcessOptions,
+  launch: { restoreLastSession?: boolean } = {}
+): string[] {
   const args = [
     `--user-data-dir=${options.profileDir}`,
     "--remote-debugging-address=127.0.0.1",
     "--remote-debugging-port=0",
-    "--restore-last-session",
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-session-crashed-bubble",
     "--new-window",
     "about:blank"
   ];
+  if (launch.restoreLastSession) args.splice(3, 0, "--restore-last-session");
   if (options.headless) args.unshift("--headless=new");
   if (process.platform === "linux" && options.allowUnsandboxedChromium) {
     args.unshift("--no-sandbox");
@@ -131,8 +134,16 @@ export class ChromeProcess {
   private port?: number;
   private browserPath?: string;
   private warnedUnsandboxed = false;
+  private restoreLastSessionOnNextStart = false;
 
   constructor(private readonly options: ChromeProcessOptions) {}
+
+  requestNextStartSessionRestore(): void {
+    if (this.options.externalCdpPort !== undefined) {
+      throw new Error("Cannot control session restore for an external CDP browser");
+    }
+    this.restoreLastSessionOnNextStart = true;
+  }
 
   async diagnosticsSnapshot() {
     const executable = findChromeExecutable(this.options.executable);
@@ -150,6 +161,9 @@ export class ChromeProcess {
   }
 
   async start(): Promise<number> {
+    const restoreLastSession = this.restoreLastSessionOnNextStart;
+    this.restoreLastSessionOnNextStart = false;
+
     if (this.options.externalCdpPort !== undefined) {
       if (!(await canReachCdp(this.options.externalCdpPort))) {
         throw new Error(`No local Chrome DevTools endpoint on port ${this.options.externalCdpPort}`);
@@ -162,6 +176,9 @@ export class ChromeProcess {
       this.browserPath !== undefined &&
       (await canReachCdp(this.port, this.browserPath))
     ) {
+      if (restoreLastSession) {
+        throw new Error("Scoped session restore requires a fresh Chrome process");
+      }
       return this.port;
     }
     this.port = undefined;
@@ -176,6 +193,9 @@ export class ChromeProcess {
     try {
       const existing = parseDevToolsActivePort(await fsp.readFile(activePortFile, "utf8"));
       if (existing && (await canReachCdp(existing.port, existing.browserPath))) {
+        if (restoreLastSession) {
+          throw new Error("Scoped session restore requires a stopped dedicated profile");
+        }
         this.port = existing.port;
         this.browserPath = existing.browserPath;
         return existing.port;
@@ -186,7 +206,7 @@ export class ChromeProcess {
     }
 
     const executable = findChromeExecutable(this.options.executable);
-    const args = buildChromeArgs(this.options);
+    const args = buildChromeArgs(this.options, { restoreLastSession });
     if (process.platform === "linux" && this.options.allowUnsandboxedChromium && !this.warnedUnsandboxed) {
       this.warnedUnsandboxed = true;
       console.error(

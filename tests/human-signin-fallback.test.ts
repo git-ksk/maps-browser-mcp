@@ -182,6 +182,19 @@ test("consumer cancellation never masquerades as Human Done", () => {
   assert.doesNotMatch(source, /ensureVerifying|releaseHumanAuthorityForVerification|markHumanControlComplete/);
 });
 
+test("session restore is armed only for the fresh Agent verification start", () => {
+  const start = runtimeSource.indexOf("async verifyCredentialSafeHumanIntervention");
+  const end = runtimeSource.indexOf("async stopBrowserForProfileCheckpoint", start);
+  assert.ok(start >= 0 && end > start);
+  const verification = runtimeSource.slice(start, end);
+  const preflight = verification.indexOf("fresh_agent_browser_preflight");
+  const arm = verification.indexOf("requestNextStartSessionRestore");
+  const connect = verification.indexOf("getClientUnchecked");
+  assert.ok(preflight >= 0 && arm > preflight && connect > arm);
+  const outsideVerification = runtimeSource.slice(0, start) + runtimeSource.slice(end);
+  assert.doesNotMatch(outsideVerification, /requestNextStartSessionRestore/);
+});
+
 test("durable profile publication stays behind verified signed-in readiness", () => {
   const start = runtimeSource.indexOf("async verifyCredentialSafeHumanIntervention");
   const end = runtimeSource.indexOf("async stopBrowserForProfileCheckpoint", start);

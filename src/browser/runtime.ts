@@ -334,6 +334,7 @@ export class MapsBrowserRuntime {
     if (this.chrome.diagnosticsSnapshot) {
       lifecycleLog("fresh_agent_browser_preflight", await this.chrome.diagnosticsSnapshot());
     }
+    this.chrome.requestNextStartSessionRestore?.();
     const client = await this.getClientUnchecked();
     lifecycleLog("fresh_agent_cdp_ready", { cdpReady: true });
     if (this.chrome.diagnosticsSnapshot) {

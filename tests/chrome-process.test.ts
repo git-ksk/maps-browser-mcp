@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildBrowserProcessEnv, buildChromeArgs, parseDevToolsActivePort } from "../src/browser/chrome-process.js";
+import { buildBrowserProcessEnv, buildChromeArgs, ChromeProcess, parseDevToolsActivePort } from "../src/browser/chrome-process.js";
 
 test("parses a Chrome DevToolsActivePort record with browser identity", () => {
   assert.deepEqual(
@@ -21,9 +21,26 @@ test("does not disable the Chromium sandbox by default", () => {
   assert.equal(args.includes("--no-sandbox"), false);
 });
 
-test("fresh Agent Chromium restores persisted session cookies from the dedicated profile", () => {
+test("normal Agent Chromium does not restore prior session state by default", () => {
   const args = buildChromeArgs({ profileDir: "/tmp/test-profile", headless: false });
+  assert.equal(args.includes("--restore-last-session"), false);
+});
+
+test("a scoped Agent launch can restore persisted session cookies from the dedicated profile", () => {
+  const args = buildChromeArgs(
+    { profileDir: "/tmp/test-profile", headless: false },
+    { restoreLastSession: true }
+  );
   assert.equal(args.includes("--restore-last-session"), true);
+});
+
+test("session-restore arming fails closed for an external CDP browser", () => {
+  const chrome = new ChromeProcess({
+    profileDir: "/tmp/test-profile",
+    headless: false,
+    externalCdpPort: 9222
+  });
+  assert.throws(() => chrome.requestNextStartSessionRestore(), /external CDP browser/);
 });
 
 test("adds --no-sandbox only for explicit Linux opt-in", { skip: process.platform !== "linux" }, () => {

@@ -7,6 +7,7 @@ export type BrowserAutomationEndpoint =
 export interface BrowserSessionOwner {
   readonly kind?: string;
   start(): Promise<number | BrowserAutomationEndpoint>;
+  requestNextStartSessionRestore?(): void;
   close(): Promise<void>;
   closeForProfileCheckpoint?(): Promise<void>;
   diagnosticsSnapshot?(): Promise<Record<string, ProfileLifecycleDiagnosticValue>>;
