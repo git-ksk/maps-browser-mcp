@@ -21,6 +21,11 @@ test("does not disable the Chromium sandbox by default", () => {
   assert.equal(args.includes("--no-sandbox"), false);
 });
 
+test("fresh Agent Chromium restores persisted session cookies from the dedicated profile", () => {
+  const args = buildChromeArgs({ profileDir: "/tmp/test-profile", headless: false });
+  assert.equal(args.includes("--restore-last-session"), true);
+});
+
 test("adds --no-sandbox only for explicit Linux opt-in", { skip: process.platform !== "linux" }, () => {
   const args = buildChromeArgs({
     profileDir: "/tmp/test-profile",

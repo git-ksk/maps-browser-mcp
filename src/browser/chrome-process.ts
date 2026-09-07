@@ -52,6 +52,7 @@ export function buildChromeArgs(options: ChromeProcessOptions): string[] {
     `--user-data-dir=${options.profileDir}`,
     "--remote-debugging-address=127.0.0.1",
     "--remote-debugging-port=0",
+    "--restore-last-session",
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-session-crashed-bubble",
