@@ -483,13 +483,24 @@ async function prepareHandoffPrompt(intervention: MapsIntervention, owner: Hando
 
 async function revokeCredentialSafeSurface(interventionId: string, owner: HandoffOwner): Promise<string | undefined> {
   const external = credentialSafeSurface?.getActive();
-  if (!external || external.interventionId !== interventionId) return undefined;
-  await credentialSafeSurface!.revoke(
-    external.interventionId,
-    external.epoch,
-    owner.principalBinding
-  );
-  return external.providerKind;
+  const surfacePresent = Boolean(external && external.interventionId === interventionId);
+  profileLifecycleLog("human_revoke_started", { surfacePresent });
+  if (!external || external.interventionId !== interventionId) {
+    profileLifecycleLog("human_revoke_completed", { surfacePresent: false });
+    return undefined;
+  }
+  try {
+    await credentialSafeSurface!.revoke(
+      external.interventionId,
+      external.epoch,
+      owner.principalBinding
+    );
+    profileLifecycleLog("human_revoke_completed", { surfacePresent: true });
+    return external.providerKind;
+  } catch (error) {
+    profileLifecycleLog("human_revoke_failed", { surfacePresent: true });
+    throw error;
+  }
 }
 
 async function revokeCredentialSafeSurfaceIncludingExpired(

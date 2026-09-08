@@ -135,6 +135,8 @@ export class ChromeProcess {
   private browserPath?: string;
   private warnedUnsandboxed = false;
   private restoreLastSessionOnNextStart = false;
+  private lastStartRestoreRequested = false;
+  private lastStartSpawned = false;
 
   constructor(private readonly options: ChromeProcessOptions) {}
 
@@ -148,6 +150,9 @@ export class ChromeProcess {
   async diagnosticsSnapshot() {
     const executable = findChromeExecutable(this.options.executable);
     return {
+      sessionRestorePending: this.restoreLastSessionOnNextStart,
+      sessionRestoreRequested: this.lastStartRestoreRequested,
+      freshProcessSpawned: this.lastStartSpawned,
       runtime: await readBrowserRuntimeFingerprint(executable, {
         headless: this.options.headless,
         remoteDebugging: true,
@@ -163,6 +168,8 @@ export class ChromeProcess {
   async start(): Promise<number> {
     const restoreLastSession = this.restoreLastSessionOnNextStart;
     this.restoreLastSessionOnNextStart = false;
+    this.lastStartRestoreRequested = restoreLastSession;
+    this.lastStartSpawned = false;
 
     if (this.options.externalCdpPort !== undefined) {
       if (!(await canReachCdp(this.options.externalCdpPort))) {
@@ -216,6 +223,7 @@ export class ChromeProcess {
       );
     }
 
+    this.lastStartSpawned = true;
     this.child = spawn(executable, args, { stdio: "ignore", env: buildBrowserProcessEnv() });
     let startupError: Error | undefined;
     this.child.once("error", (error) => {

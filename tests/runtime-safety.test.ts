@@ -582,7 +582,7 @@ for (const readiness of ["signed_in", "signed_out", "unknown"] as const) {
     };
     mutable.getClientUnchecked = async () => ({
       Page: {
-        loadEventFired: async () => {},
+        loadEventFired: (callback: () => void) => { queueMicrotask(callback); return () => {}; },
         navigate: async ({ url }: { url: string }) => { navigations.push(url); }
       }
     });

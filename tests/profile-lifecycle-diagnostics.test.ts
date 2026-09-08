@@ -18,6 +18,9 @@ test("profile lifecycle diagnostics expose only bounded metadata and no profile 
     await writeFile(path.join(root, "Default", "Network", "Cookies-wal"), "secret-cookie-wal");
     await writeFile(path.join(root, "Default", "Network", "Cookies-shm"), "secret-cookie-shm");
     await writeFile(path.join(root, "SingletonLock"), "lock");
+    await mkdir(path.join(root, "Default", "Sessions"));
+    await writeFile(path.join(root, "Default", "Sessions", "Session_123"), "secret-session");
+    await writeFile(path.join(root, "Default", "Sessions", "Tabs_123"), "secret-tabs");
 
     const summary = await readProfileMetadataSummary(root);
     assert.equal(summary.coreFilesPresent, 2);
@@ -25,6 +28,8 @@ test("profile lifecycle diagnostics expose only bounded metadata and no profile 
     assert.equal(summary.cookieWalFilesPresent, 1);
     assert.equal(summary.sqliteSidecarFilesPresent, 2);
     assert.equal(summary.singletonLocksPresent, 1);
+    assert.equal(summary.sessionFilesPresent, 2);
+    assert.equal(summary.metadataReadFailures, 0);
 
     const encoded = formatProfileLifecycleDiagnostic("human_browser_close_started", {
       exactWindowBound: true,

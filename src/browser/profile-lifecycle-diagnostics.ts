@@ -32,7 +32,10 @@ export type ProfileLifecycleDiagnosticEvent =
   | "agent_checkpoint_stopped"
   | "candidate_promoted"
   | "candidate_promotion_failed"
-  | "post_checkpoint_readiness_final";
+  | "post_checkpoint_readiness_final"
+  | "human_revoke_started"
+  | "human_revoke_completed"
+  | "human_revoke_failed";
 
 export interface ProfileMetadataSummary {
   mountFsType: string;
@@ -48,6 +51,10 @@ export interface ProfileMetadataSummary {
   sqliteSidecarFilesPresent: number;
   sqliteSidecarBytes: number;
   singletonLocksPresent: number;
+  sessionFilesPresent: number;
+  sessionBytes: number;
+  sessionLatestMtimeMs: number;
+  metadataReadFailures: number;
 }
 
 export interface ProfileSqliteIntegritySummary {
@@ -58,6 +65,8 @@ export interface ProfileSqliteIntegritySummary {
 }
 
 export interface LinuxChromeProcessSummary {
+  processScanAvailable: boolean;
+  processReadFailures: number;
   rootState: "running" | "exited_code" | "exited_signal" | "unavailable";
   chromiumProcessesTotal: number;
   profileBoundProcesses: number;
@@ -117,6 +126,9 @@ const COOKIE_DATABASES = [
 const SINGLETON_LOCKS = ["SingletonLock", "SingletonCookie", "SingletonSocket"] as const;
 
 const ALLOWED_FIELD_NAMES = new Set([
+  "sessionFilesPresent", "sessionBytes", "sessionLatestMtimeMs", "metadataReadFailures", "processScanAvailable", "processReadFailures",
+  "surfacePresent",
+  "sessionRestorePending", "sessionRestoreRequested", "freshProcessSpawned",
   "checkpointConfigured", "bytes", "generation", "basePointerGeneration", "archiveEntries",
   "requiredProfileFiles", "sqliteDatabasesChecked", "exactWindowBound", "closeAccepted", "elapsedMs",
   "windowState", "process", "profile", "sqlite", "graphics", "runtime", "credentialSafe", "cdpReady",
@@ -161,8 +173,8 @@ function assertSafeDiagnosticObject(value: Record<string, unknown>): void {
   }
 }
 
-async function statSummary(filePath: string): Promise<{ size: number; mtimeMs: number } | undefined> {
-  const info = await fsp.stat(filePath).catch(() => undefined);
+async function statSummary(filePath: string, failed: () => void = () => {}): Promise<{ size: number; mtimeMs: number } | undefined> {
+  const info = await fsp.stat(filePath).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") failed(); return undefined; });
   if (!info?.isFile()) return undefined;
   return { size: info.size, mtimeMs: Math.max(0, Math.floor(info.mtimeMs)) };
 }
@@ -191,11 +203,13 @@ async function readLinuxMountFsType(profileDir: string): Promise<string> {
 }
 
 export async function readProfileMetadataSummary(profileDir: string): Promise<ProfileMetadataSummary> {
+  let metadataReadFailures = 0;
+  const failed = () => { metadataReadFailures += 1; };
   let coreFilesPresent = 0;
   let coreBytes = 0;
   let coreLatestMtimeMs = 0;
   for (const relative of CORE_FILES) {
-    const info = await statSummary(path.join(profileDir, relative));
+    const info = await statSummary(path.join(profileDir, relative), failed);
     if (!info) continue;
     coreFilesPresent += 1;
     coreBytes += info.size;
@@ -212,13 +226,13 @@ export async function readProfileMetadataSummary(profileDir: string): Promise<Pr
   let sqliteSidecarBytes = 0;
   for (const relative of COOKIE_DATABASES) {
     const databasePath = path.join(profileDir, relative);
-    const database = await statSummary(databasePath);
+    const database = await statSummary(databasePath, failed);
     if (database) {
       cookieDbFilesPresent += 1;
       cookieDbBytes += database.size;
       cookieDbLatestMtimeMs = Math.max(cookieDbLatestMtimeMs, database.mtimeMs);
     }
-    const wal = await statSummary(`${databasePath}-wal`);
+    const wal = await statSummary(`${databasePath}-wal`, failed);
     if (wal) {
       cookieWalFilesPresent += 1;
       cookieWalBytes += wal.size;
@@ -226,7 +240,7 @@ export async function readProfileMetadataSummary(profileDir: string): Promise<Pr
       sqliteSidecarFilesPresent += 1;
       sqliteSidecarBytes += wal.size;
     }
-    const shm = await statSummary(`${databasePath}-shm`);
+    const shm = await statSummary(`${databasePath}-shm`, failed);
     if (shm) {
       sqliteSidecarFilesPresent += 1;
       sqliteSidecarBytes += shm.size;
@@ -236,6 +250,20 @@ export async function readProfileMetadataSummary(profileDir: string): Promise<Pr
   let singletonLocksPresent = 0;
   for (const name of SINGLETON_LOCKS) {
     if (await fsp.lstat(path.join(profileDir, name)).then(() => true).catch(() => false)) singletonLocksPresent += 1;
+  }
+
+  let sessionFilesPresent = 0, sessionBytes = 0, sessionLatestMtimeMs = 0;
+  const sessionDir = path.join(profileDir, "Default", "Sessions");
+  const sessionNames = await fsp.readdir(sessionDir).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") failed();
+    return [] as string[];
+  });
+  for (const name of sessionNames.filter(name => /^(Session_|Tabs_)/.test(name)).slice(0, 100)) {
+    const info = await statSummary(path.join(sessionDir, name), failed);
+    if (!info) continue;
+    sessionFilesPresent += 1;
+    sessionBytes += info.size;
+    sessionLatestMtimeMs = Math.max(sessionLatestMtimeMs, info.mtimeMs);
   }
 
   return {
@@ -251,7 +279,7 @@ export async function readProfileMetadataSummary(profileDir: string): Promise<Pr
     cookieWalLatestMtimeMs,
     sqliteSidecarFilesPresent,
     sqliteSidecarBytes,
-    singletonLocksPresent
+    singletonLocksPresent, sessionFilesPresent, sessionBytes, sessionLatestMtimeMs, metadataReadFailures
   };
 }
 
@@ -306,22 +334,25 @@ export async function readLinuxChromeProcessSummary(
   childState?: { exitCode: number | null; signalCode: NodeJS.Signals | null }
 ): Promise<LinuxChromeProcessSummary> {
   if (process.platform !== "linux" || !rootPid || !Number.isSafeInteger(rootPid) || rootPid <= 0) {
-    return { rootState: "unavailable", chromiumProcessesTotal: 0, profileBoundProcesses: 0, descendants: 0, renderers: 0, gpu: 0, utility: 0, zygote: 0, other: 0 };
+    return { processScanAvailable: false, processReadFailures: 0, rootState: "unavailable", chromiumProcessesTotal: 0, profileBoundProcesses: 0, descendants: 0, renderers: 0, gpu: 0, utility: 0, zygote: 0, other: 0 };
   }
   const rootState: LinuxChromeProcessSummary["rootState"] = childState?.signalCode
     ? "exited_signal"
     : childState?.exitCode !== null && childState?.exitCode !== undefined
       ? "exited_code"
       : "running";
-  const entries = await fsp.readdir("/proc").catch(() => [] as string[]);
+  let processScanAvailable = true;
+  let processReadFailures = 0;
+  const failed = (error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT" && error.code !== "ESRCH") processReadFailures++; };
+  const entries = await fsp.readdir("/proc").catch(() => { processScanAvailable = false; return [] as string[]; });
   const parents = new Map<number, number>();
   const allProcessArgs = new Map<number, string[]>();
   for (const entry of entries) {
     if (!/^[1-9]\d*$/.test(entry)) continue;
     const pid = Number(entry);
     const [statRaw, cmdlineRaw] = await Promise.all([
-      fsp.readFile(path.join("/proc", entry, "stat"), "utf8").catch(() => ""),
-      fsp.readFile(path.join("/proc", entry, "cmdline")).catch(() => Buffer.alloc(0))
+      fsp.readFile(path.join("/proc", entry, "stat"), "utf8").catch((error: NodeJS.ErrnoException) => { failed(error); return ""; }),
+      fsp.readFile(path.join("/proc", entry, "cmdline")).catch((error: NodeJS.ErrnoException) => { failed(error); return Buffer.alloc(0); })
     ]);
     const ppid = parseProcStatParent(statRaw);
     if (ppid !== undefined) parents.set(pid, ppid);
@@ -363,7 +394,7 @@ export async function readLinuxChromeProcessSummary(
       case "other": other += 1; break;
     }
   }
-  return { rootState, chromiumProcessesTotal, profileBoundProcesses, descendants: descendants.size, renderers, gpu, utility, zygote, other };
+  return { processScanAvailable, processReadFailures, rootState, chromiumProcessesTotal, profileBoundProcesses, descendants: descendants.size, renderers, gpu, utility, zygote, other };
 }
 
 export async function readLinuxGraphicsSummary(displayName: string | undefined): Promise<LinuxGraphicsSummary> {

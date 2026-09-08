@@ -11,7 +11,8 @@ export const AUTHENTICATED_READINESS_EXPRESSION = String.raw`(() => {
   const items = [...document.querySelectorAll('a,button,[role="button"]')].map((el) => ({
     href: el.getAttribute('href') || '',
     aria: el.getAttribute('aria-label') || '',
-    text: (el.textContent || '').trim().slice(0, 80)
+    text: (el.textContent || '').trim().slice(0, 80),
+    visible: el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden'
   }));
   const hasSignInLink = items.some((item) =>
     /accounts\.google\.com\/(ServiceLogin|signin)/i.test(item.href) ||
@@ -28,7 +29,33 @@ export const AUTHENTICATED_READINESS_EXPRESSION = String.raw`(() => {
     mapsSurface: location.pathname === '/maps' || location.pathname.startsWith('/maps/'),
     hasSignInLink,
     hasAccountHref,
-    hasAccountAria
+    hasAccountAria,
+    surface: (() => {
+      if (location.href === 'about:blank') return 'blank';
+      if (location.protocol === 'chrome-error:') return 'browser_error';
+      if (location.protocol !== 'https:') return 'other';
+      if (location.hostname === 'accounts.google.com') return 'google_auth';
+      if (location.hostname === 'consent.google.com') return 'google_consent';
+      if (location.hostname === 'www.google.com' && (location.pathname === '/maps' || location.pathname.startsWith('/maps/'))) return 'maps';
+      if ((location.hostname === 'www.google.com' && location.pathname.startsWith('/sorry')) || location.hostname === 'recaptcha.google.com') return 'google_challenge';
+      if (location.hostname === 'google.com' || location.hostname.endsWith('.google.com')) return 'google_other';
+      return 'other';
+    })(),
+    language: /^ja(?:-|$)/i.test(document.documentElement?.lang || '') ? 'ja'
+      : /^en(?:-|$)/i.test(document.documentElement?.lang || '') ? 'en'
+      : document.documentElement?.lang ? 'other' : 'unspecified',
+    readyState: document.readyState,
+    visibility: document.visibilityState,
+    bodyPresent: Boolean(document.body),
+    bodyChildren: Math.min(10000, document.body?.childElementCount || 0),
+    controls: Math.min(10000, items.length),
+    iframes: Math.min(10000, document.querySelectorAll('iframe').length),
+    visibleSignIn: Math.min(10000, items.filter(item => item.visible && (
+      /accounts\.google\.com\/(ServiceLogin|signin)/i.test(item.href) || /^sign in$/i.test(item.text) || /^sign in$/i.test(item.aria)
+    )).length),
+    visibleAccount: Math.min(10000, items.filter(item => item.visible && (
+      /accounts\.google\.com\/SignOutOptions/i.test(item.href) || /google account/i.test(item.aria) || /google アカウント/i.test(item.aria)
+    )).length)
   };
 })()`;
 

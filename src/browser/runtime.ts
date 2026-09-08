@@ -1,3 +1,4 @@
+import { AgentSurfaceDiagnostics, boundedObservation, classifySurface, diagnosticErrorKind } from "./agent-surface-diagnostics.js";
 import CDP from "chrome-remote-interface";
 import {
   ExecutionHandoffError,
@@ -31,7 +32,7 @@ type CdpClient = Awaited<ReturnType<typeof CDP>>;
 
 function bindFlattenedCdpSession(raw: CdpClient, sessionId: string): CdpClient {
   const bound = Object.create(raw) as CdpClient;
-  for (const name of ["Page", "Runtime", "DOM", "Input"] as const) {
+  for (const name of ["Page", "Runtime", "DOM", "Input", "Network", "Inspector"] as const) {
     const domain = raw[name] as unknown as Record<string | symbol, unknown>;
     (bound as unknown as Record<string, unknown>)[name] = new Proxy(domain, {
       get(target, property, receiver) {
@@ -208,6 +209,7 @@ export class BrowserRuntimeError extends Error {
 }
 
 export class MapsBrowserRuntime {
+  private agentSurfaceDiagnostics?: AgentSurfaceDiagnostics;
   private client?: CdpClient;
   private clientOwner?: "automation" | "human";
   private endpoint?: BrowserAutomationEndpoint;
@@ -330,58 +332,74 @@ export class MapsBrowserRuntime {
       );
     }
 
-    lifecycleLog("fresh_agent_verification_started", { credentialSafe: true });
-    if (this.chrome.diagnosticsSnapshot) {
-      lifecycleLog("fresh_agent_browser_preflight", await this.chrome.diagnosticsSnapshot());
-    }
-    this.chrome.requestNextStartSessionRestore?.();
-    const client = await this.getClientUnchecked();
-    lifecycleLog("fresh_agent_cdp_ready", { cdpReady: true });
-    if (this.chrome.diagnosticsSnapshot) {
-      lifecycleLog("fresh_agent_browser_ready", await this.chrome.diagnosticsSnapshot());
-    }
-    const loaded = client.Page.loadEventFired();
-    await client.Page.navigate({ url: "https://www.google.com/maps" });
-    await Promise.race([loaded, sleep(8_000)]);
-    const url = await this.currentUrlUnchecked(client);
-    this.assertAllowedCurrentUrl(url);
-    await this.assertNoInlineChallenge(undefined, client);
-    let readinessSummary: {
-      finalState: AuthenticatedMapsReadiness;
-      elapsedMs: number;
-      samples: number;
-      signedInSamples: number;
-      signedOutSamples: number;
-      unknownSamples: number;
-      transitions: number;
-    } | undefined;
-    const readiness = await waitForAuthenticatedReadinessAfterHuman(
-      () => this.readAuthenticatedReadinessProbe(client),
-      {
-        onStateChange: (state, elapsedMs) => {
-          lifecycleLog("fresh_agent_readiness_transition", { state, elapsedMs });
-        },
-        onComplete: (summary) => { readinessSummary = summary; }
+    const diagnostics = new AgentSurfaceDiagnostics("human_verification");
+    this.agentSurfaceDiagnostics = diagnostics;
+    let outcome: "completed" | "failed" = "failed";
+    try {
+      lifecycleLog("fresh_agent_verification_started", { credentialSafe: true });
+      if (this.chrome.diagnosticsSnapshot) {
+        lifecycleLog("fresh_agent_browser_preflight", await diagnostics.step("preflight", () => this.chrome.diagnosticsSnapshot!()));
       }
-    );
-    if (readinessSummary) {
-      lifecycleLog("fresh_agent_readiness_final", { ...readinessSummary });
+      this.chrome.requestNextStartSessionRestore?.();
+      const client = await diagnostics.step("connect", () => this.getClientUnchecked());
+      await diagnostics.attach(client, true);
+      lifecycleLog("fresh_agent_cdp_ready", { cdpReady: true });
+      if (this.chrome.diagnosticsSnapshot) {
+        lifecycleLog("fresh_agent_browser_ready", await diagnostics.step("preflight", () => this.chrome.diagnosticsSnapshot!()));
+      }
+      await diagnostics.step("navigate", () => this.navigateMapsForVerification(client, diagnostics));
+      await diagnostics.step("url_guard", async () => {
+        const url = await boundedObservation(this.currentUrlUnchecked(client), 1_500);
+        diagnostics.emit("step", { stage: "url_guard", state: "completed", surface: classifySurface(url) });
+        this.assertAllowedCurrentUrl(url);
+      });
+      await diagnostics.step("challenge_guard", () => boundedObservation(this.assertNoInlineChallenge(undefined, client), 1_500));
+      let readinessSummary: {
+        finalState: AuthenticatedMapsReadiness;
+        elapsedMs: number;
+        samples: number;
+        signedInSamples: number;
+        signedOutSamples: number;
+        unknownSamples: number;
+        transitions: number;
+      } | undefined;
+      const readiness = await diagnostics.step("settle", () => waitForAuthenticatedReadinessAfterHuman(
+        () => this.readAuthenticatedReadinessProbe(client),
+        {
+          onStateChange: (state, elapsedMs) => {
+            lifecycleLog("fresh_agent_readiness_transition", { state, elapsedMs });
+          },
+          onComplete: (summary) => { readinessSummary = summary; }
+        }
+      ));
+      await this.observeFinalAgentTargets(client, diagnostics);
+      if (readinessSummary) {
+        lifecycleLog("fresh_agent_readiness_final", { ...readinessSummary });
+      }
+      if (readiness === "signed_out") {
+        throw new BrowserRuntimeError(
+          "HUMAN_INTERVENTION_REQUIRED",
+          "Google Maps is still signed out after the Human authentication step. Return to Human control without replaying the interrupted action.",
+          active
+        );
+      }
+      if (readiness !== "signed_in") {
+        throw new BrowserRuntimeError(
+          "UI_STATE_CHANGED",
+          "Google Maps authentication readiness could not be verified after the Human authentication step. Restart from a fresh Maps readiness check."
+        );
+      }
+      await diagnostics.step("checkpoint", async () => { await options.beforeMarkVerified?.(); });
+      const verified = await diagnostics.step("mark_verified", async () => this.handoff.markVerified(interventionId));
+      outcome = "completed";
+      return verified;
+    } finally {
+      if (outcome === "failed" && this.client && this.clientOwner === "automation" && this.handoff.getActive()?.authority !== "human") {
+        await this.observeFinalAgentTargets(this.client, diagnostics);
+      }
+      this.agentSurfaceDiagnostics = undefined;
+      await diagnostics.finish(outcome);
     }
-    if (readiness === "signed_out") {
-      throw new BrowserRuntimeError(
-        "HUMAN_INTERVENTION_REQUIRED",
-        "Google Maps is still signed out after the Human authentication step. Return to Human control without replaying the interrupted action.",
-        active
-      );
-    }
-    if (readiness !== "signed_in") {
-      throw new BrowserRuntimeError(
-        "UI_STATE_CHANGED",
-        "Google Maps authentication readiness could not be verified after the Human authentication step. Restart from a fresh Maps readiness check."
-      );
-    }
-    await options.beforeMarkVerified?.();
-    return this.handoff.markVerified(interventionId);
   }
 
   async stopBrowserForProfileCheckpoint(interventionId: string): Promise<void> {
@@ -427,29 +445,44 @@ export class MapsBrowserRuntime {
       );
     }
 
-    await this.resetClient();
-    this.endpoint = undefined;
-    this.invalidateSemanticState();
-    await this.chrome.close();
+    const diagnostics = new AgentSurfaceDiagnostics("post_checkpoint");
+    this.agentSurfaceDiagnostics = diagnostics;
+    let outcome: "completed" | "failed" = "failed";
+    try {
+      await this.resetClient();
+      this.endpoint = undefined;
+      this.invalidateSemanticState();
+      await diagnostics.step("reopen_stop", () => this.chrome.close());
 
-    const client = await this.getClientUnchecked("automation");
-    const loaded = client.Page.loadEventFired();
-    await client.Page.navigate({ url: "https://www.google.com/maps" });
-    await Promise.race([loaded, sleep(8_000)]);
-    const url = await this.currentUrlUnchecked(client);
-    this.assertAllowedCurrentUrl(url);
-    await this.assertNoInlineChallenge(undefined, client);
-    const readiness = await waitForAuthenticatedReadinessAfterHuman(
-      () => this.readAuthenticatedReadinessProbe(client),
-      {
-        onComplete: (summary) => lifecycleLog("post_checkpoint_readiness_final", { ...summary })
+      const client = await diagnostics.step("connect", () => this.getClientUnchecked("automation"));
+      await diagnostics.attach(client, true);
+      await diagnostics.step("navigate", () => this.navigateMapsForVerification(client, diagnostics));
+      await diagnostics.step("url_guard", async () => {
+        const url = await boundedObservation(this.currentUrlUnchecked(client), 1_500);
+        diagnostics.emit("step", { stage: "url_guard", state: "completed", surface: classifySurface(url) });
+        this.assertAllowedCurrentUrl(url);
+      });
+      await diagnostics.step("challenge_guard", () => boundedObservation(this.assertNoInlineChallenge(undefined, client), 1_500));
+      const readiness = await diagnostics.step("settle", () => waitForAuthenticatedReadinessAfterHuman(
+        () => this.readAuthenticatedReadinessProbe(client),
+        {
+          onComplete: (summary) => lifecycleLog("post_checkpoint_readiness_final", { ...summary })
+        }
+      ));
+      await this.observeFinalAgentTargets(client, diagnostics);
+      if (readiness !== "signed_in") {
+        throw new BrowserRuntimeError(
+          "UI_STATE_CHANGED",
+          "Google Maps sign-in did not remain verified in the post-checkpoint Agent browser. Read fresh readiness before continuing; no action was replayed."
+        );
       }
-    );
-    if (readiness !== "signed_in") {
-      throw new BrowserRuntimeError(
-        "UI_STATE_CHANGED",
-        "Google Maps sign-in did not remain verified in the post-checkpoint Agent browser. Read fresh readiness before continuing; no action was replayed."
-      );
+      outcome = "completed";
+    } finally {
+      if (outcome === "failed" && this.client && this.clientOwner === "automation" && this.handoff.getActive()?.authority !== "human") {
+        await this.observeFinalAgentTargets(this.client, diagnostics);
+      }
+      this.agentSurfaceDiagnostics = undefined;
+      await diagnostics.finish(outcome);
     }
   }
 
@@ -673,9 +706,23 @@ export class MapsBrowserRuntime {
   }
 
   async readAuthenticatedReadiness(): Promise<AuthenticatedMapsReadiness> {
-    await this.assertMapsSurface();
-    const client = await this.getClient();
-    return this.readAuthenticatedReadinessUnchecked(client);
+    const diagnostics = new AgentSurfaceDiagnostics("ordinary_readiness");
+    this.agentSurfaceDiagnostics = diagnostics;
+    let outcome: "completed" | "failed" = "failed";
+    try {
+      await diagnostics.step("url_guard", () => this.assertMapsSurface());
+      const client = await diagnostics.step("connect", () => this.getClient());
+      const readiness = await diagnostics.step("read", () => this.readAuthenticatedReadinessUnchecked(client));
+      await this.observeFinalAgentTargets(client, diagnostics);
+      outcome = "completed";
+      return readiness;
+    } finally {
+      if (outcome === "failed" && this.client && this.clientOwner === "automation" && this.handoff.getActive()?.authority !== "human") {
+        await this.observeFinalAgentTargets(this.client, diagnostics);
+      }
+      this.agentSurfaceDiagnostics = undefined;
+      await diagnostics.finish(outcome);
+    }
   }
 
   async requestHumanSignIn(): Promise<{ state: "signed_in" }> {
@@ -695,6 +742,7 @@ export class MapsBrowserRuntime {
 
   async assertMapsSurface(): Promise<string> {
     const url = await this.currentUrl();
+    this.agentSurfaceDiagnostics?.emit("step", { stage: "url_guard", state: "completed", surface: classifySurface(url) });
     this.assertAllowedCurrentUrl(url);
     await this.assertNoInlineChallenge();
     return url;
@@ -877,13 +925,51 @@ export class MapsBrowserRuntime {
     }
   }
 
+  private async navigateMapsForVerification(client: CdpClient, diagnostics: AgentSurfaceDiagnostics): Promise<void> {
+    let loaded = false;
+    let unsubscribe: (() => void) | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let resolveLoad!: () => void;
+    const event = new Promise<void>(resolve => { resolveLoad = resolve; });
+    try {
+      unsubscribe = client.Page.loadEventFired(() => { loaded = true; resolveLoad(); });
+      const response = await boundedObservation(client.Page.navigate({ url: "https://www.google.com/maps" }), 8_000);
+      diagnostics.emit("step", {
+        stage: "navigate", state: "completed", navigationError: Boolean(response?.errorText), networkError: response?.errorText ? "other" : "none", download: (response as { isDownload?: boolean } | undefined)?.isDownload === true
+      });
+      await Promise.race([event, new Promise<void>(resolve => { timer = setTimeout(resolve, 8_000); })]);
+      diagnostics.emit("step", { stage: "navigate", state: "completed", loadWait: loaded ? "event" : "timeout" });
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (typeof unsubscribe === "function") unsubscribe();
+    }
+  }
+
+  private async observeFinalAgentTargets(client: CdpClient, diagnostics: AgentSurfaceDiagnostics): Promise<void> {
+    try {
+      const targets = this.endpoint?.kind === "local_port"
+        ? await boundedObservation(CDP.List({ port: this.endpoint.port }))
+        : (await boundedObservation(client.Target.getTargets())).targetInfos;
+      diagnostics.targets(targets, "final", this.targetId);
+    } catch {
+      diagnostics.emit("observer", { state: "unavailable" });
+    }
+  }
+
   private async readAuthenticatedReadinessProbe(client: CdpClient): Promise<AuthenticatedMapsReadiness> {
-    const result = await client.Runtime.evaluate({
-      expression: AUTHENTICATED_READINESS_EXPRESSION,
-      returnByValue: true,
-      awaitPromise: true
-    });
-    return parseAuthenticatedReadiness(result.result.value);
+    try {
+      const pending = client.Runtime.evaluate({
+        expression: AUTHENTICATED_READINESS_EXPRESSION,
+        returnByValue: true,
+        awaitPromise: true
+      });
+      const result = this.agentSurfaceDiagnostics ? await boundedObservation(pending, 1_500) : await pending;
+      this.agentSurfaceDiagnostics?.probe(result?.result?.value, result?.exceptionDetails ? "evaluation_exception" : undefined);
+      return parseAuthenticatedReadiness(result?.result?.value);
+    } catch (error) {
+      this.agentSurfaceDiagnostics?.probe(undefined, diagnosticErrorKind(error) === "timeout" ? "evaluation_timeout" : "evaluation_rejected", diagnosticErrorKind(error));
+      throw error;
+    }
   }
 
   private async readAuthenticatedReadinessUnchecked(client: CdpClient): Promise<AuthenticatedMapsReadiness> {
@@ -933,6 +1019,10 @@ export class MapsBrowserRuntime {
     return String(result.result.value ?? "");
   }
 
+  private diagnosticStep<T>(stage: string, action: () => Promise<T>): Promise<T> {
+    return this.agentSurfaceDiagnostics ? this.agentSurfaceDiagnostics.step(stage, action) : action();
+  }
+
   private async ensureConnected(owner: "automation" | "human"): Promise<void> {
     if (this.client) {
       if (this.clientOwner !== owner) {
@@ -942,7 +1032,8 @@ export class MapsBrowserRuntime {
         );
       }
       try {
-        await this.client.Runtime.evaluate({ expression: "1", returnByValue: true });
+        await this.diagnosticStep("cdp_ping", () => this.client!.Runtime.evaluate({ expression: "1", returnByValue: true }));
+        this.agentSurfaceDiagnostics?.emit("targets", { selection: "cached" });
         return;
       } catch {
         await this.resetClient();
@@ -951,12 +1042,14 @@ export class MapsBrowserRuntime {
     }
 
     try {
-      this.endpoint = normalizeBrowserAutomationEndpoint(await this.chrome.start());
+      this.endpoint = normalizeBrowserAutomationEndpoint(await this.diagnosticStep("chrome_start", () => this.chrome.start()));
       if (this.endpoint.kind === "local_port") {
-        const targets = await CDP.List({ port: this.endpoint.port });
+        const port = this.endpoint.port;
+        const targets = await this.diagnosticStep("target_list", () => CDP.List({ port }));
         const mapsTargets = targets.filter(
           (candidate) => candidate.type === "page" && this.policy.isAllowedMapsUrl(candidate.url)
         );
+        this.agentSurfaceDiagnostics?.targets(targets, mapsTargets.length > 1 ? "ambiguous" : mapsTargets.length ? "existing_maps" : "new_blank");
         if (mapsTargets.length > 1) {
           this.invalidateSemanticState();
           throw new BrowserRuntimeError(
@@ -964,16 +1057,19 @@ export class MapsBrowserRuntime {
             "Multiple Google Maps tabs are open in the dedicated browser profile. Keep one Maps tab open, close the others, then retry."
           );
         }
-        const target = mapsTargets[0] ?? await CDP.New({ port: this.endpoint.port, url: "about:blank" });
+        const target = mapsTargets[0] ?? await this.diagnosticStep("target_create", () => CDP.New({ port, url: "about:blank" }));
+        this.agentSurfaceDiagnostics?.selected(target.id);
         this.targetId = target.id;
-        this.client = await CDP({ port: this.endpoint.port, target: this.targetId });
+        this.client = await this.diagnosticStep("target_attach", () => CDP({ port, target: this.targetId }));
       } else {
-        const raw = await CDP({ target: this.endpoint.websocketUrl });
+        const websocketUrl = this.endpoint.websocketUrl;
+        const raw = await this.diagnosticStep("target_attach", () => CDP({ target: websocketUrl }));
         try {
-          const { targetInfos } = await raw.Target.getTargets();
+          const { targetInfos } = await this.diagnosticStep("target_list", () => raw.Target.getTargets());
           const mapsTargets = targetInfos.filter(
             (candidate) => candidate.type === "page" && this.policy.isAllowedMapsUrl(candidate.url)
           );
+          this.agentSurfaceDiagnostics?.targets(targetInfos, mapsTargets.length > 1 ? "ambiguous" : mapsTargets.length ? "existing_maps" : "new_blank");
           if (mapsTargets.length > 1) {
             this.invalidateSemanticState();
             throw new BrowserRuntimeError(
@@ -981,8 +1077,9 @@ export class MapsBrowserRuntime {
               "Multiple Google Maps tabs are open behind the browser-level CDP endpoint. Keep one Maps tab open, close the others, then retry."
             );
           }
-          const targetId = mapsTargets[0]?.targetId ?? (await raw.Target.createTarget({ url: "about:blank" })).targetId;
-          const attached = await raw.Target.attachToTarget({ targetId, flatten: true });
+          const targetId = mapsTargets[0]?.targetId ?? (await this.diagnosticStep("target_create", () => raw.Target.createTarget({ url: "about:blank" }))).targetId;
+          const attached = await this.diagnosticStep("target_attach", () => raw.Target.attachToTarget({ targetId, flatten: true }));
+          this.agentSurfaceDiagnostics?.selected(targetId);
           this.targetId = targetId;
           this.client = bindFlattenedCdpSession(raw, attached.sessionId);
         } catch (error) {
@@ -990,11 +1087,11 @@ export class MapsBrowserRuntime {
           throw error;
         }
       }
-      await Promise.all([
-        this.client.Page.enable(),
-        this.client.Runtime.enable(),
-        this.client.DOM.enable()
-      ]);
+      await this.diagnosticStep("domains_enable", () => Promise.all([
+        this.client!.Page.enable(),
+        this.client!.Runtime.enable(),
+        this.client!.DOM.enable()
+      ]));
       this.clientOwner = owner;
       if (!this.lastAction) this.viewState = "blank";
     } catch (error) {

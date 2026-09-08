@@ -20,23 +20,40 @@ const PROFILE_STORE_DIAGNOSTIC_EVENTS = new Set([
   "candidate_stage_pointer_observed",
   "candidate_promote_pointer_observed",
   "profile_restore_succeeded",
-  "profile_restore_failed"
+  "profile_restore_failed",
+  "profile_store_step"
 ]);
 
 function profileStoreDiagnostic(logger, event, fields = {}) {
   if (!PROFILE_STORE_DIAGNOSTIC_EVENTS.has(event)) throw new Error("unsupported profile store diagnostic event");
   const allowed = new Set([
     "pointerGenerationBefore", "pointerGenerationAfter", "pointerUnchanged", "pointerAdvanced",
-    "currentMatchesCandidate", "source", "pointerGeneration", "bytes", "digestVerified", "state"
+    "currentMatchesCandidate", "source", "pointerGeneration", "bytes", "digestVerified", "state", "stage", "operation", "errorKind"
   ]);
   for (const [key, value] of Object.entries(fields)) {
     if (!allowed.has(key)) throw new Error(`unsupported profile store diagnostic field: ${key}`);
     if (typeof value === "boolean") continue;
     if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) continue;
-    if (typeof value === "string" && /^(?:\d+|current|previous|fallback|unavailable|failed)$/.test(value)) continue;
+    if (typeof value === "string" && /^(?:\d+|current|previous|fallback|unavailable|failed|started|completed|stage_candidate|promote_candidate|restore|archive|structure|sqlite|pointer_read|upload|metadata|pointer_write|download|extract|cleanup|permission|not_found|precondition|timeout|invalid_or_other|integrity|size|structure|sqlite_invalid)$/.test(value)) continue;
     throw new Error(`invalid profile store diagnostic value: ${key}`);
   }
   logger.error(`[maps-profile] ${JSON.stringify({ type: "profile_store_diagnostics", event, ...fields })}`);
+}
+
+
+export function profileStoreErrorKind(error) {
+  const code = error?.code;
+  if (code === 401 || code === 403 || code === "EACCES" || code === "EPERM") return "permission";
+  if (code === 404 || code === "ENOENT") return "not_found";
+  if (code === 412) return "precondition";
+  if (code === "ETIMEDOUT" || code === "ABORT_ERR") return "timeout";
+  const message = error?.message;
+  if (message === "profile snapshot digest mismatch" || message === "profile candidate integrity metadata changed before promotion" || message === "staged profile candidate metadata does not match the uploaded archive") return "integrity";
+  if (message === "durable profile pointer changed after candidate staging" || message === "profile candidate generation changed before promotion") return "precondition";
+  if (message === "profile SQLite integrity check failed") return "sqlite_invalid";
+  if (typeof message === "string" && /^(profile snapshot archive exceeds |profile snapshot object has an invalid or excessive size|profile candidate size)/.test(message)) return "size";
+  if (typeof message === "string" && /^(profile snapshot contains |profile snapshot is missing required)/.test(message)) return "structure";
+  return "invalid_or_other";
 }
 
 
@@ -334,7 +351,7 @@ export async function restoreProfileFromCloud(config, { storage = new Storage(),
       ].filter(Boolean);
     }
   } catch (error) {
-    logger.error(`[maps-profile] pointer read failed: ${error instanceof Error ? error.message : "unknown_error"}`);
+    logger.error(`[maps-profile] pointer read failed: ${profileStoreErrorKind(error)}`);
   }
 
   if (candidates.length === 0) {
@@ -355,8 +372,10 @@ export async function restoreProfileFromCloud(config, { storage = new Storage(),
     for (const candidate of candidates) {
       const archivePath = path.join(workDir, "profile.tar.gz");
       await rm(archivePath, { force: true });
+      let restoreStage = "download";
       try {
         const downloaded = await downloadSnapshot(bucket, candidate, config, archivePath);
+        restoreStage = "extract";
         await restoreProfileArchive(archivePath, config.profileDir, { maxBytes: config.maxBytes });
         profileStoreDiagnostic(logger, "profile_restore_succeeded", {
           source: candidate.diagnosticSource ?? "fallback",
@@ -370,9 +389,9 @@ export async function restoreProfileFromCloud(config, { storage = new Storage(),
         profileStoreDiagnostic(logger, "profile_restore_failed", {
           source: candidate.diagnosticSource ?? "fallback",
           pointerGeneration: restorePointerGeneration,
-          state: "failed"
+          state: "failed", stage: restoreStage, errorKind: profileStoreErrorKind(error)
         });
-        logger.error(`[maps-profile] snapshot restore candidate failed: ${error instanceof Error ? error.message : "unknown_error"}`);
+        logger.error(`[maps-profile] snapshot restore candidate failed: ${profileStoreErrorKind(error)}`);
       }
     }
   } finally {
@@ -497,14 +516,24 @@ export async function stageProfileCandidate(config, options = {}) {
   const bucket = storage.bucket(config.bucket);
   const workDir = await mkdtemp(path.join(os.tmpdir(), "maps-profile-candidate-"));
   const archivePath = path.join(workDir, "profile.tar.gz");
+  let stage = "archive";
+  profileStoreDiagnostic(logger, "profile_store_step", { operation: "stage_candidate", stage, state: "started" });
   try {
     const archive = await createProfileArchive(config.profileDir, archivePath, { maxBytes: config.maxBytes });
+    stage = "structure";
+    profileStoreDiagnostic(logger, "profile_store_step", { operation: "stage_candidate", stage, state: "started" });
     const structure = await inspectProfileArchiveMetadata(archivePath);
+    stage = "sqlite";
+    profileStoreDiagnostic(logger, "profile_store_step", { operation: "stage_candidate", stage, state: "started" });
     const sqlite = await validateProfileSqliteIntegrity(config.profileDir, { check: sqliteIntegrityCheck });
+    stage = "pointer_read";
+    profileStoreDiagnostic(logger, "profile_store_step", { operation: "stage_candidate", stage, state: "started" });
     const pointerState = await readPointer(bucket, config);
     const basePointerGeneration = String(pointerState?.generation ?? "0");
     const stamp = new Date().toISOString().replaceAll(":", "").replaceAll(".", "-");
     const object = `${candidatesPrefix(config)}${stamp}-${randomUUID()}.tar.gz`;
+    stage = "upload";
+    profileStoreDiagnostic(logger, "profile_store_step", { operation: "stage_candidate", stage, state: "started" });
     const uploadResult = await bucket.upload(archivePath, {
       destination: object,
       resumable: false,
@@ -512,6 +541,8 @@ export async function stageProfileCandidate(config, options = {}) {
       metadata: { cacheControl: "no-store", contentType: "application/gzip", metadata: { mapsCandidateSha256: archive.sha256, mapsCandidateBytes: String(archive.bytes) } },
       preconditionOpts: { ifGenerationMatch: 0 }
     });
+    stage = "metadata";
+    profileStoreDiagnostic(logger, "profile_store_step", { operation: "stage_candidate", stage, state: "started" });
     const metadata = await uploadedCandidateMetadata(bucket, object, uploadResult?.[0]);
     const generation = String(metadata.generation ?? "");
     const uploadedBytes = Number(metadata.size ?? -1);
@@ -526,7 +557,7 @@ export async function stageProfileCandidate(config, options = {}) {
     };
     const protectedObjects = [candidate.object, pointerState?.pointer.current?.object, pointerState?.pointer.previous?.object].filter(Boolean);
     await pruneCandidates(bucket, config, protectedObjects).catch((error) => {
-      logger.error(`[maps-profile] stale candidate pruning failed: ${error instanceof Error ? error.message : "unknown_error"}`);
+      logger.error(`[maps-profile] stale candidate pruning failed: ${profileStoreErrorKind(error)}`);
     });
     let pointerGenerationAfter = "unavailable";
     try {
@@ -540,6 +571,9 @@ export async function stageProfileCandidate(config, options = {}) {
     });
     logger.error(`[maps-profile] staged stopped profile candidate (${candidate.bytes} bytes, ${candidate.validation.archiveEntries} entries, ${candidate.validation.sqliteDatabasesChecked} SQLite checks); durable pointer unchanged`);
     return { status: "staged", candidate };
+  } catch (error) {
+    profileStoreDiagnostic(logger, "profile_store_step", { operation: "stage_candidate", stage, state: "failed", errorKind: profileStoreErrorKind(error) });
+    throw error;
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
@@ -547,54 +581,65 @@ export async function stageProfileCandidate(config, options = {}) {
 
 export async function promoteProfileCandidate(config, candidate, { storage = new Storage(), logger = console } = {}) {
   if (!config.enabled) return { status: "disabled" };
-  const checked = validateCandidateRecord(candidate, config);
-  const bucket = storage.bucket(config.bucket);
-  const [candidateMetadata] = await bucket.file(checked.object).getMetadata();
-  if (String(candidateMetadata.generation ?? "") !== checked.generation) throw new Error("profile candidate generation changed before promotion");
-  if (Number(candidateMetadata.size ?? -1) !== checked.bytes) throw new Error("profile candidate size changed before promotion");
-  const customMetadata = candidateMetadata.metadata ?? {};
-  if (customMetadata.mapsCandidateSha256 !== checked.sha256 || customMetadata.mapsCandidateBytes !== String(checked.bytes)) {
-    throw new Error("profile candidate integrity metadata changed before promotion");
-  }
-  const pointerState = await readPointer(bucket, config);
-  const pointerGeneration = String(pointerState?.generation ?? "0");
-  if (pointerGeneration !== checked.basePointerGeneration) throw new Error("durable profile pointer changed after candidate staging");
-  const prior = pointerState?.pointer.current;
-  const current = { object: checked.object, sha256: checked.sha256, bytes: checked.bytes, createdAt: checked.createdAt };
-  const pointer = { version: POINTER_VERSION, current, ...(prior ? { previous: prior } : {}) };
-  const generationMatch = Number(pointerGeneration);
-  if (!Number.isSafeInteger(generationMatch) || generationMatch < 0) {
-    throw new Error("durable profile pointer generation exceeds safe precondition bounds");
-  }
-  const pointerBytes = Buffer.from(`${JSON.stringify(pointer)}\n`);
-  await bucket.file(pointerObject(config)).save(pointerBytes, {
-    resumable: false,
-    validation: "crc32c",
-    metadata: { cacheControl: "no-store", contentType: "application/json" },
-    preconditionOpts: { ifGenerationMatch: generationMatch }
-  });
-  let pointerGenerationAfter = "unavailable";
-  let currentMatchesCandidate = false;
+  let stage = "metadata";
+  profileStoreDiagnostic(logger, "profile_store_step", { operation: "promote_candidate", stage, state: "started" });
   try {
-    const after = await readPointer(bucket, config);
-    pointerGenerationAfter = String(after?.generation ?? "0");
-    currentMatchesCandidate = after?.pointer.current.object === checked.object;
-  } catch {}
-  profileStoreDiagnostic(logger, "candidate_promote_pointer_observed", {
-    pointerGenerationBefore: pointerGeneration,
-    pointerGenerationAfter,
-    pointerAdvanced: pointerGenerationAfter !== "unavailable" && pointerGenerationAfter !== pointerGeneration,
-    currentMatchesCandidate
-  });
-  const protectedObjects = [current.object, prior?.object, pointerState?.pointer.previous?.object].filter(Boolean);
-  await pruneCandidates(bucket, config, protectedObjects).catch((error) => {
-    logger.error(`[maps-profile] stale candidate pruning failed after promotion: ${error instanceof Error ? error.message : "unknown_error"}`);
-  });
-  await pruneSnapshots(bucket, config, [prior?.object, pointerState?.pointer.previous?.object].filter(Boolean)).catch((error) => {
-    logger.error(`[maps-profile] stale snapshot pruning failed: ${error instanceof Error ? error.message : "unknown_error"}`);
-  });
-  logger.error(`[maps-profile] promoted verified stopped profile candidate (${checked.bytes} bytes)`);
-  return { status: "promoted", object: checked.object, bytes: checked.bytes, sha256: checked.sha256 };
+    const checked = validateCandidateRecord(candidate, config);
+    const bucket = storage.bucket(config.bucket);
+    const [candidateMetadata] = await bucket.file(checked.object).getMetadata();
+    if (String(candidateMetadata.generation ?? "") !== checked.generation) throw new Error("profile candidate generation changed before promotion");
+    if (Number(candidateMetadata.size ?? -1) !== checked.bytes) throw new Error("profile candidate size changed before promotion");
+    const customMetadata = candidateMetadata.metadata ?? {};
+    if (customMetadata.mapsCandidateSha256 !== checked.sha256 || customMetadata.mapsCandidateBytes !== String(checked.bytes)) {
+      throw new Error("profile candidate integrity metadata changed before promotion");
+    }
+    stage = "pointer_read";
+    profileStoreDiagnostic(logger, "profile_store_step", { operation: "promote_candidate", stage, state: "started" });
+    const pointerState = await readPointer(bucket, config);
+    const pointerGeneration = String(pointerState?.generation ?? "0");
+    if (pointerGeneration !== checked.basePointerGeneration) throw new Error("durable profile pointer changed after candidate staging");
+    const prior = pointerState?.pointer.current;
+    const current = { object: checked.object, sha256: checked.sha256, bytes: checked.bytes, createdAt: checked.createdAt };
+    const pointer = { version: POINTER_VERSION, current, ...(prior ? { previous: prior } : {}) };
+    const generationMatch = Number(pointerGeneration);
+    if (!Number.isSafeInteger(generationMatch) || generationMatch < 0) {
+      throw new Error("durable profile pointer generation exceeds safe precondition bounds");
+    }
+    const pointerBytes = Buffer.from(`${JSON.stringify(pointer)}\n`);
+    stage = "pointer_write";
+    profileStoreDiagnostic(logger, "profile_store_step", { operation: "promote_candidate", stage, state: "started" });
+    await bucket.file(pointerObject(config)).save(pointerBytes, {
+      resumable: false,
+      validation: "crc32c",
+      metadata: { cacheControl: "no-store", contentType: "application/json" },
+      preconditionOpts: { ifGenerationMatch: generationMatch }
+    });
+    let pointerGenerationAfter = "unavailable";
+    let currentMatchesCandidate = false;
+    try {
+      const after = await readPointer(bucket, config);
+      pointerGenerationAfter = String(after?.generation ?? "0");
+      currentMatchesCandidate = after?.pointer.current.object === checked.object;
+    } catch {}
+    profileStoreDiagnostic(logger, "candidate_promote_pointer_observed", {
+      pointerGenerationBefore: pointerGeneration,
+      pointerGenerationAfter,
+      pointerAdvanced: pointerGenerationAfter !== "unavailable" && pointerGenerationAfter !== pointerGeneration,
+      currentMatchesCandidate
+    });
+    const protectedObjects = [current.object, prior?.object, pointerState?.pointer.previous?.object].filter(Boolean);
+    await pruneCandidates(bucket, config, protectedObjects).catch((error) => {
+      logger.error(`[maps-profile] stale candidate pruning failed after promotion: ${profileStoreErrorKind(error)}`);
+    });
+    await pruneSnapshots(bucket, config, [prior?.object, pointerState?.pointer.previous?.object].filter(Boolean)).catch((error) => {
+      logger.error(`[maps-profile] stale snapshot pruning failed: ${profileStoreErrorKind(error)}`);
+    });
+    logger.error(`[maps-profile] promoted verified stopped profile candidate (${checked.bytes} bytes)`);
+    return { status: "promoted", object: checked.object, bytes: checked.bytes, sha256: checked.sha256 };
+  } catch (error) {
+    profileStoreDiagnostic(logger, "profile_store_step", { operation: "promote_candidate", stage, state: "failed", errorKind: profileStoreErrorKind(error) });
+    throw error;
+  }
 }
 
 async function main() {
@@ -609,7 +654,7 @@ async function main() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   main().catch((error) => {
-    console.error(`[maps-profile] ${error instanceof Error ? error.message : "profile snapshot command failed"}`);
+    console.error(`[maps-profile] ${profileStoreErrorKind(error)}`);
     process.exitCode = 1;
   });
 }

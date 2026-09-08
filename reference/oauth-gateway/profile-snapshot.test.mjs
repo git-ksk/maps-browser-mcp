@@ -262,8 +262,8 @@ test("candidate staging uploads once, returns bounded metadata, and leaves the l
     assert.equal(await readFile(path.join(profileDir, "Default", "Cache", "discard"), "utf8"), "cache");
     assert.equal(await readFile(path.join(profileDir, "SingletonLock"), "utf8"), "runtime-only");
     assert.equal(await readFile(path.join(profileDir, "Default", "Local Storage", "state"), "utf8"), "opaque-auth-state");
-    assert.equal(messages.length, 2);
-    const stageDiagnostic = JSON.parse(messages[0].replace(/^\[maps-profile\] /, ""));
+    assert.deepEqual(messages.filter(message => message.includes('"event":"profile_store_step"')).map(message => JSON.parse(message.replace(/^\[maps-profile\] /, "")).stage), ["archive", "structure", "sqlite", "pointer_read", "upload", "metadata"]);
+    const stageDiagnostic = JSON.parse(messages.find(message => message.includes('"event":"candidate_stage_pointer_observed"')).replace(/^\[maps-profile\] /, ""));
     assert.deepEqual(stageDiagnostic, {
       type: "profile_store_diagnostics",
       event: "candidate_stage_pointer_observed",
@@ -271,7 +271,7 @@ test("candidate staging uploads once, returns bounded metadata, and leaves the l
       pointerGenerationAfter: "0",
       pointerUnchanged: true
     });
-    assert.match(messages[1], /durable pointer unchanged/);
+    assert.match(messages.at(-1), /durable pointer unchanged/);
     assert.doesNotMatch(messages.join("\n"), /opaque-cookie-db|opaque-auth-state|opaque-local-state|opaque-preferences/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -303,7 +303,7 @@ test("verified candidate promotion advances current atomically without a second 
     assert.equal(pointer.current.object, staged.candidate.object);
     assert.equal(pointer.current.sha256, staged.candidate.sha256);
     assert.equal(pointer.current.bytes, staged.candidate.bytes);
-    const promotionDiagnostic = JSON.parse(promotionMessages[0].replace(/^\[maps-profile\] /, ""));
+    const promotionDiagnostic = JSON.parse(promotionMessages.find(message => message.includes('"event":"candidate_promote_pointer_observed"')).replace(/^\[maps-profile\] /, ""));
     assert.equal(promotionDiagnostic.type, "profile_store_diagnostics");
     assert.equal(promotionDiagnostic.event, "candidate_promote_pointer_observed");
     assert.equal(promotionDiagnostic.pointerGenerationBefore, "0");
@@ -449,3 +449,20 @@ async function symlinkCompat(target, linkPath) {
   const { symlink } = await import("node:fs/promises");
   await symlink(target, linkPath);
 }
+
+test("store stage failures identify the boundary without logging provider error contents", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "maps-store-stage-diag-"));
+  const messages = [];
+  const secret = "PRIVATE_PROVIDER_OBJECT_TOKEN";
+  try {
+    const profileDir = await makeChromeProfile(root);
+    const storage = { bucket() { return {
+      file() { return { async getMetadata() { throw Object.assign(new Error(secret), { code: 403 }); } }; }
+    }; } };
+    await assert.rejects(stageProfileCandidate(profileConfig(profileDir), {
+      storage, sqliteIntegrityCheck: async () => {}, logger: { error(message) { messages.push(message); } }
+    }));
+    assert.ok(messages.some(message => message.includes('"stage":"pointer_read"') && message.includes('"state":"failed"') && message.includes('"errorKind":"permission"')));
+    assert.doesNotMatch(messages.join(""), new RegExp(secret));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

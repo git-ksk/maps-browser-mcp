@@ -239,3 +239,6 @@ Human試験後に追加の仮説診断を考え始めず、あらかじめ以下
 - `--restore-last-session`は引き続きHuman後の検証用Agent Aの次回起動1回だけ。通常操作用Agentおよびcold-startへの適用拡大はしない。
 
 次回acceptanceはAのstable `signed_in`だけで終了しない。完了後の通常操作用Agentのstable `signed_in`、さらに新Cloud Run instanceで同じ保存の復元とstable `signed_in`を確認する。通常操作用Agentの追加確認はcandidate promotion後であり、失敗してもpointerを自動ロールバックしない。Aで検証した保存と通常起動での復元可否は別の証拠として扱う。現状の変更だけでsession durability修復済みとは判断しない。
+
+
+診断拡充後のイベント・読み順・秘匿情報・判定限界は[診断カバレッジ](profile-diagnostics-coverage.ja.md)を参照。A/post-checkpoint/ordinary-readinessを分けて確認し、unknownの集約値だけでログイン消失と断定しない。
