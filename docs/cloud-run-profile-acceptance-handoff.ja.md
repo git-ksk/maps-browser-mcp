@@ -228,3 +228,14 @@ Human試験後に追加の仮説診断を考え始めず、あらかじめ以下
 5. Candidate implementation/tests are complete on the combined branch; review diff and commit/push without merging main.
 6. Deploy from a new immutable digest/revision, run fresh signed-out -> Human sign-in acceptance once, and record only bounded readiness/candidate/pointer metadata.
 7. If same-revision stable `signed_in` promotes the candidate, create a genuinely fresh revision from the same immutable image and require stable `signed_in` after restore.
+
+
+### 29fcad6後の静的レビュー修正と次回判定
+
+- scoped restoreがlive CDPを検出した際の拒否を握り潰さず、fresh起動を中止する。
+- Agentの終了判定は`exitCode`だけでなく`signalCode`も確認する。停止失敗時は所有child参照を残し、停止済みと扱わない。
+- 保存後に再起動した通常操作用Agentでも、8秒以内に連続1秒の` signed_in`を確認してから完了成功を返す。`signed_out`/`unknown`は`UI_STATE_CHANGED`とし、操作を再実行しない。
+- この追加確認の診断は`post_checkpoint_readiness_final`。既存のA検証診断と区別し、認証内容を出さない。
+- `--restore-last-session`は引き続きHuman後の検証用Agent Aの次回起動1回だけ。通常操作用Agentおよびcold-startへの適用拡大はしない。
+
+次回acceptanceはAのstable `signed_in`だけで終了しない。完了後の通常操作用Agentのstable `signed_in`、さらに新Cloud Run instanceで同じ保存の復元とstable `signed_in`を確認する。通常操作用Agentの追加確認はcandidate promotion後であり、失敗してもpointerを自動ロールバックしない。Aで検証した保存と通常起動での復元可否は別の証拠として扱う。現状の変更だけでsession durability修復済みとは判断しない。

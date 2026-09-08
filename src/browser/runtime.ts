@@ -438,6 +438,19 @@ export class MapsBrowserRuntime {
     await Promise.race([loaded, sleep(8_000)]);
     const url = await this.currentUrlUnchecked(client);
     this.assertAllowedCurrentUrl(url);
+    await this.assertNoInlineChallenge(undefined, client);
+    const readiness = await waitForAuthenticatedReadinessAfterHuman(
+      () => this.readAuthenticatedReadinessProbe(client),
+      {
+        onComplete: (summary) => lifecycleLog("post_checkpoint_readiness_final", { ...summary })
+      }
+    );
+    if (readiness !== "signed_in") {
+      throw new BrowserRuntimeError(
+        "UI_STATE_CHANGED",
+        "Google Maps sign-in did not remain verified in the post-checkpoint Agent browser. Read fresh readiness before continuing; no action was replayed."
+      );
+    }
   }
 
   cancelHumanIntervention(interventionId: string): void {

@@ -31,7 +31,8 @@ export type ProfileLifecycleDiagnosticEvent =
   | "agent_checkpoint_stop_started"
   | "agent_checkpoint_stopped"
   | "candidate_promoted"
-  | "candidate_promotion_failed";
+  | "candidate_promotion_failed"
+  | "post_checkpoint_readiness_final";
 
 export interface ProfileMetadataSummary {
   mountFsType: string;

@@ -190,20 +190,22 @@ export class ChromeProcess {
     }
     const activePortFile = path.join(this.options.profileDir, "DevToolsActivePort");
 
-    try {
-      const existing = parseDevToolsActivePort(await fsp.readFile(activePortFile, "utf8"));
-      if (existing && (await canReachCdp(existing.port, existing.browserPath))) {
-        if (restoreLastSession) {
-          throw new Error("Scoped session restore requires a stopped dedicated profile");
-        }
-        this.port = existing.port;
-        this.browserPath = existing.browserPath;
-        return existing.port;
+    // Only a missing endpoint file is benign. Ownership rejection and filesystem
+    // failures must escape instead of falling through to spawning another Chrome.
+    const activePortValue = await fsp.readFile(activePortFile, "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+    const existing = parseDevToolsActivePort(activePortValue);
+    if (existing && (await canReachCdp(existing.port, existing.browserPath))) {
+      if (restoreLastSession) {
+        throw new Error("Scoped session restore requires a stopped dedicated profile");
       }
-      await fsp.rm(activePortFile, { force: true });
-    } catch {
-      // No reusable browser session.
+      this.port = existing.port;
+      this.browserPath = existing.browserPath;
+      return existing.port;
     }
+    await fsp.rm(activePortFile, { force: true });
 
     const executable = findChromeExecutable(this.options.executable);
     const args = buildChromeArgs(this.options, { restoreLastSession });
@@ -227,7 +229,7 @@ export class ChromeProcess {
         await this.close();
         throw new Error("Chrome/Chromium could not be started");
       }
-      if (this.child.exitCode !== null) {
+      if (this.child.exitCode !== null || this.child.signalCode !== null) {
         await this.close();
         throw new Error("Chrome/Chromium exited before its DevTools endpoint became ready");
       }
@@ -255,21 +257,24 @@ export class ChromeProcess {
 
   async close(): Promise<void> {
     const child = this.child;
-    this.child = undefined;
     this.port = undefined;
     this.browserPath = undefined;
-    if (!child || child.exitCode !== null) return;
+    if (!child || child.exitCode !== null || child.signalCode !== null) {
+      this.child = undefined;
+      return;
+    }
 
     const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
     child.kill("SIGTERM");
     await Promise.race([exited, sleep(1_500)]);
-    if (child.exitCode === null) {
+    if (child.exitCode === null && child.signalCode === null) {
       child.kill("SIGKILL");
       await Promise.race([exited, sleep(1_000)]);
     }
-    if (child.exitCode === null) {
+    if (child.exitCode === null && child.signalCode === null) {
       throw new Error("Chrome/Chromium did not exit after SIGTERM/SIGKILL shutdown");
     }
+    this.child = undefined;
   }
 
   async closeForProfileCheckpoint(): Promise<void> {

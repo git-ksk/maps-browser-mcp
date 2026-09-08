@@ -561,3 +561,43 @@ test("Human takeover frame stream uses CDP screencast push with bounded latest-f
   assert.equal(frameHandler, undefined);
   assert.equal(navigationHandler, undefined);
 });
+
+
+for (const readiness of ["signed_in", "signed_out", "unknown"] as const) {
+  test(`post-checkpoint Agent completion requires stable signed_in: ${readiness}`, async () => {
+    const runtime = makeRuntime();
+    const navigations: string[] = [];
+    let restoreRequests = 0;
+    let probes = 0;
+    const mutable = runtime as unknown as {
+      chrome: unknown;
+      getClientUnchecked: () => Promise<unknown>;
+      currentUrlUnchecked: () => Promise<string>;
+      assertNoInlineChallenge: () => Promise<void>;
+      readAuthenticatedReadinessProbe: () => Promise<string>;
+    };
+    mutable.chrome = {
+      async close() {},
+      requestNextStartSessionRestore() { restoreRequests += 1; }
+    };
+    mutable.getClientUnchecked = async () => ({
+      Page: {
+        loadEventFired: async () => {},
+        navigate: async ({ url }: { url: string }) => { navigations.push(url); }
+      }
+    });
+    mutable.currentUrlUnchecked = async () => "https://www.google.com/maps";
+    mutable.assertNoInlineChallenge = async () => {};
+    mutable.readAuthenticatedReadinessProbe = async () => { probes += 1; return readiness; };
+    if (readiness === "signed_in") {
+      await runtime.prepareFreshMapsSurfaceAfterProfileCheckpoint();
+    } else {
+      await assert.rejects(runtime.prepareFreshMapsSurfaceAfterProfileCheckpoint(),
+        (error: unknown) => error instanceof BrowserRuntimeError && error.code === "UI_STATE_CHANGED");
+    }
+    assert.ok(probes > 1);
+    assert.equal(restoreRequests, 0);
+    assert.deepEqual(navigations, ["https://www.google.com/maps"]);
+    assert.equal(runtime.getLastAction(), undefined);
+  });
+}
